@@ -188,7 +188,7 @@ Verify the installation:
 bun packages/cli/src/index.ts doctor
 ```
 
-`doctor` validates the project config, runtime capsule, OpenCode CLI command, OpenCode plugin shim, and an internal Forge -> Review -> Seal orchestration smoke test. It exits nonzero when install files are missing or invalid, or when `opencode` is not discoverable, and prints the next command to repair the setup.
+`doctor` validates the project config, runtime capsule, OpenCode CLI command, OpenCode plugin shim, dashboard launch readiness, and an internal Forge -> Review -> Seal orchestration smoke test. It exits nonzero when install files are missing or invalid, or when `opencode` is not discoverable, and prints the next command to repair the setup.
 
 Repair the local OS install:
 

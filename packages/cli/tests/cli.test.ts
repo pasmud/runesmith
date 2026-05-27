@@ -129,6 +129,7 @@ describe("runesmith cli", () => {
         "runtime capsule: missing (.runesmith/runtime/capsule.json)",
         "opencode cli: found (opencode) - E:/tools/opencode.exe",
         "opencode plugin: missing (.opencode/plugins/runesmith.ts)",
+        "dashboard: build-on-launch (`runesmith dashboard` will build missing assets before serving)",
         "loop smoke: passed (mission completed)",
         "status: incomplete",
         "next: run `runesmith heal` to repair config, runtime, and OpenCode plugin wiring.",
@@ -164,6 +165,7 @@ describe("runesmith cli", () => {
         "runtime capsule: valid (.runesmith/runtime/capsule.json)",
         "opencode cli: missing (opencode) - command not found; install OpenCode CLI before launch",
         "opencode plugin: found (.opencode/plugins/runesmith.ts)",
+        "dashboard: build-on-launch (`runesmith dashboard` will build missing assets before serving)",
         "loop smoke: passed (mission completed)",
         "status: incomplete",
         "next: install OpenCode CLI, then run `runesmith heal` and `runesmith doctor`.",
@@ -202,6 +204,7 @@ describe("runesmith cli", () => {
         "runtime capsule: valid (.runesmith/runtime/capsule.json)",
         "opencode cli: found (opencode) - E:/tools/opencode.exe",
         "opencode plugin: found (.opencode/plugins/runesmith.ts)",
+        "dashboard: build-on-launch (`runesmith dashboard` will build missing assets before serving)",
         "loop smoke: passed (mission completed)",
         "status: ready",
         "",
@@ -241,12 +244,38 @@ describe("runesmith cli", () => {
         "runtime capsule: valid (.runesmith/runtime/capsule.json)",
         "opencode cli: found (opencode) - E:/tools/opencode.exe",
         "opencode plugin: found (opencode.jsonc)",
+        "dashboard: build-on-launch (`runesmith dashboard` will build missing assets before serving)",
         "loop smoke: passed (mission completed)",
         "status: ready",
         "",
       ].join("\n"),
       stderr: "",
     })
+  })
+
+  test("doctor reports dashboard build-on-launch readiness when assets are missing", async () => {
+    const host = createMemoryHost(
+      {},
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+      },
+    )
+
+    const up = await runCli([
+      "up",
+      "--mode",
+      "npm",
+      "--config",
+      "opencode.jsonc",
+    ], host)
+    expect(up.exitCode).toBe(0)
+
+    const result = await runCli(["doctor", "--mode", "npm", "--config", "opencode.jsonc"], host)
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("dashboard: build-on-launch")
   })
 
   test("doctor checks the configured runtime capsule path", async () => {

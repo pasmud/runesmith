@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { dirname } from "node:path"
-import { fileURLToPath, pathToFileURL } from "node:url"
+import { pathToFileURL } from "node:url"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import {
   advanceRunicMissionLoop,
@@ -48,6 +48,12 @@ import {
   type RuntimeSnapshot,
 } from "@runesmith/core"
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
+import {
+  resolveDashboardDistDir,
+  resolveDashboardDistIndexPath,
+  resolveDashboardServerScript,
+  resolveDashboardSourceDir,
+} from "./dashboard-paths.js"
 import { runDoctor } from "./doctor.js"
 import { findOpenCodeCli } from "./opencode-cli.js"
 import {
@@ -1632,24 +1638,6 @@ async function installNpmPlugin(
 
 function resolveRepoPluginSource(): string {
   return new URL("../../opencode-adapter/src/plugin.ts", import.meta.url).pathname
-}
-
-function resolveDashboardServerScript(): string {
-  const extension = import.meta.url.endsWith(".ts") ? "ts" : "js"
-
-  return fileURLToPath(new URL(`./dashboard-server.${extension}`, import.meta.url))
-}
-
-function resolveDashboardDistDir(): string {
-  return fileURLToPath(new URL("../../dashboard/dist", import.meta.url))
-}
-
-function resolveDashboardDistIndexPath(): string {
-  return fileURLToPath(new URL("../../dashboard/dist/index.html", import.meta.url))
-}
-
-function resolveDashboardSourceDir(): string {
-  return fileURLToPath(new URL("../../dashboard", import.meta.url))
 }
 
 if (import.meta.main) {

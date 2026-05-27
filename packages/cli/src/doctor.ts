@@ -15,6 +15,7 @@ import {
 import { parse, type ParseError } from "jsonc-parser"
 
 import type { CliHost, CliResult } from "./index.js"
+import { resolveDashboardDistIndexPath } from "./dashboard-paths.js"
 import { findOpenCodeCli, openCodeCommand } from "./opencode-cli.js"
 import {
   getDefaultOpenCodeConfigPath,
@@ -27,7 +28,7 @@ import {
 type DoctorCheck = {
   label: string
   path?: string
-  status: "found" | "missing" | "valid" | "invalid" | "passed" | "failed"
+  status: "found" | "missing" | "valid" | "invalid" | "passed" | "failed" | "ready" | "build-on-launch"
   detail?: string
   ok: boolean
 }
@@ -39,6 +40,7 @@ export async function runDoctor(args: string[], host: CliHost): Promise<CliResul
     await checkRuntimeCapsule(host),
     await checkOpenCodeCli(host),
     await checkOpenCodePlugin(host, options),
+    await checkDashboard(host),
     runLoopSmokeCheck(),
   ]
   const ready = checks.every((check) => check.ok)
@@ -68,6 +70,27 @@ async function checkOpenCodeCli(host: CliHost): Promise<DoctorCheck> {
     status: found ? "found" : "missing",
     detail: found ?? "command not found; install OpenCode CLI before launch",
     ok: Boolean(found),
+  }
+}
+
+async function checkDashboard(host: CliHost): Promise<DoctorCheck> {
+  const indexPath = resolveDashboardDistIndexPath()
+  const hasBuiltAssets = await host.exists(indexPath)
+
+  if (hasBuiltAssets) {
+    return {
+      label: "dashboard",
+      path: indexPath,
+      status: "ready",
+      ok: true,
+    }
+  }
+
+  return {
+    label: "dashboard",
+    status: "build-on-launch",
+    detail: "`runesmith dashboard` will build missing assets before serving",
+    ok: true,
   }
 }
 
