@@ -682,6 +682,7 @@ function RightRail({ dispatch, model }: { dispatch: DashboardDispatch; model: Da
   return (
     <aside className="right-rail">
       <LoopPulsePanel model={model} />
+      <ProtocolDeckPanel model={model} />
       <MissionMemoryPanel model={model} />
 
       <section className="notifications">
@@ -738,6 +739,49 @@ function RightRail({ dispatch, model }: { dispatch: DashboardDispatch; model: Da
         </div>
       </section>
     </aside>
+  )
+}
+
+function ProtocolDeckPanel({ model }: { model: DashboardModel }) {
+  const protocol = model.protocolDeck.active
+  const verification = protocol.verification.slice(0, 2)
+  const forbiddenMove = protocol.forbiddenMoves[0]
+  const tone: MissionStatus = protocol.mode === "hold" ? "blocked" : protocol.mode === "guarded" ? "stale" : "verified"
+
+  return (
+    <section className="protocol-deck-panel" aria-label="Runesmith protocol deck">
+      <div className="inspector-header">
+        <p className="eyebrow">Protocol Deck</p>
+        <Badge tone={tone}>{protocol.mode}</Badge>
+      </div>
+      <div className="protocol-head">
+        <span className={`tile-icon tile-icon-${tone}`}><ShieldCheck aria-hidden="true" /></span>
+        <div>
+          <h2>{protocol.name}</h2>
+          <p>{protocol.objective}</p>
+        </div>
+      </div>
+      <div className="protocol-facts">
+        <span>{protocol.toolHints[0] ?? "engine-owned"}</span>
+        <span>{model.protocolDeck.summary}</span>
+      </div>
+      <div className="protocol-steps" aria-label="Protocol procedure">
+        {protocol.procedure.slice(0, 3).map((step, index) => (
+          <span key={`${protocol.id}-step-${index}`}>
+            <small>{index + 1}</small>
+            <strong>{step}</strong>
+          </span>
+        ))}
+      </div>
+      {verification.length > 0 ? (
+        <div className="protocol-verification" aria-label="Protocol verification">
+          {verification.map((item) => (
+            <code key={item}>{item}</code>
+          ))}
+        </div>
+      ) : null}
+      {forbiddenMove ? <p className="protocol-forbidden">{forbiddenMove}</p> : null}
+    </section>
   )
 }
 

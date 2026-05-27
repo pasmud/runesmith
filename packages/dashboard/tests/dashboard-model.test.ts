@@ -329,6 +329,11 @@ describe("dashboard model", () => {
       title: "Proofwright proof gate",
       autonomy: "auto",
     })
+    expect(model.protocolDeck.active).toMatchObject({
+      id: "proofwright-proof-protocol",
+      name: "Proofwright Proof Protocol",
+      mode: "auto",
+    })
     expect(model.runebook.activeCard.commands.map((command) => command.command)).toEqual(["bun test"])
     expect(model.missionMemory.status).toBe("needs-proof")
     expect(model.missionMemory.handoff).toBe(
@@ -380,6 +385,11 @@ describe("dashboard model", () => {
       id: "faultwright-repair",
       title: "Faultwright repair loop",
       autonomy: "guarded",
+    })
+    expect(model.protocolDeck.active).toMatchObject({
+      id: "faultwright-repair-protocol",
+      name: "Faultwright Repair Protocol",
+      mode: "guarded",
     })
     expect(model.runebook.activeCard.commands.map((command) => command.command)).toEqual([
       "bun test packages/dashboard/tests",

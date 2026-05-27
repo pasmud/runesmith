@@ -3,6 +3,7 @@ import {
   deriveMissionMemory,
   deriveLoopPulse,
   deriveProofPlan,
+  deriveRunicProtocolDeck,
   deriveRunebook,
   getNextCovenantStage,
   type AgentContract,
@@ -14,6 +15,7 @@ import {
   type MissionMemory,
   type MissionGraph,
   type ProofPlan,
+  type RunicProtocolDeck,
   type Runebook,
   type RiskResolutionVerdict,
   type RuntimeCapsule,
@@ -98,6 +100,7 @@ export type DashboardModel = {
   loopPulse: LoopPulse
   missionMemory: MissionMemory
   proofPlan: ProofPlan
+  protocolDeck: RunicProtocolDeck
   runebook: Runebook
   metrics: Record<MissionStatus, number>
   mode: OsMode
@@ -668,6 +671,9 @@ function deriveDashboardModel(input: {
   const runebook = input.runtimeSnapshot
     ? deriveRunebook(input.runtimeSnapshot)
     : buildSeededRunebook(input.tasks)
+  const protocolDeck = input.runtimeSnapshot
+    ? deriveRunicProtocolDeck(input.runtimeSnapshot)
+    : buildSeededProtocolDeck(input.tasks)
 
   return {
     ...input,
@@ -676,6 +682,7 @@ function deriveDashboardModel(input: {
     loopPulse,
     missionMemory,
     proofPlan,
+    protocolDeck,
     runebook,
     metrics,
     operationalScore: buildOperationalScore(input.tasks, metrics, input.policies),
@@ -721,6 +728,14 @@ function buildSeededRunebook(tasks: TaskCard[]): Runebook {
   }
 
   return deriveRunebook(buildSeededRuntimeSnapshot(tasks))
+}
+
+function buildSeededProtocolDeck(tasks: TaskCard[]): RunicProtocolDeck {
+  if (tasks.length === 0) {
+    return deriveRunicProtocolDeck(emptyRuntimeSnapshot())
+  }
+
+  return deriveRunicProtocolDeck(buildSeededRuntimeSnapshot(tasks))
 }
 
 function buildSeededRuntimeSnapshot(tasks: TaskCard[]): RuntimeSnapshot {
