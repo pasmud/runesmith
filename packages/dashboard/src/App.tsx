@@ -104,6 +104,7 @@ export function App() {
   const [controlLoading, setControlLoading] = useState(false)
   const workspaceRef = useRef<HTMLElement | null>(null)
   const activeSection = sectionMeta[model.activeView]
+  const activeRiskSummary = model.loopPulse.risks[0] ?? "Operator accepted the active risk."
 
   const refreshRuntimeCapsule = async () => {
     setCapsuleLoading(true)
@@ -128,7 +129,12 @@ export function App() {
   const runRuntimeControl = async (action: DashboardAction) => {
     setControlLoading(true)
     try {
-      if (action.type === "forge-directive" || action.type === "run-autopilot-cycle" || action.type === "run-proof-plan") {
+      if (
+        action.type === "forge-directive"
+        || action.type === "run-autopilot-cycle"
+        || action.type === "run-proof-plan"
+        || action.type === "resolve-risk"
+      ) {
         const capsule = await runDashboardRuntimeAction(action)
         dispatch(runtimeCapsuleHasMissions(capsule) ? { type: "load-runtime-capsule", capsule } : action)
         return
@@ -168,6 +174,19 @@ export function App() {
             <Button disabled={controlLoading} onClick={() => void runRuntimeControl({ type: "run-proof-plan" })} variant="outline">
               <CheckCircle2 data-icon="inline-start" />{controlLoading ? "Working" : "Run proof"}
             </Button>
+            {model.loopPulse.nextAction.id === "resolve-risk" ? (
+              <Button
+                disabled={controlLoading}
+                onClick={() => void runRuntimeControl({
+                  type: "resolve-risk",
+                  verdict: "accepted",
+                  summary: activeRiskSummary,
+                })}
+                variant="outline"
+              >
+                <ShieldCheck data-icon="inline-start" />{controlLoading ? "Working" : "Resolve risk"}
+              </Button>
+            ) : null}
             <Button disabled={controlLoading} onClick={() => void runRuntimeControl({ type: "run-autopilot-cycle" })}>
               <Zap data-icon="inline-start" />{controlLoading ? "Working" : "Autopilot cycle"}
             </Button>

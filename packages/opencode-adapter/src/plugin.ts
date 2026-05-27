@@ -14,6 +14,7 @@ import {
   deriveMissionMemory,
   deriveProofPlan,
   loadRuntimeCapsule,
+  resolveRunicRisk,
   runProofPlan,
   saveRuntimeCapsule,
   selectRunicLoopTask,
@@ -27,6 +28,7 @@ import {
   type ProofPlanOptions,
   type RunicCovenant,
   type RunesmithRuntime,
+  type RiskResolutionVerdict,
   type RuntimeOptions,
   type RuntimeSnapshot,
 } from "@runesmith/core"
@@ -54,6 +56,7 @@ export type RunesmithPlugin = {
     runesmith_autopilot_prepare: ToolDefinition<AutopilotPrepareArgs>
     runesmith_autopilot_tick: ToolDefinition<AutopilotTickArgs>
     runesmith_proof_run: ToolDefinition<ProofRunArgs>
+    runesmith_risk_resolve: ToolDefinition<RiskResolveArgs>
     runesmith_covenant_status: ToolDefinition<CovenantStatusArgs>
     runesmith_mission_start: ToolDefinition<MissionStartArgs>
     runesmith_mission_status: ToolDefinition<MissionStatusArgs>
@@ -99,6 +102,12 @@ type AutopilotPrepareArgs = {
 type AutopilotTickArgs = Record<string, never>
 
 type ProofRunArgs = Record<string, never>
+
+type RiskResolveArgs = {
+  verdict?: RiskResolutionVerdict
+  summary?: string
+  evidenceId?: string
+}
 
 type MissionStartArgs = {
   goal: string
@@ -234,6 +243,25 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             runtimeStore: options.runtimeStore,
             idFactory: options.idFactory,
             now: options.now,
+          })
+        },
+      },
+      runesmith_risk_resolve: {
+        description:
+          "Record an explicit decision for the active unresolved risk, then advance the Runesmith mission through the evidence gate.",
+        parameters: objectSchema({
+          verdict: stringSchema("Risk decision verdict: accepted or cleared"),
+          summary: stringSchema("Short decision summary explaining why the active risk can proceed"),
+          evidenceId: stringSchema("Optional stable decision evidence id"),
+        }),
+        async execute(args) {
+          return resolveRiskFromOpenCode({
+            runtime,
+            proofPlanOptions,
+            runtimeStore: options.runtimeStore,
+            idFactory: options.idFactory,
+            now: options.now,
+            args,
           })
         },
       },
@@ -758,6 +786,15 @@ type RunProofFromOpenCodeInput = {
   now?: () => Date
 }
 
+type ResolveRiskFromOpenCodeInput = {
+  runtime: RunesmithRuntime
+  proofPlanOptions?: ProofPlanOptions
+  runtimeStore?: PluginRuntimeStore
+  idFactory?: IdFactory
+  now?: () => Date
+  args: RiskResolveArgs
+}
+
 async function runProofFromOpenCode(input: RunProofFromOpenCodeInput): Promise<ToolResponse> {
   const snapshot = input.runtime.snapshot()
   const proofPlan = deriveProofPlan(snapshot, input.proofPlanOptions)
@@ -797,6 +834,40 @@ async function runProofFromOpenCode(input: RunProofFromOpenCodeInput): Promise<T
     diagnostics: loopPulse.diagnostics,
     missionMemory,
     proofPlan: nextProofPlan,
+    loopPulse,
+  })
+}
+
+async function resolveRiskFromOpenCode(input: ResolveRiskFromOpenCodeInput): Promise<ToolResponse> {
+  const resolved = resolveRunicRisk(input.runtime, {
+    contract: defaultAtlasContract,
+    holder: "runesmith-autopilot",
+    idempotencyScope: "risk-resolve",
+    ttlMs: 30_000,
+    verdict: parseRiskVerdict(input.args.verdict),
+    summary: input.args.summary,
+    now: input.now,
+    evidenceIdFactory: () => input.args.evidenceId ?? input.idFactory?.("evidence") ?? `evidence_${crypto.randomUUID()}`,
+  })
+  if (!resolved.ok) return formatError("Risk resolution rejected", resolved.error)
+
+  await persistRuntime(input.runtimeStore, input.runtime)
+  const snapshot = input.runtime.snapshot()
+  const loopPulse = deriveLoopPulse(snapshot)
+  const missionMemory = deriveMissionMemory(snapshot)
+  const proofPlan = deriveProofPlan(snapshot, input.proofPlanOptions)
+
+  return formatValue("Risk resolved", {
+    status: resolved.value.status,
+    missionId: resolved.value.missionId,
+    taskId: resolved.value.taskId,
+    evidenceId: resolved.value.evidenceId,
+    verdict: resolved.value.verdict,
+    risks: resolved.value.risks,
+    nextStatus: resolved.value.nextStatus,
+    missingEvidence: loopPulse.missingEvidence,
+    missionMemory,
+    proofPlan,
     loopPulse,
   })
 }
@@ -1041,6 +1112,7 @@ function buildAutopilotPrompt(): string {
     "Continue under the returned mission, task, and lease. New autopilot missions are planned as Forge, Review, and Seal tasks. Runesmith records shell, test, file-change, and safe Covenant decision evidence automatically; use `runesmith_task_evidence` for risks, diagnostics, external proof, or decisions the tool hooks cannot infer.",
     "Follow the Active runes in the live Runesmith Control Brief as automatic procedure cards. Do not ask the user to invoke them by name.",
     "When proof is missing or repair is active, call `runesmith_proof_run` to execute the live Runesmith Proof Plan before asking for completion.",
+    "When Loop Pulse says `Resolve risk`, call `runesmith_risk_resolve` with a short decision summary instead of asking the user to find mission ids or manually attach decision evidence.",
     "When the active task has required evidence, call `runesmith_autopilot_tick` or let session-idle events advance it. The tick may complete the task only after the evidence gate is satisfied, synthesize Review and Seal decisions when safe, then claim the next dependency-ready task.",
     "Do not ask the user to invoke Runesmith, skills, or a workflow by name. Keep the user experience install-once and direct.",
     "Before claiming completion, attach required evidence and use `runesmith_task_complete`; if state looks stale or conflicting, run `runesmith_recover` first.",
@@ -1221,6 +1293,10 @@ function normalizeGoal(goal: unknown): string | undefined {
   if (typeof goal !== "string") return undefined
   const normalized = goal.replace(/\s+/g, " ").trim()
   return normalized.length > 0 ? normalized : undefined
+}
+
+function parseRiskVerdict(value: unknown): RiskResolutionVerdict {
+  return value === "cleared" ? "cleared" : "accepted"
 }
 
 function fingerprint(value: string): string {

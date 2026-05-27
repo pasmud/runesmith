@@ -4,6 +4,7 @@ import {
   advanceRunicMissionLoop,
   createCovenantTaskPlan,
   createRuntime,
+  resolveRunicRisk,
   type AgentContract,
 } from "../src/index"
 
@@ -136,6 +137,95 @@ describe("runic mission loop", () => {
           taskId: "task_alpha_seal",
           type: "decision",
           payload: expect.objectContaining({ stage: "seal", verdict: "sealed" }),
+        }),
+      ]),
+    )
+  })
+
+  test("resolves active risk with a decision and advances the mission loop", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Resolve risk through runic loop",
+      taskPlan: createCovenantTaskPlan("Resolve risk through runic loop"),
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runtime files",
+        payload: { filePath: "packages/core/src/runic-loop.ts" },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Core loop tests passed",
+        payload: { command: "bun test packages/core/tests/runic-loop.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_risk",
+        taskId: "task_alpha",
+        type: "risk",
+        summary: "Deletes generated user files without confirmation",
+        payload: { severity: "high" },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+
+    const resolved = resolveRunicRisk(runtime, {
+      ...loopDefaults(),
+      verdict: "accepted",
+      summary: "Generated files are safe to delete after operator review",
+      now: later,
+      evidenceIdFactory: () => "evidence_decision",
+    })
+
+    expect(resolved).toMatchObject({
+      ok: true,
+      value: {
+        status: "resolved",
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        evidenceId: "evidence_decision",
+        verdict: "accepted",
+        nextStatus: "completed",
+      },
+    })
+
+    const snapshot = runtime.snapshot()
+    expect(snapshot.graphs.mission_alpha.mission.status).toBe("complete")
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha.status).toBe("complete")
+    expect(Object.values(snapshot.ledgers.mission_alpha.evidence)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "evidence_decision",
+          taskId: "task_alpha",
+          type: "decision",
+          summary: "Risk accepted: Generated files are safe to delete after operator review",
+          payload: expect.objectContaining({
+            mode: "runesmith-risk-resolution",
+            verdict: "accepted",
+            risks: ["Deletes generated user files without confirmation"],
+          }),
         }),
       ]),
     )

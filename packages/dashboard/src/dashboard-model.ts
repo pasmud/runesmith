@@ -13,6 +13,7 @@ import {
   type MissionMemory,
   type MissionGraph,
   type ProofPlan,
+  type RiskResolutionVerdict,
   type RuntimeCapsule,
   type RuntimeSnapshot,
   type TaskStatus,
@@ -118,6 +119,7 @@ export type DashboardAction =
   | { type: "run-verifier" }
   | { type: "run-autopilot-cycle" }
   | { type: "run-proof-plan" }
+  | { type: "resolve-risk"; verdict?: RiskResolutionVerdict; summary?: string }
   | { type: "forge-directive"; prompt: string }
   | { type: "advance-covenant-stage" }
   | { type: "load-runtime-capsule"; capsule: RuntimeCapsule }
@@ -564,6 +566,9 @@ export function reduceDashboardModel(model: DashboardModel, action: DashboardAct
         detailPrefix: "Runesmith proof plan completed for",
         noticePrefix: "Proof plan passed for",
       })
+
+    case "resolve-risk":
+      return resolveRiskInModel(model, action)
 
     case "run-autopilot-cycle":
       return runAutopilotCycle(model)
@@ -1213,6 +1218,38 @@ function runAutopilotCycle(model: DashboardModel): DashboardModel {
     mode: "autopilot",
     notice: "Autopilot found no pending work.",
   })
+}
+
+function resolveRiskInModel(
+  model: DashboardModel,
+  action: Extract<DashboardAction, { type: "resolve-risk" }>,
+): DashboardModel {
+  const riskTask = model.tasks.find((task) => task.evidence.includes("risk") && task.status !== "verified")
+  const targetTask = riskTask ?? model.selectedTask
+  const verdict = action.verdict ?? "accepted"
+  const summary = action.summary?.trim() || "Operator resolved active risk."
+
+  return mutateSelectedTask(
+    deriveDashboardModel({
+      ...model,
+      mode: "guarded",
+      selectedTaskId: targetTask.id,
+    }),
+    {
+      timelineLabel: "Risk resolved",
+      timelineTone: "verified",
+      commandLabel: "Risk decision recorded",
+      notice: (task) => `Resolved risk for ${task.title}.`,
+      mutate: (task) => ({
+        ...task,
+        status: "verified",
+        lane: "Verify",
+        summary: `Risk ${verdict}: ${summary}`,
+        evidence: addEvidence(task.evidence, "decision"),
+      }),
+      detail: (task) => `${task.id} received a ${verdict} risk decision`,
+    },
+  )
 }
 
 function forgeDirective(model: DashboardModel, prompt: string): DashboardModel {

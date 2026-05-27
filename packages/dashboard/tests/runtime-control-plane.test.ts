@@ -207,6 +207,95 @@ describe("dashboard runtime control plane", () => {
     )
   })
 
+  test("resolves an active risk from dashboard control", async () => {
+    const forged = await applyDashboardRuntimeAction(emptySnapshot, {
+      type: "forge-directive",
+      prompt: "Resolve risk from dashboard",
+    }, {
+      idFactory: ids,
+      now: fixedNow,
+    })
+    if (!forged.ok) throw new Error("forge failed")
+
+    const hydrated = createRuntime({
+      snapshot: forged.value.snapshot,
+      idFactory: ids,
+      now: fixedNow,
+    })
+    hydrated.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed dashboard runtime control plane",
+        payload: { filePath: "packages/dashboard/src/runtime-control-plane.ts" },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    hydrated.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Dashboard tests passed",
+        payload: { command: "bun test packages/dashboard/tests", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    hydrated.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_risk",
+        taskId: "task_alpha",
+        type: "risk",
+        summary: "Deletes generated user files without confirmation",
+        payload: { severity: "high" },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+
+    const result = await applyDashboardRuntimeAction(hydrated.snapshot(), {
+      type: "resolve-risk",
+      verdict: "accepted",
+      summary: "Operator accepts generated-file deletion after review",
+    }, {
+      idFactory: ids,
+      now: later,
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        action: "resolve-risk",
+        status: "completed",
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        riskResolution: {
+          evidenceId: "evidence_alpha",
+          verdict: "accepted",
+          nextStatus: "completed",
+        },
+      },
+    })
+    if (!result.ok) return
+
+    const graph = result.value.snapshot.graphs.mission_alpha
+    const evidence = Object.values(result.value.snapshot.ledgers.mission_alpha.evidence)
+    expect(graph.mission.status).toBe("complete")
+    expect(evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "evidence_alpha",
+          taskId: "task_alpha",
+          type: "decision",
+          summary: "Risk accepted: Operator accepts generated-file deletion after review",
+        }),
+      ]),
+    )
+  })
+
   test("records dashboard proof failures as diagnostics without advancing completion", async () => {
     const forged = await applyDashboardRuntimeAction(emptySnapshot, {
       type: "forge-directive",

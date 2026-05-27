@@ -576,6 +576,79 @@ describe("opencode adapter", () => {
     })
   })
 
+  test("resolves active risk through a first-class OpenCode tool", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const writes: string[] = []
+    const plugin = createRunesmithPlugin({
+      runtime,
+      runtimeStore: {
+        save(snapshot) {
+          writes.push(JSON.stringify(snapshot))
+        },
+      },
+    })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Resolve OpenCode risk",
+    })
+    await plugin.tool.runesmith_task_evidence.execute({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      type: "file-change",
+      summary: "Changed OpenCode adapter",
+      payload: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+      evidenceId: "evidence_file",
+    })
+    await plugin.tool.runesmith_task_evidence.execute({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      type: "test-result",
+      summary: "OpenCode adapter tests passed",
+      payload: { command: "bun test packages/opencode-adapter/tests/plugin.test.ts", exitCode: 0 },
+      evidenceId: "evidence_test",
+    })
+    await plugin.tool.runesmith_task_evidence.execute({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      type: "risk",
+      summary: "Deletes generated user files without confirmation",
+      payload: { severity: "high" },
+      evidenceId: "evidence_risk",
+    })
+
+    const resolved = await plugin.tool.runesmith_risk_resolve.execute({
+      verdict: "accepted",
+      summary: "Operator accepts generated-file deletion after review",
+    })
+
+    expect(JSON.parse(resolved.output)).toMatchObject({
+      ok: true,
+      value: {
+        status: "resolved",
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        verdict: "accepted",
+        nextStatus: "completed",
+        loopPulse: {
+          nextAction: {
+            id: "wait-for-goal",
+          },
+        },
+      },
+    })
+    expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("complete")
+    expect(Object.values(runtime.snapshot().ledgers.mission_alpha.evidence)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task_alpha",
+          type: "decision",
+          summary: "Risk accepted: Operator accepts generated-file deletion after review",
+        }),
+      ]),
+    )
+    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.mission.status).toBe("complete")
+  })
+
   test("runs the active proof plan through an OpenCode tool and advances the mission", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const writes: string[] = []

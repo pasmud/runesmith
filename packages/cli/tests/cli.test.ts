@@ -967,6 +967,88 @@ describe("runesmith cli", () => {
     expect(inspect.stdout).toContain("- Rerun failing command: bun test packages/cli/tests")
   })
 
+  test("risk resolve records a decision and advances the active mission", async () => {
+    const host = createMemoryHost()
+
+    await runCli(["mission", "start", "Resolve CLI risk"], host)
+    await runCli([
+      "mission",
+      "evidence",
+      "mission_cli_1",
+      "task_cli_1",
+      "--type",
+      "file-change",
+      "--summary",
+      "Updated CLI files",
+      "--payload-json",
+      "{\"files\":[\"packages/cli/src/index.ts\"]}",
+    ], host)
+    await runCli([
+      "mission",
+      "evidence",
+      "mission_cli_1",
+      "task_cli_1",
+      "--type",
+      "test-result",
+      "--summary",
+      "CLI tests passed",
+      "--payload-json",
+      "{\"command\":\"bun test packages/cli/tests\",\"exitCode\":0}",
+    ], host)
+    await runCli([
+      "mission",
+      "evidence",
+      "mission_cli_1",
+      "task_cli_1",
+      "--type",
+      "risk",
+      "--summary",
+      "Deletes generated user files without confirmation",
+      "--payload-json",
+      "{\"severity\":\"high\"}",
+    ], host)
+
+    const result = await runCli([
+      "risk",
+      "resolve",
+      "--verdict",
+      "accepted",
+      "--summary",
+      "Operator accepts generated-file deletion after review",
+    ], host)
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Risk resolved",
+        "mission: mission_cli_1",
+        "task: task_cli_1",
+        "evidence: evidence_cli_4",
+        "verdict: accepted",
+        "status: completed",
+        "next: Wait for goal [clear/low]",
+        "runtime: .runesmith/runtime/capsule.json",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+
+    const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
+    const graph = capsule.runtime.graphs.mission_cli_1
+    const evidence = Object.values(capsule.runtime.ledgers.mission_cli_1.evidence) as any[]
+    expect(graph.mission.status).toBe("complete")
+    expect(evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "evidence_cli_4",
+          taskId: "task_cli_1",
+          type: "decision",
+          summary: "Risk accepted: Operator accepts generated-file deletion after review",
+        }),
+      ]),
+    )
+  })
+
   test("mission inspect prints graph details from a snapshot", async () => {
     const host = createMemoryHost({
       "snapshot.json": JSON.stringify(snapshot),

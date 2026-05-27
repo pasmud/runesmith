@@ -2,6 +2,7 @@ import { getRequiredEvidenceForTask } from "./contracts"
 import { createCovenantDecisionDraft } from "./covenant"
 import { missingRequiredEvidence } from "./evidence-ledger"
 import { runtimeError } from "./errors"
+import { deriveLoopPulse } from "./loop-pulse"
 import { taskDependenciesComplete } from "./mission-graph"
 import type { RunesmithRuntime, RuntimeSnapshot } from "./runtime"
 import {
@@ -33,6 +34,19 @@ export type AdvanceRunicMissionLoopOptions = {
   evidenceIdFactory?: (input: { missionId: string; task: MissionTask; stage: "review" | "seal" }) => string
 }
 
+export type RiskResolutionVerdict = "accepted" | "cleared"
+
+export type ResolveRunicRiskOptions = Omit<AdvanceRunicMissionLoopOptions, "evidenceIdFactory"> & {
+  verdict: RiskResolutionVerdict
+  summary?: string
+  evidenceIdFactory?: (input: {
+    missionId: string
+    task: MissionTask
+    verdict: RiskResolutionVerdict
+    risks: string[]
+  }) => string
+}
+
 export type AdvanceRunicMissionLoopValue = {
   status: RunicMissionLoopStatus
   missionId?: string
@@ -40,6 +54,18 @@ export type AdvanceRunicMissionLoopValue = {
   missionStatus?: string
   missingEvidence?: EvidenceType[]
   nextTaskStatus?: string
+}
+
+export type ResolveRunicRiskValue = {
+  status: "resolved"
+  missionId: string
+  taskId: string
+  evidenceId: string
+  verdict: RiskResolutionVerdict
+  risks: string[]
+  nextStatus: RunicMissionLoopStatus
+  missionStatus?: string
+  missingEvidence?: EvidenceType[]
 }
 
 export function advanceRunicMissionLoop(
@@ -151,6 +177,75 @@ export function advanceRunicMissionLoop(
     missionId: target.missionId,
     taskId: target.taskId,
     missionStatus: finalGraph?.mission.status ?? completed.value.graph.mission.status,
+  })
+}
+
+export function resolveRunicRisk(
+  runtime: RunesmithRuntime,
+  options: ResolveRunicRiskOptions,
+): Result<ResolveRunicRiskValue> {
+  runtime.registerContract(options.contract)
+
+  const snapshot = runtime.snapshot()
+  const pulse = deriveLoopPulse(snapshot)
+  if (pulse.nextAction.id !== "resolve-risk" || !pulse.missionId || !pulse.taskId) {
+    return err(
+      runtimeError("INVALID_TRANSITION", "No active unresolved risk is waiting for a decision", {
+        nextAction: pulse.nextAction.id,
+        missionId: pulse.missionId,
+        taskId: pulse.taskId,
+      }),
+    )
+  }
+
+  const graph = snapshot.graphs[pulse.missionId]
+  const task = graph?.tasks[pulse.taskId]
+  if (!graph || !task) {
+    return err(runtimeError("TASK_NOT_FOUND", "Active risk task does not exist", {
+      missionId: pulse.missionId,
+      taskId: pulse.taskId,
+    }))
+  }
+
+  const evidenceId = buildRiskDecisionEvidenceId(options, {
+    missionId: pulse.missionId,
+    task,
+    risks: pulse.risks,
+  })
+  const recorded = runtime.addTaskEvidence({
+    missionId: pulse.missionId,
+    evidence: {
+      id: evidenceId,
+      taskId: pulse.taskId,
+      type: "decision",
+      summary: formatRiskDecisionSummary(options.verdict, options.summary, pulse.risks),
+      payload: {
+        mode: "runesmith-risk-resolution",
+        verdict: options.verdict,
+        risks: pulse.risks,
+      },
+      createdAt: (options.now ?? (() => new Date()))().toISOString(),
+    },
+  })
+  if (!recorded.ok) return recorded
+
+  const advanced = advanceRunicMissionLoop(runtime, {
+    ...options,
+    recoverStale: false,
+    evidenceIdFactory: undefined,
+  })
+  if (!advanced.ok) return advanced
+
+  return ok({
+    status: "resolved",
+    missionId: pulse.missionId,
+    taskId: pulse.taskId,
+    evidenceId,
+    verdict: options.verdict,
+    risks: pulse.risks,
+    nextStatus: advanced.value.status,
+    missionStatus: advanced.value.missionStatus,
+    missingEvidence: advanced.value.missingEvidence,
   })
 }
 
@@ -273,6 +368,24 @@ function buildDecisionEvidenceId(
 ): string {
   return options.evidenceIdFactory?.(input)
     ?? `evidence_auto_decision_${fingerprint(`${input.missionId}:${input.task.id}:${input.stage}`)}`
+}
+
+function buildRiskDecisionEvidenceId(
+  options: ResolveRunicRiskOptions,
+  input: { missionId: string; task: MissionTask; risks: string[] },
+): string {
+  return options.evidenceIdFactory?.({
+    ...input,
+    verdict: options.verdict,
+  }) ?? `evidence_risk_decision_${fingerprint(`${input.missionId}:${input.task.id}:${options.verdict}:${input.risks.join("|")}`)}`
+}
+
+function formatRiskDecisionSummary(verdict: RiskResolutionVerdict, summary: string | undefined, risks: string[]): string {
+  const fallback = risks.length > 0 ? risks.join("; ") : "active risk"
+  const detail = summary?.trim() || fallback
+  const label = verdict === "accepted" ? "accepted" : "cleared"
+
+  return `Risk ${label}: ${detail}`
 }
 
 function fingerprint(value: string): string {

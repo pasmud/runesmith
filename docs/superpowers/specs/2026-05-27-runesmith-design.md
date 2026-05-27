@@ -30,6 +30,7 @@ The first production slice includes:
 - Evidence writes are validated against the mission graph and refresh task heartbeat/timeline state, so active proof collection is not mistaken for stale work.
 - Fresh-proof evidence gates that reject passing `test-result` evidence when a newer file-change or diagnostic exists on the task.
 - Human-hold risk gates that reject completion after unresolved `risk` evidence until a later `decision` explicitly clears, accepts, or holds the risk.
+- Direct risk resolution controls in core, OpenCode, CLI, and dashboard surfaces so the user does not need to inspect mission ids or write raw decision evidence.
 - Engine-owned OpenCode idle orchestration that recovers stale work first, runs the active Proof Plan after implementation evidence exists, holds failed proof as a repair target, retries after a new repair edit, and completes the active task once proof requirements are satisfied.
 - A shared Runic mission loop kernel in `packages/core` so OpenCode, CLI, and dashboard surfaces use the same recovery, claim, evidence, decision, and completion state machine.
 - A state-aware Runesmith Control Brief that tells OpenCode the active mission, active task, next Runic Covenant stage, required evidence, and missing proof directly from runtime state.
@@ -93,6 +94,7 @@ Responsibilities:
 - `runesmith prove`: execute the active Proof Plan from the runtime capsule, record passing commands as `test-result` evidence, record the first failing command as `diagnostic` evidence, and advance the shared mission loop after passing proof.
 - Published packages expose built `dist` entrypoints, keep Bun source imports for local agent execution, and use publishable internal dependency ranges instead of workspace-only dependency specifiers.
 - `runesmith mission start <goal>`: bootstrap local config if needed, create the default Forge -> Review -> Seal Covenant mission, register Atlas, claim the first task, and persist the runtime capsule for OpenCode/dashboard resumption.
+- `runesmith risk resolve --summary <summary>`: record a decision for the active unresolved risk and advance the shared mission loop without requiring mission or task ids.
 - `runesmith mission evidence <mission-id> <task-id>` and `runesmith mission tick`: record task proof and advance the persisted capsule through the same evidence gate used by OpenCode, including active repair diagnostics and safe autonomous Review and Seal decisions.
 - `runesmith mission list`: print active mission summaries from snapshots.
 - `runesmith mission inspect <id>`: print graph, Loop Pulse, Proof Plan, missing proof, active diagnostics, active runes, evidence, leases, and recovery state.
@@ -198,7 +200,7 @@ Evidence types:
 
 A task cannot move to `complete` unless its task-level or contract-level required evidence exists. This is the primary guard against false completion.
 For `test-result` requirements, evidence must prove a passing run, such as `exitCode: 0` or an explicit success status. It must also be fresh against the task ledger: if a newer `file-change` or `diagnostic` exists, earlier passing proof is stale and does not satisfy completion. Failed or unknown test runs are diagnostic context, not completion proof.
-For `risk` evidence, the ledger opens a human-hold gate. If the latest risk is newer than the latest decision on the same task, `decision` becomes required evidence even when the original task contract did not ask for it. The task cannot complete until a later decision clears, accepts, or deliberately holds the risk.
+For `risk` evidence, the ledger opens a human-hold gate. If the latest risk is newer than the latest decision on the same task, `decision` becomes required evidence even when the original task contract did not ask for it. The task cannot complete until a later decision clears, accepts, or deliberately holds the risk. The shared `resolveRunicRisk` primitive records that decision on the active Loop Pulse task and then re-enters the same evidence-gated loop used by proof, CLI ticks, dashboard controls, and OpenCode idle orchestration.
 
 ### Runtime Capsule
 
@@ -270,7 +272,7 @@ For zero-touch operation, the adapter also uses `tool.execute.before`. When the 
 
 After a mission is prepared, the `tool.execute.after` hook records routine proof automatically. Shell commands become `command-output` evidence, recognized passing test commands become `test-result` evidence, failed test commands become `diagnostic` evidence, and file mutation tools become `file-change` evidence on the active non-terminal task. After recording evidence, the hook runs the evidence-gated advance loop so a task can seal immediately when the required proof exists. The core gate treats passing test proof as stale when a newer file-change or diagnostic exists, forcing proof to follow the latest edit or repair target. The same gate treats unresolved risk evidence as a decision hold, forcing an explicit later decision before completion. If the mission has another dependency-ready task, autopilot claims it immediately so the agent continues the loop instead of stopping after implementation proof. Covenant Review and Seal stages synthesize `decision` evidence from the verified mission state, allowing routine missions to finish without the user invoking workflow tools. Runesmith ignores read-only tools and its own tools to avoid noisy ledgers and feedback loops.
 
-The `runesmith_autopilot_tick` tool checks the active task's assigned contract and task-level evidence requirements. If required evidence is missing, it holds with a missing-evidence list. If failed verification is present, the tool response includes diagnostic summaries plus the live `Repair diagnostic` Loop Pulse so OpenCode can repair without a separate user-invoked workflow. If unresolved risk is present, the tool response includes the live `Resolve risk` Loop Pulse and refuses completion until later decision evidence exists. If proof is present, it calls the runtime completion gate, synthesizes safe Covenant decisions for Review and Seal, claims the next dependency-ready task when one exists, and persists the capsule.
+The `runesmith_autopilot_tick` tool checks the active task's assigned contract and task-level evidence requirements. If required evidence is missing, it holds with a missing-evidence list. If failed verification is present, the tool response includes diagnostic summaries plus the live `Repair diagnostic` Loop Pulse so OpenCode can repair without a separate user-invoked workflow. If unresolved risk is present, the tool response includes the live `Resolve risk` Loop Pulse and refuses completion until later decision evidence exists. The `runesmith_risk_resolve` tool records that decision directly, then advances the mission loop so the agent does not need to ask the user for raw evidence plumbing. If proof is present, the tick calls the runtime completion gate, synthesizes safe Covenant decisions for Review and Seal, claims the next dependency-ready task when one exists, and persists the capsule.
 
 OpenCode `session.idle` events add the hands-off proof layer above that tick. Idle orchestration gives stale recovery priority, then runs the active Proof Plan automatically when implementation evidence exists and passing proof is missing. A failed proof run becomes diagnostic evidence and stops the run. Runesmith will not repeat the same failed proof on every idle event; it waits until a later file-change evidence entry shows that the agent made a repair edit, then reruns the focused diagnostic command before broader proof. This keeps the user experience install-once while preventing noisy retry loops.
 
@@ -300,6 +302,7 @@ The first adapter exposes these tools:
 - `runesmith_autopilot_prepare`: infer or accept the current goal, start or resume a mission, claim the next dependency-ready task, and persist the capsule.
 - `runesmith_autopilot_tick`: advance the active task through the evidence gate, surface repair diagnostics when verification failed, and complete it when the contract is satisfied.
 - `runesmith_proof_run`: execute the active Proof Plan inside OpenCode, record passing commands as `test-result` evidence, record failing commands as `diagnostic` evidence, and advance the shared mission loop when proof passes.
+- `runesmith_risk_resolve`: record accepted or cleared decision evidence for the active unresolved risk and advance the shared mission loop.
 - `runesmith_covenant_status`: report the installed autonomous workflow plus the live Control Brief, Loop Pulse, Proof Plan, and active Runebook runes from runtime state.
 - `runesmith_mission_start`: create a mission from a user goal.
 - `runesmith_mission_status`: summarize graph state.
@@ -335,6 +338,7 @@ Runtime-backed controls:
 - `/api/runtime-control` accepts dashboard actions and persists the resulting capsule.
 - Command Forge starts a planned Covenant mission from the dashboard directive, registers the default Atlas contract, claims the first task, and saves the capsule.
 - Run Proof executes the active Proof Plan on the server side, persists `test-result` or `diagnostic` evidence, and advances the mission loop when the run passes.
+- Resolve Risk records accepted decision evidence for the active `Resolve risk` Loop Pulse state and persists the advanced capsule.
 - Guarded Autopilot runs an evidence-gated cycle over the persisted mission. It recovers stale work first, holds if proof is missing, holds unresolved risk until a later decision exists, completes through the runtime gate once required evidence exists, synthesizes Review and Seal decisions, and claims the next dependency-ready task.
 - The right rail shows the Loop Pulse with health, priority, next action, execution plan, missing evidence, active runes, Mission Memory, and Proof Plan commands from the same runtime capsule used by OpenCode.
 

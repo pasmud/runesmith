@@ -4,6 +4,7 @@ import {
   createRuntime,
   deriveLoopPulse,
   deriveProofPlan,
+  resolveRunicRisk,
   runProofPlan,
   type AgentContract,
   type EvidenceType,
@@ -12,6 +13,7 @@ import {
   type ProofPlanOptions,
   type ProofRunCommandResult,
   type RunicMissionLoopStatus,
+  type RiskResolutionVerdict,
   type RuntimeOptions,
   type RuntimeSnapshot,
 } from "@runesmith/core"
@@ -29,6 +31,11 @@ export type DashboardRuntimeAction =
   | {
       type: "run-proof-plan"
     }
+  | {
+      type: "resolve-risk"
+      verdict?: RiskResolutionVerdict
+      summary?: string
+    }
 
 export type DashboardRuntimeActionValue = {
   action: DashboardRuntimeAction["type"]
@@ -40,6 +47,12 @@ export type DashboardRuntimeActionValue = {
   missingEvidence?: EvidenceType[]
   proofStatus?: "idle" | "passed" | "failed"
   commands?: ProofRunCommandResult[]
+  riskResolution?: {
+    evidenceId: string
+    verdict: RiskResolutionVerdict
+    nextStatus: RunicMissionLoopStatus
+    risks: string[]
+  }
   snapshot: RuntimeSnapshot
 }
 
@@ -99,6 +112,10 @@ export async function applyDashboardRuntimeAction(
 
   if (action.type === "run-proof-plan") {
     return runDashboardProofPlan(runtime, options)
+  }
+
+  if (action.type === "resolve-risk") {
+    return resolveDashboardRisk(runtime, action, options)
   }
 
   return runDashboardAutopilotCycle(runtime, options)
@@ -171,6 +188,43 @@ function runDashboardAutopilotCycle(
       nextTaskStatus: advanced.value.nextTaskStatus,
       status: mapDashboardRunicStatus(advanced.value.status),
       missingEvidence: advanced.value.missingEvidence,
+      snapshot: runtime.snapshot(),
+    },
+  }
+}
+
+function resolveDashboardRisk(
+  runtime: ReturnType<typeof createRuntime>,
+  action: Extract<DashboardRuntimeAction, { type: "resolve-risk" }>,
+  options: DashboardRuntimeActionOptions,
+): DashboardRuntimeActionResult {
+  const nextEvidenceId = createDashboardEvidenceIdFactory(runtime.snapshot(), options.idFactory)
+  const resolved = resolveRunicRisk(runtime, {
+    contract: dashboardAtlasContract,
+    holder: "runesmith-dashboard",
+    idempotencyScope: "dashboard",
+    ttlMs: 30_000,
+    verdict: action.verdict ?? "accepted",
+    summary: action.summary,
+    now: options.now,
+    evidenceIdFactory: () => nextEvidenceId(),
+  })
+  if (!resolved.ok) return { ok: false, error: resolved.error }
+
+  return {
+    ok: true,
+    value: {
+      action: "resolve-risk",
+      missionId: resolved.value.missionId,
+      taskId: resolved.value.taskId,
+      status: mapDashboardRunicStatus(resolved.value.nextStatus),
+      missingEvidence: resolved.value.missingEvidence,
+      riskResolution: {
+        evidenceId: resolved.value.evidenceId,
+        verdict: resolved.value.verdict,
+        nextStatus: resolved.value.nextStatus,
+        risks: resolved.value.risks,
+      },
       snapshot: runtime.snapshot(),
     },
   }

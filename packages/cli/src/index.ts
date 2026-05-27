@@ -12,6 +12,7 @@ import {
   deriveMissionMemory,
   deriveProofPlan,
   loadRuntimeCapsule,
+  resolveRunicRisk,
   runProofPlan,
   saveRuntimeCapsule,
   type AgentContract,
@@ -22,6 +23,7 @@ import {
   type ProofCommandExecution,
   type ProofRunCommandResult,
   type ProofPlanOptions,
+  type RiskResolutionVerdict,
   type RuntimeSnapshot,
 } from "@runesmith/core"
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
@@ -175,6 +177,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     return runProofFromCli(host)
   }
 
+  if (command === "risk" && subcommand === "resolve") {
+    return resolveRiskFromCli([maybeId, ...rest].filter((value): value is string => Boolean(value)), host)
+  }
+
   if (command === "init") {
     await writeProjectConfig(host)
 
@@ -252,7 +258,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     ].join("\n"))
   }
 
-  return failure("Usage: runesmith <up|status|launch|prove|install|init|doctor|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
+  return failure("Usage: runesmith <up|status|launch|prove|install|init|doctor|risk resolve|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
 }
 
 function success(stdout: string): CliResult {
@@ -738,6 +744,57 @@ async function runProofFromCli(host: CliHost): Promise<CliResult> {
   }
 }
 
+async function resolveRiskFromCli(args: string[], host: CliHost): Promise<CliResult> {
+  const options = parseFlagOptions(args)
+  const verdict = parseRiskVerdict(options.verdict)
+  const summary = options.summary?.trim()
+  if (!summary) {
+    return failure("Usage: runesmith risk resolve --summary <summary> [--verdict accepted|cleared]\n")
+  }
+
+  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  if (!capsule.ok) return failure(`${capsule.error.message}\n`)
+  if (!capsule.value) return failure(`Runtime capsule not found: ${defaultRuntimeCapsulePath}\n`)
+
+  const idFactory = createCliIdFactory(capsule.value.runtime)
+  const runtime = createRuntime({
+    snapshot: capsule.value.runtime,
+    idFactory,
+  })
+  runtime.registerContract(cliAtlasContract)
+
+  const resolved = resolveRunicRisk(runtime, {
+    contract: cliAtlasContract,
+    holder: "runesmith-cli",
+    idempotencyScope: "cli-risk",
+    ttlMs: 30_000,
+    verdict,
+    summary,
+    evidenceIdFactory: () => idFactory("evidence"),
+  })
+  if (!resolved.ok) return failure(`${resolved.error.message}\n`)
+
+  const snapshot = runtime.snapshot()
+  await saveRuntimeCapsule(host, {
+    path: defaultRuntimeCapsulePath,
+    snapshot,
+  })
+  const pulse = deriveLoopPulse(snapshot)
+
+  return success([
+    "Risk resolved",
+    `mission: ${resolved.value.missionId}`,
+    `task: ${resolved.value.taskId}`,
+    `evidence: ${resolved.value.evidenceId}`,
+    `verdict: ${resolved.value.verdict}`,
+    `status: ${resolved.value.nextStatus}`,
+    `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
+    ...formatPulseDiagnostics(pulse),
+    `runtime: ${defaultRuntimeCapsulePath}`,
+    "",
+  ].join("\n"))
+}
+
 type EvidenceArgsResult =
   | {
       ok: true
@@ -821,6 +878,10 @@ function isEvidenceType(value: string | undefined): value is EvidenceType {
   if (!value) return false
 
   return ["file-change", "command-output", "test-result", "diagnostic", "decision", "risk"].includes(value)
+}
+
+function parseRiskVerdict(value: string | undefined): RiskResolutionVerdict {
+  return value === "cleared" ? "cleared" : "accepted"
 }
 
 function formatMissionEvidence(snapshot: RuntimeSnapshot, missionId: string): string[] {
