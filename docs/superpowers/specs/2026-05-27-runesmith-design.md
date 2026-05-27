@@ -32,7 +32,7 @@ The first production slice includes:
 - A shared Runic mission loop kernel in `packages/core` so OpenCode, CLI, and dashboard surfaces use the same recovery, claim, evidence, decision, and completion state machine.
 - A state-aware Runesmith Control Brief that tells OpenCode the active mission, active task, next Runic Covenant stage, required evidence, and missing proof directly from runtime state.
 - A Runesmith Loop Pulse that derives one authoritative next action, compact execution plan, health signal, priority, blockers, required evidence, and active runes from the runtime capsule.
-- A Runesmith Proof Plan that turns missing proof and failed diagnostics into exact verification commands across OpenCode, CLI, and dashboard surfaces.
+- A Runesmith Proof Plan that turns missing proof, stale proof, and failed diagnostics into exact verification commands across OpenCode, CLI, and dashboard surfaces.
 - A Runesmith Proof Runner that executes the active Proof Plan, records passing proof or failing diagnostics, and advances the shared mission loop when proof passes.
 - A default Covenant task plan that expands coding goals into Forge, Review, and Seal tasks with dependency-aware claiming and task-level evidence requirements.
 
@@ -242,7 +242,7 @@ The Loop Pulse sits beside the Control Brief. It converts the live runtime state
 
 Mission Memory sits above the pulse as the durable continuation layer. It classifies the mission as idle, active, blocked, needs-proof, needs-repair, needs-recovery, or sealed; summarizes active task, open and completed task counts, latest change evidence, passing proof, diagnostics, and decisions; and produces one handoff sentence that can survive OpenCode restart, compaction, CLI inspection, or dashboard reload. This is how Runesmith internalizes the useful continuity discipline of workflow systems without asking users to install or invoke a separate process.
 
-Proof Plan sits above Mission Memory as the automatic verification recipe. It detects missing `test-result` proof and failed diagnostics, reruns the latest failing command first when available, then asks for the repository's typecheck, test, and build scripts when those scripts exist. The plan is derived from runtime state and package metadata, so users get one install-once orchestration loop instead of a separate checklist they need to remember.
+Proof Plan sits above Mission Memory as the automatic verification recipe. It detects missing `test-result` proof, stale passing proof, and failed diagnostics. It reruns the latest failing command first during repair, reruns the last stale targeted proof command after newer edits invalidate it, then asks for the repository's typecheck, test, and build scripts when those scripts exist. The plan is derived from runtime state and package metadata, so users get one install-once orchestration loop instead of a separate checklist they need to remember.
 
 Proof Runner executes the active recipe. It is harness-independent in `packages/core`: callers provide a command runner, evidence ids, and a clock, while the core runner converts command outcomes into task evidence. OpenCode, CLI, and dashboard surfaces use that same runner, so a proof run from chat, the terminal, or the control surface writes the same ledger evidence.
 

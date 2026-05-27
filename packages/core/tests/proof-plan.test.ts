@@ -148,4 +148,71 @@ describe("proof plan", () => {
     })
     expect(prompt).toContain("1. Rerun failing command: bun test packages/core/tests/proof-plan.test.ts")
   })
+
+  test("starts with the stale targeted proof command after later edits invalidate passing proof", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Rerun stale targeted proof",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file_initial",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed proof planner",
+        payload: { files: ["packages/core/src/proof-plan.ts"] },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test_targeted",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Proof planner tests passed",
+        payload: { command: "bun test packages/core/tests/proof-plan.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file_later",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed proof planner again",
+        payload: { files: ["packages/core/src/proof-plan.ts"] },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+
+    const plan = deriveProofPlan(runtime.snapshot(), { packageManager: "bun@1.3.13", scripts })
+    const prompt = buildProofPlanPrompt(runtime.snapshot(), { packageManager: "bun@1.3.13", scripts })
+
+    expect(plan.status).toBe("needs-proof")
+    expect(plan.commands.map((command) => command.command)).toEqual([
+      "bun test packages/core/tests/proof-plan.test.ts",
+      "bun run typecheck",
+      "bun test",
+      "bun run build",
+    ])
+    expect(plan.commands[0]).toMatchObject({
+      kind: "rerun-stale-proof",
+      label: "Rerun stale proof",
+      evidenceType: "test-result",
+    })
+    expect(prompt).toContain("1. Rerun stale proof: bun test packages/core/tests/proof-plan.test.ts")
+  })
 })

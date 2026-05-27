@@ -4,7 +4,7 @@ import type { RuntimeSnapshot } from "./runtime"
 import type { Evidence, EvidenceType, MissionGraph, MissionTask } from "./types"
 
 export type ProofPlanStatus = "idle" | "not-needed" | "needs-proof" | "needs-repair"
-export type ProofPlanCommandKind = "rerun-diagnostic" | "typecheck" | "test" | "build"
+export type ProofPlanCommandKind = "rerun-diagnostic" | "rerun-stale-proof" | "typecheck" | "test" | "build"
 
 export type ProofPlanCommand = {
   id: string
@@ -55,10 +55,12 @@ export function deriveProofPlan(
     .sort(compareEvidenceNewest)
   const diagnostics = evidence.filter((entry) => entry.type === "diagnostic").map((entry) => entry.summary).slice(0, 3)
   const latestDiagnosticCommand = firstDiagnosticCommand(evidence)
+  const latestPassingProofCommand = firstPassingTestCommand(evidence)
   const needsRepair = pulse.nextAction.id === "repair-diagnostic"
   const needsTestProof = pulse.missingEvidence.includes("test-result")
   const commands = buildProofCommands({
     latestDiagnosticCommand: needsRepair ? latestDiagnosticCommand : undefined,
+    latestStaleProofCommand: needsRepair ? undefined : latestPassingProofCommand,
     needsTestProof,
     options,
   })
@@ -118,10 +120,11 @@ function selectProofTarget(
 
 function buildProofCommands(input: {
   latestDiagnosticCommand?: string
+  latestStaleProofCommand?: string
   needsTestProof: boolean
   options: ProofPlanOptions
 }): ProofPlanCommand[] {
-  if (!input.needsTestProof && !input.latestDiagnosticCommand) return []
+  if (!input.needsTestProof && !input.latestDiagnosticCommand && !input.latestStaleProofCommand) return []
 
   const commands: ProofPlanCommand[] = []
   if (input.latestDiagnosticCommand) {
@@ -131,6 +134,16 @@ function buildProofCommands(input: {
       label: "Rerun failing command",
       command: input.latestDiagnosticCommand,
       reason: "Prove the latest diagnostic is repaired before broad verification.",
+      evidenceType: "test-result",
+    })
+  }
+  if (input.needsTestProof && input.latestStaleProofCommand) {
+    commands.push({
+      id: "rerun-stale-proof",
+      kind: "rerun-stale-proof",
+      label: "Rerun stale proof",
+      command: input.latestStaleProofCommand,
+      reason: "Refresh the last targeted passing proof after newer task evidence invalidated it.",
       evidenceType: "test-result",
     })
   }
@@ -229,6 +242,28 @@ function firstDiagnosticCommand(evidence: Evidence[]): string | undefined {
   }
 
   return undefined
+}
+
+function firstPassingTestCommand(evidence: Evidence[]): string | undefined {
+  for (const entry of evidence) {
+    if (entry.type !== "test-result" || !isPassingTestResult(entry)) continue
+    const command = entry.payload.command
+    if (typeof command === "string" && command.trim().length > 0) {
+      return command.trim()
+    }
+  }
+
+  return undefined
+}
+
+function isPassingTestResult(evidence: Evidence): boolean {
+  const exitCode = evidence.payload.exitCode
+  if (typeof exitCode === "number") return exitCode === 0
+
+  const status = evidence.payload.status ?? evidence.payload.outcome ?? evidence.payload.verdict
+  if (typeof status !== "string") return false
+
+  return ["ok", "pass", "passed", "success", "successful"].includes(status.toLowerCase())
 }
 
 function compareEvidenceNewest(left: Evidence, right: Evidence): number {
