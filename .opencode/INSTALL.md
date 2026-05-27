@@ -23,6 +23,7 @@ From a cloned checkout:
 ```bash
 bun install
 bun packages/cli/src/index.ts ignite "Build the next feature"
+bun packages/cli/src/index.ts heal
 bun packages/cli/src/index.ts up
 bun packages/cli/src/index.ts up --mode npm
 bun packages/cli/src/index.ts status
@@ -33,6 +34,6 @@ bun packages/cli/src/index.ts risk resolve --summary "Operator accepts the activ
 bun packages/cli/src/index.ts launch -- <opencode args>
 ```
 
-Use `ignite "<goal>"` for the least-ceremony path: it defaults to the direct package plugin, writes OpenCode config, creates or resumes the matching Covenant mission, claims the active task, and runs the OS loop once. Use plain `up` for a local development shim, or `up --mode npm` to initialize Runesmith and write the direct package plugin entry into OpenCode config. Existing projects can also use only the package entry above; Runesmith will bootstrap the default runtime capsule when OpenCode loads the plugin.
+Use `ignite "<goal>"` for the least-ceremony path: it defaults to the direct package plugin, writes OpenCode config, heals missing or invalid local state, creates or resumes the matching Covenant mission, claims the active task, and runs the OS loop once. Use `heal` when the capsule or plugin wiring looks broken; it backs up invalid runtime state before replacing it. Use plain `up` for a local development shim, or `up --mode npm` to initialize Runesmith and write the direct package plugin entry into OpenCode config. Existing projects can also use only the package entry above; Runesmith will bootstrap the default runtime capsule when OpenCode loads the plugin.
 
 Use `bun packages/cli/src/index.ts doctor` when OpenCode does not load the plugin or the runtime capsule looks invalid.

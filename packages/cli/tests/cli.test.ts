@@ -119,7 +119,7 @@ describe("runesmith cli", () => {
         "opencode plugin: missing (.opencode/plugins/runesmith.ts)",
         "loop smoke: passed (mission completed)",
         "status: incomplete",
-        "next: run `runesmith up` to initialize config, runtime, and OpenCode plugin wiring.",
+        "next: run `runesmith heal` to repair config, runtime, and OpenCode plugin wiring.",
         "",
       ].join("\n"),
       stderr: "",
@@ -154,7 +154,7 @@ describe("runesmith cli", () => {
         "opencode plugin: found (.opencode/plugins/runesmith.ts)",
         "loop smoke: passed (mission completed)",
         "status: incomplete",
-        "next: install OpenCode CLI, then run `runesmith up` and `runesmith doctor`.",
+        "next: install OpenCode CLI, then run `runesmith heal` and `runesmith doctor`.",
         "",
       ].join("\n"),
       stderr: "",
@@ -235,6 +235,55 @@ describe("runesmith cli", () => {
       ].join("\n"),
       stderr: "",
     })
+  })
+
+  test("heal repairs missing setup and an invalid runtime capsule through the package install path", async () => {
+    const host = createMemoryHost(
+      {
+        ".runesmith/runtime/capsule.json": "{not json",
+      },
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+      },
+    )
+
+    const result = await runCli(["heal", "--config", "opencode.jsonc"], host)
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("Runesmith Heal")
+    expect(result.stdout).toContain("config: repaired")
+    expect(result.stdout).toContain("runtime: repaired")
+    expect(result.stdout).toContain("install: package")
+    expect(result.stdout).toContain("opencode config: opencode.jsonc")
+    expect(result.stdout).toContain("doctor: ready")
+    expect(host.readText(".runesmith/config.json")).toContain("\"runtimeDir\": \".runesmith/runtime\"")
+    expect(host.readText(".runesmith/runtime/capsule.json.runesmith.bak")).toBe("{not json")
+    expect(host.readText("opencode.jsonc")).toContain("\"runesmith@git+https://github.com/pasmud/runesmith.git\"")
+
+    const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
+    expect(capsule.runtime).toEqual({
+      graphs: {},
+      ledgers: {},
+      leases: { leases: {} },
+      contracts: {},
+    })
+  })
+
+  test("heal can stage repaired files when the OpenCode CLI is not installed yet", async () => {
+    const host = createMemoryHost({
+      "opencode.jsonc": "{}",
+    })
+
+    const result = await runCli(["heal", "--config", "opencode.jsonc"], host)
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("Runesmith Heal")
+    expect(result.stdout).toContain("doctor: staged")
+    expect(result.stdout).toContain("opencode: missing")
+    expect(host.readText(".runesmith/runtime/capsule.json")).toContain("\"graphs\": {}")
+    expect(host.readText("opencode.jsonc")).toContain("\"runesmith@git+https://github.com/pasmud/runesmith.git\"")
   })
 
   test("install writes a local OpenCode plugin shim", async () => {
@@ -474,6 +523,34 @@ describe("runesmith cli", () => {
     expect(Object.keys(capsule.runtime.graphs)).toEqual(["mission_cli_1"])
     expect(capsule.runtime.graphs.mission_cli_1.mission.goal).toBe("Build direct ignition")
     expect(capsule.runtime.graphs.mission_cli_1.tasks.task_cli_1.status).toBe("running")
+  })
+
+  test("ignite heals an invalid runtime capsule before preparing the mission", async () => {
+    const host = createMemoryHost(
+      {
+        ".runesmith/runtime/capsule.json": "{broken",
+      },
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+      },
+    )
+
+    const result = await runCli([
+      "ignite",
+      "--config",
+      "opencode.jsonc",
+      "Recover a broken first run",
+    ], host)
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("Runesmith Ignite")
+    expect(result.stdout).toContain("mission: mission_cli_1 created")
+    expect(host.readText(".runesmith/runtime/capsule.json.runesmith.bak")).toBe("{broken")
+
+    const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
+    expect(capsule.runtime.graphs.mission_cli_1.mission.goal).toBe("Recover a broken first run")
   })
 
   test("ignite resumes the matching active mission instead of creating duplicates", async () => {

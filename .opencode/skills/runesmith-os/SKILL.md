@@ -38,4 +38,4 @@ Use Seal Audit as the final completion signal. If it is `collecting-proof`, run 
 
 If Runesmith state is missing, call `runesmith_autopilot_prepare` with the latest user goal or let the idle/tool hooks prepare the mission automatically. If the capsule looks invalid, use the Runesmith CLI doctor command from the repository docs.
 
-For terminal use, prefer `runesmith ignite "<goal>"` as the first command. It performs setup, prepares or resumes the mission, claims the active task, and runs the OS loop without asking the user to learn mission ids.
+For terminal use, prefer `runesmith ignite "<goal>"` as the first command. It heals setup, prepares or resumes the mission, claims the active task, and runs the OS loop without asking the user to learn mission ids. Use `runesmith heal` when config, plugin wiring, or the runtime capsule is missing or corrupt.

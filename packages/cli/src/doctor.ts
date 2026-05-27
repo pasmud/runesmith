@@ -211,10 +211,10 @@ function formatDoctorCheck(check: DoctorCheck): string {
 function formatDoctorNextStep(checks: DoctorCheck[]): string {
   const openCodeMissing = checks.some((check) => check.label === "opencode cli" && !check.ok)
   if (openCodeMissing) {
-    return "next: install OpenCode CLI, then run `runesmith up` and `runesmith doctor`."
+    return "next: install OpenCode CLI, then run `runesmith heal` and `runesmith doctor`."
   }
 
-  return "next: run `runesmith up` to initialize config, runtime, and OpenCode plugin wiring."
+  return "next: run `runesmith heal` to repair config, runtime, and OpenCode plugin wiring."
 }
 
 function runLoopSmokeTest(): { ok: true; message: string } | { ok: false; message: string } {

@@ -180,6 +180,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     return runesmithUp(args.slice(1), host)
   }
 
+  if (command === "heal") {
+    return runesmithHeal(args.slice(1), host)
+  }
+
   if (command === "ignite") {
     return runesmithIgnite(args.slice(1), host)
   }
@@ -313,7 +317,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     ].join("\n"))
   }
 
-  return failure("Usage: runesmith <ignite|up|status|run|next|launch|prove|install|init|doctor|risk resolve|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
+  return failure("Usage: runesmith <ignite|heal|up|status|run|next|launch|prove|install|init|doctor|risk resolve|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
 }
 
 function success(stdout: string): CliResult {
@@ -388,6 +392,61 @@ async function ensureRuntimeCapsule(host: CliHost): Promise<void> {
     path: defaultRuntimeCapsulePath,
     snapshot: emptySnapshot,
   })
+}
+
+type RepairState = "ok" | "repaired"
+
+async function runesmithHeal(args: string[], host: CliHost): Promise<CliResult> {
+  const options = parseOptions(args)
+  const setupArgs = options.mode ? args : ["--mode", "npm", ...args]
+  const installMode = (options.mode ?? "npm") === "npm" ? "package" : "local shim"
+  const configState = await repairProjectConfig(host)
+  const runtimeState = await repairRuntimeCapsule(host)
+  const install = await installRunesmith(setupArgs, host)
+  if (install.exitCode !== 0) return install
+
+  const doctor = await runDoctor(setupArgs, host)
+  const doctorState = doctor.exitCode === 0 ? "ready" : "staged"
+  const openCodeCli = await findOpenCodeCli(host)
+  const openCodeConfig = extractOutputValue(install.stdout, "config")
+  const plugin = extractOutputValue(install.stdout, "plugin")
+
+  return success([
+    "Runesmith Heal",
+    `config: ${configState}`,
+    `runtime: ${runtimeState}`,
+    `install: ${installMode}`,
+    ...(openCodeConfig ? [`opencode config: ${openCodeConfig}`] : []),
+    `plugin: ${plugin ?? "installed"}`,
+    `opencode: ${openCodeCli ? `found ${openCodeCli}` : "missing"}`,
+    `doctor: ${doctorState}`,
+    doctorState === "ready"
+      ? "next: runesmith ignite \"<goal>\" or runesmith launch -- <opencode args>"
+      : "next: install OpenCode CLI, then run `runesmith doctor`.",
+    "",
+  ].join("\n"))
+}
+
+async function repairProjectConfig(host: CliHost): Promise<RepairState> {
+  if (await host.exists(".runesmith/config.json")) return "ok"
+
+  await writeProjectConfig(host)
+  return "repaired"
+}
+
+async function repairRuntimeCapsule(host: CliHost): Promise<RepairState> {
+  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  if (capsule.ok && capsule.value) return "ok"
+
+  if (!capsule.ok && await host.exists(defaultRuntimeCapsulePath)) {
+    await host.writeText(`${defaultRuntimeCapsulePath}.runesmith.bak`, await host.readText(defaultRuntimeCapsulePath))
+  }
+
+  await saveRuntimeCapsule(host, {
+    path: defaultRuntimeCapsulePath,
+    snapshot: emptySnapshot,
+  })
+  return "repaired"
 }
 
 async function runesmithUp(args: string[], host: CliHost): Promise<CliResult> {
@@ -477,7 +536,7 @@ type IgniteArgs = {
 
 async function runesmithIgnite(args: string[], host: CliHost): Promise<CliResult> {
   const parsed = parseIgniteArgs(args)
-  const setup = await runesmithUp(parsed.setupArgs, host)
+  const setup = await runesmithHeal(parsed.setupArgs, host)
   if (setup.exitCode !== 0) return setup
 
   const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
@@ -530,7 +589,9 @@ async function runesmithIgnite(args: string[], host: CliHost): Promise<CliResult
     snapshot,
   })
 
-  const setupState = setup.stdout.startsWith("Runesmith OS is ready") ? "ready" : "staged"
+  const setupState = setup.stdout.startsWith("Runesmith OS is ready") || extractOutputValue(setup.stdout, "doctor") === "ready"
+    ? "ready"
+    : "staged"
   const installMode = extractOutputValue(setup.stdout, "install") ?? "package"
   const openCodeConfig = extractOutputValue(setup.stdout, "opencode config")
   const plugin = extractOutputValue(setup.stdout, "plugin")
