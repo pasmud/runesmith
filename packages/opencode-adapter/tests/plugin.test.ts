@@ -853,6 +853,60 @@ describe("opencode adapter", () => {
     expect(JSON.parse(writes.at(-1) ?? "{}").ledgers.mission_alpha.evidence).toBeDefined()
   })
 
+  test("timestamps automatic tool evidence with the plugin clock", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({
+      runtime,
+      now: fixedNow,
+    })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Timestamp automatic evidence deterministically",
+    })
+    await plugin["tool.execute.after"]?.(
+      {
+        tool: "edit",
+        args: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+      },
+      {
+        result: { status: "changed" },
+      },
+    )
+
+    const evidence = Object.values(runtime.snapshot().ledgers.mission_alpha.evidence)
+    expect(evidence).toEqual([
+      expect.objectContaining({
+        type: "file-change",
+        createdAt: "2026-05-27T00:00:00.000Z",
+      }),
+    ])
+  })
+
+  test("timestamps manually attached task evidence with the plugin clock", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({
+      runtime,
+      now: fixedNow,
+    })
+
+    await plugin.tool.runesmith_mission_start.execute({
+      goal: "Timestamp manual evidence deterministically",
+    })
+    await plugin.tool.runesmith_task_evidence.execute({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      type: "risk",
+      summary: "Manual risk note",
+      payload: { severity: "medium" },
+      evidenceId: "evidence_manual_risk",
+    })
+
+    expect(runtime.snapshot().ledgers.mission_alpha.evidence.evidence_manual_risk).toMatchObject({
+      type: "risk",
+      createdAt: "2026-05-27T00:00:00.000Z",
+    })
+  })
+
   test("records evidence when OpenCode tool args are on the input payload", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const plugin = createRunesmithPlugin({ runtime })

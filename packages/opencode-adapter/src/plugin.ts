@@ -507,7 +507,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
               type: args.type,
               summary: args.summary,
               payload: args.payload ?? {},
-              createdAt: new Date().toISOString(),
+              createdAt: nowIso(options.now),
             },
           })
           if (!result.ok) return formatError("Evidence rejected", result.error)
@@ -619,6 +619,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       await recordToolExecutionEvidence({
         runtime,
         runtimeStore: options.runtimeStore,
+        now: options.now,
         input,
         output,
       })
@@ -764,6 +765,7 @@ async function prepareBeforeToolExecution(input: PrepareBeforeToolExecutionInput
 type RecordToolExecutionEvidenceInput = {
   runtime: RunesmithRuntime
   runtimeStore?: PluginRuntimeStore
+  now?: () => Date
   input: OpenCodeToolInput
   output: OpenCodeToolOutput
 }
@@ -792,13 +794,17 @@ async function recordToolExecutionEvidence(input: RecordToolExecutionEvidenceInp
         tool,
         ...evidence.payload,
       },
-      createdAt: new Date().toISOString(),
+      createdAt: nowIso(input.now),
     },
   })
 
   if (recorded.ok) {
     await persistRuntime(input.runtimeStore, input.runtime)
   }
+}
+
+function nowIso(now: (() => Date) | undefined): string {
+  return (now ?? (() => new Date()))().toISOString()
 }
 
 function extractToolArgs(input: OpenCodeToolInput, output: OpenCodeToolOutput): Record<string, unknown> {
