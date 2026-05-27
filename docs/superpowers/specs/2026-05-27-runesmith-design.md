@@ -1,0 +1,278 @@
+# Runesmith Design Spec
+
+## Purpose
+
+Runesmith is an OpenCode mission runtime. It turns a user request into a durable mission graph with explicit agent contracts, leased execution, evidence capture, recovery rules, and a control surface. The first release is not a fork of oh-my-openagent. It uses the lessons from that project to build a smaller, more reliable kernel that can grow into a stronger harness.
+
+## Product Thesis
+
+Most coding-agent harnesses become fragile because coordination is encoded as prompt text and hook side effects. Runesmith treats coordination as runtime state. Prompts, tools, sessions, and agents become events against a mission graph, and only the scheduler may advance that graph.
+
+The result should feel magical to users because work becomes visible, recoverable, and verifiable. The system can answer what is running, who owns each file, why an agent is blocked, what evidence proves a task is done, and what recovery action is safe.
+
+## First Release Scope
+
+The first production slice includes:
+
+- A TypeScript/Bun monorepo named `runesmith`.
+- A core package with mission graph, lease scheduler, agent contracts, evidence ledger, tool router, and recovery primitives.
+- An OpenCode adapter package that exposes mission tools through the OpenCode plugin API.
+- A CLI package with `init`, `doctor`, and mission inspection commands.
+- A dashboard package using shadcn/ui conventions and an OpenClaw OS-inspired layout for mission visibility.
+- A testbench package with deterministic simulations for duplicate prompt leases, stale tasks, missing capabilities, and evidence verification.
+
+Out of scope for the first slice:
+
+- True distributed agents across machines.
+- Provider billing integration.
+- Full visual app generation.
+- Long-term semantic memory beyond scoped in-repo mission capsules.
+
+## Package Architecture
+
+### `packages/core`
+
+Owns all harness-independent logic. It has no OpenCode imports.
+
+Responsibilities:
+
+- Mission graph lifecycle.
+- Mission, task, agent, lease, capability, event, and evidence types.
+- Agent contract validation.
+- Lease-based scheduling.
+- Tool routing.
+- Evidence ledger.
+- Recovery policy evaluation.
+- Serialization to and from JSON snapshots.
+
+### `packages/opencode-adapter`
+
+Owns OpenCode integration.
+
+Responsibilities:
+
+- Export an OpenCode plugin module.
+- Register mission tools.
+- Translate OpenCode events into core runtime events.
+- Use the core lease scheduler before sending any internal prompt or continuation.
+- Keep OpenCode-specific types and instability out of `packages/core`.
+
+### `packages/cli`
+
+Owns local user commands.
+
+Responsibilities:
+
+- `runesmith init`: create project config.
+- `runesmith doctor`: validate Bun, OpenCode package visibility, config, runtime directory, and platform assumptions.
+- `runesmith mission list`: print active mission summaries from snapshots.
+- `runesmith mission inspect <id>`: print graph, evidence, leases, and recovery state.
+
+### `packages/dashboard`
+
+Owns the local control surface.
+
+Responsibilities:
+
+- Vite React app.
+- shadcn/ui component conventions.
+- OpenClaw OS-inspired structure: workspace sidebar, mission lanes, live evidence, tool/action timeline, agent/session visibility, direct controls.
+- Uses seeded local data in the first slice, with an API boundary ready for runtime data.
+
+### `packages/testbench`
+
+Owns deterministic harness simulations.
+
+Responsibilities:
+
+- Fake session/event bus.
+- Duplicate prompt race simulation.
+- Stale background task simulation.
+- Missing capability simulation.
+- Evidence-required completion simulation.
+
+## Core Concepts
+
+### Mission Graph
+
+A mission graph contains a root mission and nodes for tasks, agents, tool calls, checks, evidence, blockers, and decisions. Nodes have stable IDs, timestamps, status, parent-child relationships, and event history.
+
+Mission statuses:
+
+- `draft`
+- `running`
+- `blocked`
+- `verifying`
+- `complete`
+- `failed`
+- `cancelled`
+
+Task statuses:
+
+- `queued`
+- `running`
+- `blocked`
+- `stale`
+- `verifying`
+- `complete`
+- `failed`
+- `cancelled`
+
+### Leases
+
+A lease is an exclusive permission to advance a mission target. The scheduler grants leases for actions such as starting a task, prompting an agent, retrying a task, continuing a session, or marking completion.
+
+Lease properties:
+
+- `leaseId`
+- `targetId`
+- `holder`
+- `purpose`
+- `idempotencyKey`
+- `expiresAt`
+- `status`
+
+Only one active lease may exist for the same target and purpose. Replaying the same idempotency key returns the existing lease instead of creating another action.
+
+### Agent Contracts
+
+An agent contract declares what an agent can do and how it must prove completion.
+
+Contract fields:
+
+- `id`
+- `displayName`
+- `description`
+- `capabilities`
+- `allowedTools`
+- `modelPolicy`
+- `fileScope`
+- `completionCriteria`
+- `requiredEvidence`
+- `fallbacks`
+
+Contracts are validated before task assignment. If a task requires a capability or evidence type the agent lacks, the runtime rejects the assignment.
+
+### Evidence Ledger
+
+The evidence ledger records proof that work happened.
+
+Evidence types:
+
+- `file-change`
+- `command-output`
+- `test-result`
+- `diagnostic`
+- `decision`
+- `risk`
+
+A task cannot move to `complete` unless its contract-required evidence exists. This is the primary guard against false completion.
+
+### Tool Router
+
+The tool router selects the smallest useful tool set for a task from the agent contract and mission context. The first slice uses deterministic routing only. Model-assisted ranking is excluded from the first release.
+
+### Recovery Policies
+
+Recovery policies are pure functions that inspect graph state and events.
+
+Initial policies:
+
+- A running task with no event heartbeat past its stale threshold becomes `stale`.
+- A stale task with a valid fallback contract becomes `queued` for reassignment.
+- A completion attempt without required evidence is rejected and moves the task to `verifying`.
+- A duplicate prompt attempt with the same idempotency key returns the existing lease.
+
+## OpenCode Adapter Tools
+
+The first adapter exposes these tools:
+
+- `runesmith_mission_start`: create a mission from a user goal.
+- `runesmith_mission_status`: summarize graph state.
+- `runesmith_task_claim`: claim a task with an agent contract.
+- `runesmith_task_evidence`: attach evidence to a task.
+- `runesmith_task_complete`: attempt task completion with evidence validation.
+- `runesmith_recover`: run recovery policies and return suggested actions.
+
+The adapter must not complete tasks directly. It delegates all state transitions to `packages/core`.
+
+## Dashboard Direction
+
+The dashboard uses OpenClaw OS as a product reference: a structured workspace for agents, sessions, artifacts, apps, visibility, and control. Runesmith adapts that idea to coding missions.
+
+Primary layout:
+
+- Left sidebar: missions, agents, policies, snapshots.
+- Main canvas: mission graph lanes and active task cards.
+- Right inspector: selected task details, evidence, leases, recovery state.
+- Bottom timeline: tool calls, prompts, checks, and state transitions.
+
+Visual rules:
+
+- shadcn/ui components for buttons, cards, badges, tabs, scroll areas, separators, tooltips, and shell controls.
+- Dense but readable operational UI.
+- No marketing hero.
+- No decorative gradient-orb background.
+- 8px or lower card radius unless shadcn defaults require otherwise.
+- Buttons use icons where the action is familiar.
+
+## Testing Strategy
+
+Core behavior is test-first.
+
+Required first-slice tests:
+
+- Mission creation creates a root graph and initial queued task.
+- Lease acquisition blocks competing active leases for the same target and purpose.
+- Lease acquisition with the same idempotency key returns the original lease.
+- Agent contract validation rejects missing capabilities.
+- Task completion without required evidence is rejected.
+- Task completion with required evidence succeeds.
+- Recovery marks stale tasks when heartbeats expire.
+- Tool routing only returns tools allowed by contract and context.
+- OpenCode adapter tool calls mutate state only through the core runtime.
+- Dashboard renders mission, task, evidence, and recovery seeded data without layout overflow.
+
+## Error Handling
+
+All core operations return typed results with success or structured failure. Runtime failures include a stable code, message, and safe details object.
+
+Core errors:
+
+- `MISSION_NOT_FOUND`
+- `TASK_NOT_FOUND`
+- `LEASE_CONFLICT`
+- `CONTRACT_INVALID`
+- `CAPABILITY_MISSING`
+- `EVIDENCE_REQUIRED`
+- `INVALID_TRANSITION`
+- `SNAPSHOT_INVALID`
+
+The OpenCode adapter converts errors into readable tool responses without throwing uncaught exceptions.
+
+## Repository Quality Bar
+
+The repo must ship with:
+
+- `README.md` explaining the concept and first runnable path.
+- `LICENSE`.
+- TypeScript strict mode.
+- Bun workspace scripts.
+- Unit tests.
+- Build scripts.
+- Lint or typecheck command.
+- Example OpenCode plugin config.
+- Architecture documentation.
+- No copied oh-my-openagent source.
+
+## Success Criteria
+
+The first build is successful when:
+
+- `bun test` passes.
+- `bun run typecheck` passes.
+- `bun run build` passes for all packages.
+- The OpenCode adapter exports a plugin module.
+- The CLI can create config and inspect seeded/saved mission state.
+- The dashboard runs locally and renders the Runesmith mission control UI.
+- The core runtime demonstrates leases, evidence-gated completion, stale recovery, and contract validation in tests.
