@@ -219,6 +219,10 @@ async function readTextBounded(
 export async function runCli(args: string[], host: CliHost = createNodeHost()): Promise<CliResult> {
   const [command, subcommand, maybeId, ...rest] = args
 
+  if (!command) {
+    return runesmithStatus(host)
+  }
+
   if (command === "install") {
     return installRunesmith(args.slice(1), host)
   }
@@ -624,6 +628,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     `runebook: ${formatRunebookCard(runebook)}`,
     `runebook commands: ${formatRunebookCommands(runebook)}`,
     `protocol: ${formatRunicProtocol(protocolDeck)}`,
+    "ignite: runesmith ignite \"<goal>\"",
     "dashboard: runesmith dashboard",
     "launch: runesmith launch -- <opencode args>",
     "",

@@ -201,10 +201,11 @@ bun packages/cli/src/index.ts heal
 Check the operating loop without learning the mission subcommands:
 
 ```bash
+bun packages/cli/src/index.ts
 bun packages/cli/src/index.ts status
 ```
 
-`status` prints the Runesmith install state, OpenCode CLI readiness, Loop Pulse next action, execution plan, Mission Map summary, Scope Sentinel status, Review Lens status, Seal Audit status, active mission and task, missing evidence, diagnostics, active runes, active Runebook card, active Protocol Deck protocol, and Proof Plan commands from the runtime capsule. It also stays useful before bootstrap by showing the idle engine state and the next launch/dashboard commands.
+Bare `runesmith` opens the same OS status surface instead of a dead usage screen. `status` prints the Runesmith install state, OpenCode CLI readiness, Loop Pulse next action, execution plan, Mission Map summary, Scope Sentinel status, Review Lens status, Seal Audit status, active mission and task, missing evidence, diagnostics, active runes, active Runebook card, active Protocol Deck protocol, and Proof Plan commands from the runtime capsule. It also stays useful before bootstrap by showing the idle engine state and the next ignite/launch/dashboard commands.
 
 Run the OS loop until Runesmith reaches a real stop condition:
 
@@ -278,6 +279,9 @@ Runesmith stores the default runtime capsule at `.runesmith/runtime/capsule.json
 Runesmith supports two install paths:
 
 ```bash
+# First touch after install. This prints the local OS state and next commands.
+bun packages/cli/src/index.ts
+
 # Recommended local development bootstrap. This initializes config, installs
 # the Runesmith OpenCode plugin shim, and creates the runtime capsule used by
 # the plugin and dashboard. It verifies that the opencode command exists.

@@ -94,6 +94,7 @@ Owns local user commands.
 
 Responsibilities:
 
+- `runesmith`: no-argument launchpad that prints the same OS status surface as `runesmith status`, including the first useful `ignite`, dashboard, and launch commands instead of returning a usage error.
 - `runesmith up`: one-command bootstrap that writes project config, installs the Runesmith OpenCode plugin wiring, creates the runtime capsule if needed, and reports whether the host `opencode` CLI is available. `up --mode npm` uses the direct package plugin entry while still creating the Runesmith runtime capsule, so users do not need to learn a separate install command before first launch.
 - `runesmith heal`: self-repair command that recreates missing config, backs up and replaces invalid runtime capsules, restores OpenCode package or shim plugin wiring, reruns doctor, and reports ready versus staged when OpenCode itself is not installed yet.
 - `runesmith ignite "<goal>"`: least-ceremony first use. It defaults to the direct package-plugin install path, writes or refreshes OpenCode config, creates the runtime capsule, prepares or resumes the matching Covenant mission through the shared ignition primitive, claims the active task, and runs Runeweave until the next honest stop.

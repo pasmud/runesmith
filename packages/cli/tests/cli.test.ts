@@ -90,6 +90,18 @@ describe("runesmith cli", () => {
     expect(result.stderr).toBe("")
   })
 
+  test("bare runesmith command opens the OS launchpad instead of a usage error", async () => {
+    const host = createMemoryHost()
+
+    const result = await runCli([], host)
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe("")
+    expect(result.stdout).toContain("Runesmith OS")
+    expect(result.stdout).toContain("state: uninitialized")
+    expect(result.stdout).toContain("ignite: runesmith ignite \"<goal>\"")
+  })
+
   test("init writes a project config", async () => {
     const host = createMemoryHost()
 
@@ -724,6 +736,7 @@ describe("runesmith cli", () => {
         "runebook: Proofwright proof gate [auto]",
         "runebook commands: bun test",
         "protocol: Proofwright Proof Protocol [auto]",
+        "ignite: runesmith ignite \"<goal>\"",
         "dashboard: runesmith dashboard",
         "launch: runesmith launch -- <opencode args>",
         "",
@@ -788,6 +801,7 @@ describe("runesmith cli", () => {
         "runebook: Pathfinder mission intake [auto]",
         "runebook commands: none",
         "protocol: Pathfinder Intake Protocol [auto]",
+        "ignite: runesmith ignite \"<goal>\"",
         "dashboard: runesmith dashboard",
         "launch: runesmith launch -- <opencode args>",
         "",
