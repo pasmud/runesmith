@@ -4,7 +4,7 @@ import { dirname } from "node:path"
 import { homedir } from "node:os"
 import { pathToFileURL } from "node:url"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
-import { defaultRuntimeCapsulePath, loadRuntimeCapsule, type RuntimeSnapshot } from "@runesmith/core"
+import { defaultRuntimeCapsulePath, loadRuntimeCapsule, saveRuntimeCapsule, type RuntimeSnapshot } from "@runesmith/core"
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
 
 export type CliResult = {
@@ -67,12 +67,12 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     return installRunesmith(args.slice(1), host)
   }
 
+  if (command === "up") {
+    return runesmithUp(args.slice(1), host)
+  }
+
   if (command === "init") {
-    await host.writeText(".runesmith/config.json", JSON.stringify({
-      version: 1,
-      runtimeDir: ".runesmith/runtime",
-      defaultStaleAfterMs: 120_000,
-    }, null, 2))
+    await writeProjectConfig(host)
 
     return success("Created .runesmith/config.json\n")
   }
@@ -116,7 +116,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     ].join("\n"))
   }
 
-  return failure("Usage: runesmith <install|init|doctor|mission list|mission inspect>\n")
+  return failure("Usage: runesmith <up|install|init|doctor|mission list|mission inspect>\n")
 }
 
 function success(stdout: string): CliResult {
@@ -150,6 +150,51 @@ const emptySnapshot: RuntimeSnapshot = {
   ledgers: {},
   leases: { leases: {} },
   contracts: {},
+}
+
+async function writeProjectConfig(host: CliHost): Promise<void> {
+  await host.writeText(".runesmith/config.json", JSON.stringify({
+    version: 1,
+    runtimeDir: ".runesmith/runtime",
+    defaultStaleAfterMs: 120_000,
+  }, null, 2))
+}
+
+async function ensureRuntimeCapsule(host: CliHost): Promise<void> {
+  if (await host.exists(defaultRuntimeCapsulePath)) return
+
+  await saveRuntimeCapsule(host, {
+    path: defaultRuntimeCapsulePath,
+    snapshot: emptySnapshot,
+  })
+}
+
+async function runesmithUp(args: string[], host: CliHost): Promise<CliResult> {
+  await writeProjectConfig(host)
+  await ensureRuntimeCapsule(host)
+
+  const install = await installRunesmith(args, host)
+  if (install.exitCode !== 0) return install
+
+  const pluginPath = extractOutputValue(install.stdout, "plugin")
+
+  return success([
+    "Runesmith OS is ready",
+    "config: .runesmith/config.json",
+    `plugin: ${pluginPath ?? "installed"}`,
+    `runtime: ${defaultRuntimeCapsulePath}`,
+    "covenant: automatic",
+    "dashboard: bun run dev:dashboard",
+    "",
+  ].join("\n"))
+}
+
+function extractOutputValue(stdout: string, key: string): string | undefined {
+  const prefix = `${key}: `
+  return stdout
+    .split("\n")
+    .find((line) => line.startsWith(prefix))
+    ?.slice(prefix.length)
 }
 
 async function readSnapshot(host: CliHost, args: string[]): Promise<SnapshotReadResult> {

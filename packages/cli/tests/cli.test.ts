@@ -128,6 +128,46 @@ describe("runesmith cli", () => {
     expect(host.readText("opencode.jsonc.runesmith.bak")).toContain("\"runesmith@0.1.0\"")
   })
 
+  test("up initializes the workspace, installs OpenCode, and creates the runtime capsule", async () => {
+    const host = createMemoryHost()
+
+    const result = await runCli([
+      "up",
+      "--plugin-dir",
+      ".opencode/plugins",
+      "--source",
+      "E:/dev/Oh-my/runesmith/packages/opencode-adapter/src/plugin.ts",
+    ], host)
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Runesmith OS is ready",
+        "config: .runesmith/config.json",
+        "plugin: .opencode/plugins/runesmith.ts",
+        "runtime: .runesmith/runtime/capsule.json",
+        "covenant: automatic",
+        "dashboard: bun run dev:dashboard",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+    expect(host.readText(".runesmith/config.json")).toContain("\"runtimeDir\": \".runesmith/runtime\"")
+    expect(host.readText(".opencode/plugins/runesmith.ts")).toContain("opencode-adapter/src/plugin.ts")
+
+    const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
+    expect(capsule).toMatchObject({
+      version: 1,
+      runtime: {
+        graphs: {},
+        ledgers: {},
+        leases: { leases: {} },
+        contracts: {},
+      },
+    })
+    expect(typeof capsule.updatedAt).toBe("string")
+  })
+
   test("mission list prints mission summaries from a snapshot", async () => {
     const host = createMemoryHost({
       "snapshot.json": JSON.stringify(snapshot),

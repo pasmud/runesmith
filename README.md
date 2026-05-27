@@ -73,6 +73,14 @@ bun run typecheck
 bun run build
 ```
 
+Bootstrap the local Runesmith OS in one command:
+
+```bash
+bun packages/cli/src/index.ts up
+```
+
+That creates `.runesmith/config.json`, installs the local OpenCode plugin shim, and creates `.runesmith/runtime/capsule.json` if it does not exist.
+
 Run the dashboard:
 
 ```bash
@@ -93,6 +101,10 @@ Runesmith stores the default runtime capsule at `.runesmith/runtime/capsule.json
 Runesmith supports two install paths:
 
 ```bash
+# Recommended local development bootstrap. This initializes config, installs
+# OpenCode, and creates the runtime capsule used by the plugin and dashboard.
+bun packages/cli/src/index.ts up
+
 # Local development install. This writes a generated plugin shim to the
 # OpenCode global plugin directory and points it at this checkout.
 # The Runic Covenant bootstrap and runtime capsule persistence are included automatically.

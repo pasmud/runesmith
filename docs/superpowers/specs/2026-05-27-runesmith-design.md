@@ -72,6 +72,7 @@ Owns local user commands.
 
 Responsibilities:
 
+- `runesmith up`: one-command bootstrap that writes project config, installs OpenCode, and creates the runtime capsule if needed.
 - `runesmith init`: create project config.
 - `runesmith doctor`: validate Bun, OpenCode package visibility, config, runtime directory, and platform assumptions.
 - `runesmith mission list`: print active mission summaries from snapshots.
