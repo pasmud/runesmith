@@ -1,6 +1,6 @@
 # Runesmith
 
-Runesmith is an OpenCode mission runtime. It turns coding work into a durable mission graph with leased execution, typed agent contracts, evidence-gated completion, recovery policies, and a control dashboard.
+Runesmith is an OpenCode orchestration OS. It turns coding work into a durable mission graph with leased execution, typed agent contracts, evidence-gated completion, recovery policies, an agent mesh, and a production control surface.
 
 The goal is not to add another prompt pack. Runesmith gives OpenCode a small operating system for agentic work:
 
@@ -9,6 +9,7 @@ The goal is not to add another prompt pack. Runesmith gives OpenCode a small ope
 - Internal prompt/continuation work is protected by leases and idempotency keys.
 - Tasks cannot complete without evidence.
 - Recovery policies can detect stale or unsafe work before it silently disappears.
+- The dashboard is an operating surface: forge directives, run guarded autopilot, boost agents, toggle policies, and seal evidence snapshots.
 
 ## Packages
 
@@ -17,6 +18,19 @@ The goal is not to add another prompt pack. Runesmith gives OpenCode a small ope
 - `@runesmith/cli`: local setup and mission inspection commands.
 - `@runesmith/testbench`: deterministic harness simulations.
 - `@runesmith/dashboard`: OpenClaw OS-inspired mission control surface using shadcn/ui-style components.
+
+## Orchestration OS Surface
+
+The dashboard is intentionally not a static report. It models the working loop an OpenCode harness needs:
+
+- **Mission board**: lane-based tasks with evidence, leases, status transitions, and a selected-task inspector.
+- **Command forge**: turn a new directive into a tracked mission task.
+- **Autopilot cycle**: recover stale work first, then verify running work under policy.
+- **Agent mesh**: inspect agent capacity, active leases, queues, model policy, and boost an agent.
+- **Policy gates**: toggle evidence, lease, tool-scope, stall-radar, and human-hold guardrails.
+- **Snapshots**: seal replayable mission checkpoints with task, evidence, and readiness counts.
+
+Every dashboard control mutates local OS state today. Runtime-backed streaming can plug into the same model boundary.
 
 ## Development
 
