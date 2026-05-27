@@ -334,6 +334,12 @@ describe("dashboard model", () => {
       name: "Proofwright Proof Protocol",
       mode: "auto",
     })
+    expect(model.missionMap).toMatchObject({
+      status: "mapped",
+      missionId: "mission_live",
+      taskCount: 2,
+      nextTaskId: "task_live",
+    })
     expect(model.runebook.activeCard.commands.map((command) => command.command)).toEqual(["bun test"])
     expect(model.missionMemory.status).toBe("needs-proof")
     expect(model.missionMemory.handoff).toBe(

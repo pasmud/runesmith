@@ -1,5 +1,6 @@
 import {
   createRunicCovenant,
+  deriveMissionMap,
   deriveMissionMemory,
   deriveLoopPulse,
   deriveProofPlan,
@@ -14,6 +15,7 @@ import {
   type LoopPulse,
   type MissionMemory,
   type MissionGraph,
+  type MissionMap,
   type ProofPlan,
   type RunicProtocolDeck,
   type Runebook,
@@ -98,6 +100,7 @@ export type DashboardModel = {
   commandLog: CommandLogItem[]
   covenantStages: CovenantStage[]
   loopPulse: LoopPulse
+  missionMap: MissionMap
   missionMemory: MissionMemory
   proofPlan: ProofPlan
   protocolDeck: RunicProtocolDeck
@@ -665,6 +668,9 @@ function deriveDashboardModel(input: {
   const missionMemory = input.runtimeSnapshot
     ? deriveMissionMemory(input.runtimeSnapshot)
     : buildSeededMissionMemory(input.tasks)
+  const missionMap = input.runtimeSnapshot
+    ? deriveMissionMap(input.runtimeSnapshot)
+    : buildSeededMissionMap(input.tasks)
   const proofPlan = input.runtimeSnapshot
     ? deriveProofPlan(input.runtimeSnapshot)
     : buildSeededProofPlan(input.tasks)
@@ -680,6 +686,7 @@ function deriveDashboardModel(input: {
     activeCovenantStage,
     activeCovenantStageId: activeCovenantStage.id,
     loopPulse,
+    missionMap,
     missionMemory,
     proofPlan,
     protocolDeck,
@@ -691,6 +698,14 @@ function deriveDashboardModel(input: {
     selectedTask,
     selectedTaskId: selectedTask.id,
   }
+}
+
+function buildSeededMissionMap(tasks: TaskCard[]): MissionMap {
+  if (tasks.length === 0) {
+    return deriveMissionMap(emptyRuntimeSnapshot())
+  }
+
+  return deriveMissionMap(buildSeededRuntimeSnapshot(tasks))
 }
 
 function buildSeededLoopPulse(tasks: TaskCard[], activeStage: CovenantStage): LoopPulse {

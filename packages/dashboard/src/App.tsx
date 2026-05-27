@@ -682,6 +682,7 @@ function RightRail({ dispatch, model }: { dispatch: DashboardDispatch; model: Da
   return (
     <aside className="right-rail">
       <LoopPulsePanel model={model} />
+      <MissionMapPanel model={model} />
       <ProtocolDeckPanel model={model} />
       <MissionMemoryPanel model={model} />
 
@@ -739,6 +740,57 @@ function RightRail({ dispatch, model }: { dispatch: DashboardDispatch; model: Da
         </div>
       </section>
     </aside>
+  )
+}
+
+function MissionMapPanel({ model }: { model: DashboardModel }) {
+  const map = model.missionMap
+  const nextTask = map.tasks.find((task) => task.id === map.nextTaskId)
+  const taskPreview = map.tasks.slice(0, 3)
+  const tone: MissionStatus = map.status === "idle" ? "stale" : "running"
+
+  return (
+    <section className="mission-map-panel" aria-label="Runesmith mission map">
+      <div className="inspector-header">
+        <p className="eyebrow">Mission Map</p>
+        <Badge tone={tone}>{map.status}</Badge>
+      </div>
+      <div className="mission-map-head">
+        <span className={`tile-icon tile-icon-${tone}`}><GitBranch aria-hidden="true" /></span>
+        <div>
+          <h2>{nextTask?.title ?? map.goal ?? "Awaiting mission"}</h2>
+          <p>{map.summary}</p>
+        </div>
+      </div>
+      <div className="mission-map-facts">
+        <span>{map.taskCount} tasks</span>
+        <span>next {map.nextTaskId ?? "none"}</span>
+        <span>root {map.rootTaskId ?? "none"}</span>
+      </div>
+      <div className="mission-map-list" aria-label="Mission map tasks">
+        {taskPreview.length > 0 ? taskPreview.map((task) => {
+          const dependency = task.blockedBy.length > 0 ? `blocked by ${task.blockedBy.join(", ")}` : "dependency ready"
+          const evidence = task.requiredEvidence.join(", ") || "none"
+
+          return (
+            <article className="mission-map-task" data-active={task.id === map.nextTaskId} key={task.id}>
+              <div>
+                <strong>{task.key}</strong>
+                <span>{task.status}</span>
+              </div>
+              <p>{task.title}</p>
+              <small>{dependency} / evidence {evidence}</small>
+            </article>
+          )
+        }) : (
+          <div className="empty-state compact">
+            <GitBranch aria-hidden="true" />
+            <strong>No map yet</strong>
+            <span>Start a mission to create the engine plan.</span>
+          </div>
+        )}
+      </div>
+    </section>
   )
 }
 

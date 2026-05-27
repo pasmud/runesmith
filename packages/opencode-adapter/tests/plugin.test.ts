@@ -279,6 +279,12 @@ describe("opencode adapter", () => {
           missionId: "mission_alpha",
           goal: "Resume package capsule",
         },
+        missionMap: {
+          status: "mapped",
+          missionId: "mission_alpha",
+          taskCount: 1,
+          nextTaskId: "task_alpha",
+        },
       },
     })
   })
@@ -293,6 +299,7 @@ describe("opencode adapter", () => {
     expect(systemOutput.system.join("\n")).toContain("Runic Covenant")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Autopilot")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Mission Memory")
+    expect(systemOutput.system.join("\n")).toContain("Runesmith Mission Map")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Proof Plan")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Runebook")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Protocol Deck")
@@ -308,6 +315,7 @@ describe("opencode adapter", () => {
     expect(compactOutput.context.join("\n")).toContain("Carry state through compaction")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Control Brief")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Mission Memory")
+    expect(compactOutput.context.join("\n")).toContain("Runesmith Mission Map")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Proof Plan")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Runebook")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Protocol Deck")
@@ -447,6 +455,8 @@ describe("opencode adapter", () => {
     expect(prompt).toContain("Active card: Forge Trace implementation loop [auto]")
     expect(prompt).toContain("Runesmith Protocol Deck")
     expect(prompt).toContain("Active protocol: Forge Trace Protocol [auto]")
+    expect(prompt).toContain("Runesmith Mission Map")
+    expect(prompt).toContain("Next task: task_alpha")
     expect(prompt).toContain("Engine-selected protocol; do not ask the user to invoke a workflow by name.")
   })
 

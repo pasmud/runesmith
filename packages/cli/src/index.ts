@@ -9,6 +9,7 @@ import {
   createRuntime,
   defaultRuntimeCapsulePath,
   deriveLoopPulse,
+  deriveMissionMap,
   deriveMissionMemory,
   deriveProofPlan,
   deriveRunicProtocolDeck,
@@ -24,6 +25,7 @@ import {
   type EvidenceType,
   type IdFactory,
   type Lease,
+  type MissionMap,
   type ProofCommandExecution,
   type ProofRunCommandResult,
   type ProofPlanOptions,
@@ -239,6 +241,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
 
     const proofOptions = await readProofPlanOptions(host)
     const pulse = deriveLoopPulse(snapshot.value)
+    const missionMap = deriveMissionMap(snapshot.value)
     const memory = deriveMissionMemory(snapshot.value)
     const proofPlan = deriveProofPlan(snapshot.value, proofOptions)
     const runebook = deriveRunebook(snapshot.value, { proofPlanOptions: proofOptions })
@@ -260,6 +263,9 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
       `Proof: ${formatMissionMemoryProof(memory)}`,
       "Proof plan:",
       ...formatProofPlanLines(proofPlan),
+      "Mission map:",
+      `Summary: ${missionMap.summary}`,
+      ...formatMissionMapTaskLines(missionMap),
       `Required evidence: ${formatList(pulse.requiredEvidence)}`,
       `Missing evidence: ${formatList(pulse.missingEvidence)}`,
       ...formatPulseDiagnostics(pulse, "Diagnostics"),
@@ -398,6 +404,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
   const openCodeCli = await findOpenCodeCli(host)
   const proofOptions = await readProofPlanOptions(host)
   const pulse = deriveLoopPulse(snapshot)
+  const missionMap = deriveMissionMap(snapshot)
   const memory = deriveMissionMemory(snapshot)
   const proofPlan = deriveProofPlan(snapshot, proofOptions)
   const runebook = deriveRunebook(snapshot, { proofPlanOptions: proofOptions })
@@ -415,6 +422,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     `plan: ${formatExecutionPlan(pulse.executionPlan)}`,
     `handoff: ${memory.handoff}`,
     `proof plan: ${formatProofPlanCommands(proofPlan)}`,
+    `mission map: ${formatMissionMapSummary(missionMap)}`,
     `mission: ${mission ? `${mission.id} ${mission.status} ${mission.goal}` : "none"}`,
     `task: ${task ? `${task.id} ${task.status} ${task.title}` : "none"}`,
     `missing evidence: ${formatList(pulse.missingEvidence)}`,
@@ -1083,6 +1091,21 @@ function formatProofPlanLines(plan: ReturnType<typeof deriveProofPlan>): string[
   if (plan.commands.length === 0) return ["- none"]
 
   return plan.commands.map((command) => `- ${command.label}: ${command.command}`)
+}
+
+function formatMissionMapSummary(map: MissionMap): string {
+  if (map.taskCount === 0) return "none"
+
+  const label = map.taskCount === 1 ? "task" : "tasks"
+  return `${map.taskCount} ${label}; next ${map.nextTaskId ?? "none"}`
+}
+
+function formatMissionMapTaskLines(map: MissionMap): string[] {
+  if (map.tasks.length === 0) return ["- none"]
+
+  return map.tasks.map((task) => {
+    return `- ${task.status} ${task.key} ${task.id}: ${task.title}; ready: ${task.ready ? "yes" : "no"}; blocked by: ${formatList(task.blockedBy)}; required evidence: ${formatList(task.requiredEvidence)}`
+  })
 }
 
 function formatRunebookCard(runebook: Runebook): string {

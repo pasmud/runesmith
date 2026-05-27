@@ -30,6 +30,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - A Runesmith Runebook is derived from the same pulse, turning the current state into one active procedure card such as `Forge Trace implementation loop`, `Proofwright proof gate`, `Faultwright repair loop`, or `Mirrorglass risk decision`.
 - The Runesmith Protocol Deck is the built-in, engine-selected workflow layer: OpenCode receives the right Runesmith protocol automatically, such as `Forge Trace Protocol`, `Proofwright Proof Protocol`, or `Faultwright Repair Protocol`, without the user invoking external skills or workflow names.
 - Runesmith Mission Memory condenses the current mission, active task, proof state, latest diagnostics, decisions, and continuation handoff so restarts, compaction, CLI checks, and the dashboard all preserve the same next move.
+- Runesmith Mission Map turns the persisted task/dependency/evidence graph into a live prompt, CLI, and dashboard surface, so OpenCode sees the engine-owned plan without asking the user to load workflows or choose stages.
 - Runesmith Proof Plan turns missing proof or failed diagnostics into concrete verification commands, so agents can rerun the failing command, typecheck, test, and build without the user remembering a workflow ritual.
 - Runesmith Proof Runner can execute those Proof Plan commands, capture passing `test-result` evidence or failing `diagnostic` evidence, and advance the mission through the same evidence gate.
 - Runesmith Next is the hands-off router over the Runebook: one CLI command, one OpenCode tool, and one dashboard button that proves, repairs, resolves a supplied risk decision, recovers, or advances whichever card is active.
@@ -101,6 +102,7 @@ The dashboard is intentionally not a static report. It models the working loop a
 - **Command forge**: turn a new directive into a tracked mission task.
 - **Autopilot cycle**: recover stale work first, then verify running work under policy.
 - **Runic Covenant**: inspect and advance the built-in autonomous coding loop that ships with the plugin.
+- **Mission Map**: inspect the engine-owned task graph, next task, dependencies, and evidence requirements from the same runtime capsule used by OpenCode.
 - **Mission Memory**: see the durable handoff, proof state, latest diagnostic, and sealed mission status without reading the transcript.
 - **Runebook card**: see the current procedure card, autonomy mode, tool hint, evidence requirement, and exact commands Runesmith wants the agent to follow.
 - **Run OS**: run Runeweave from one primary control, so the dashboard keeps executing engine-owned cards until the mission seals or a stop condition needs code, risk, repair, or operator input.
@@ -169,7 +171,7 @@ Check the operating loop without learning the mission subcommands:
 bun packages/cli/src/index.ts status
 ```
 
-`status` prints the Runesmith install state, OpenCode CLI readiness, Loop Pulse next action, execution plan, active mission and task, missing evidence, diagnostics, active runes, active Runebook card, active Protocol Deck protocol, and Proof Plan commands from the runtime capsule. It also stays useful before bootstrap by showing the idle engine state and the next launch/dashboard commands.
+`status` prints the Runesmith install state, OpenCode CLI readiness, Loop Pulse next action, execution plan, Mission Map summary, active mission and task, missing evidence, diagnostics, active runes, active Runebook card, active Protocol Deck protocol, and Proof Plan commands from the runtime capsule. It also stays useful before bootstrap by showing the idle engine state and the next launch/dashboard commands.
 
 Run the OS loop until Runesmith reaches a real stop condition:
 
@@ -232,7 +234,7 @@ bun packages/cli/src/index.ts mission inspect <mission-id>
 
 `mission evidence` records proof on a task, and `mission tick` advances the persisted capsule through the same evidence gate used by OpenCode. When diagnostics are attached, both commands print the active repair summary so the next action is visible at the terminal. When Forge proof is satisfied, the tick can complete Forge, synthesize safe Review and Seal decisions, and finish the mission.
 
-`mission inspect` prints the mission status, Loop Pulse next action, Proof Plan commands, active Runebook card, required and missing evidence, active diagnostics, active runes, task list, evidence ledger entries, and active leases for that mission.
+`mission inspect` prints the mission status, Loop Pulse next action, Proof Plan commands, Mission Map tasks, active Runebook card, required and missing evidence, active diagnostics, active runes, task list, evidence ledger entries, and active leases for that mission.
 
 Runesmith stores the default runtime capsule at `.runesmith/runtime/capsule.json`. The CLI still accepts `--snapshot <path>` for explicit exports, but normal usage does not require it.
 
@@ -280,6 +282,7 @@ Once installed and OpenCode is restarted, users do not need to invoke a workflow
 - `experimental.chat.system.transform`: injects the Runic Covenant and Runesmith Autopilot bootstrap.
 - `experimental.session.compacting`: appends the current mission capsule, Control Brief, Loop Pulse, Runebook, Mission Memory, and Proof Plan to compaction context.
 - `Runesmith Protocol Deck`: injected into system and compaction context so OpenCode follows the engine-selected protocol without user-invoked workflow names.
+- `Runesmith Mission Map`: injected into system and compaction context so OpenCode sees the live task graph, dependencies, next task, and evidence gates without a manual planning workflow.
 - `tool.execute.before`: auto-prepares and claims a mission before the first mutating/shell tool when message context is available.
 - `tool.execute.after`: records useful shell, test, and file-change evidence, then runs the evidence-gated advance loop.
 - `event`: on `session.idle`, prepares the first mission from chat context when possible, then runs Runeweave automatically so recovery, proof, Review, Seal, and stop-condition reporting use the same OS loop as `runesmith_os_run`.
