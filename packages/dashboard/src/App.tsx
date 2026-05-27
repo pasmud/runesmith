@@ -133,6 +133,7 @@ export function App() {
         action.type === "forge-directive"
         || action.type === "run-autopilot-cycle"
         || action.type === "run-next-action"
+        || action.type === "run-os-loop"
         || action.type === "run-proof-plan"
         || action.type === "resolve-risk"
       ) {
@@ -175,10 +176,22 @@ export function App() {
             <Button
               disabled={controlLoading}
               onClick={() => void runRuntimeControl({
+                type: "run-os-loop",
+                maxSteps: 8,
+                verdict: "accepted",
+                summary: activeRiskSummary,
+              })}
+            >
+              <Sparkles data-icon="inline-start" />{controlLoading ? "Working" : "Run OS"}
+            </Button>
+            <Button
+              disabled={controlLoading}
+              onClick={() => void runRuntimeControl({
                 type: "run-next-action",
                 verdict: "accepted",
                 summary: activeRiskSummary,
               })}
+              variant="outline"
             >
               <Command data-icon="inline-start" />{controlLoading ? "Working" : "Run next"}
             </Button>

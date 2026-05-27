@@ -5,6 +5,7 @@ import {
   deriveLoopPulse,
   deriveProofPlan,
   resolveRunicRisk,
+  runRuneweave,
   runRunebookNext,
   runProofPlan,
   type AgentContract,
@@ -14,6 +15,7 @@ import {
   type ProofPlanOptions,
   type ProofRunCommandResult,
   type RunebookNextStatus,
+  type RuneweaveStatus,
   type RunicMissionLoopStatus,
   type RiskResolutionVerdict,
   type RuntimeOptions,
@@ -36,6 +38,12 @@ export type DashboardRuntimeAction =
       summary?: string
     }
   | {
+      type: "run-os-loop"
+      maxSteps?: number
+      verdict?: RiskResolutionVerdict
+      summary?: string
+    }
+  | {
       type: "run-proof-plan"
     }
   | {
@@ -51,6 +59,7 @@ export type DashboardRuntimeActionValue = {
   nextTaskId?: string
   nextTaskStatus?: string
   status: "running" | "waiting-for-evidence" | "completed" | "idle" | "recovered"
+  loopStatus?: RuneweaveStatus
   missingEvidence?: EvidenceType[]
   proofStatus?: "idle" | "passed" | "failed"
   commands?: ProofRunCommandResult[]
@@ -123,6 +132,10 @@ export async function applyDashboardRuntimeAction(
 
   if (action.type === "run-next-action") {
     return runDashboardNextAction(runtime, action, options)
+  }
+
+  if (action.type === "run-os-loop") {
+    return runDashboardOsLoop(runtime, action, options)
   }
 
   if (action.type === "resolve-risk") {
@@ -245,6 +258,48 @@ async function runDashboardNextAction(
   }
 }
 
+async function runDashboardOsLoop(
+  runtime: ReturnType<typeof createRuntime>,
+  action: Extract<DashboardRuntimeAction, { type: "run-os-loop" }>,
+  options: DashboardRuntimeActionOptions,
+): Promise<DashboardRuntimeActionResult> {
+  const before = runtime.snapshot()
+  const nextEvidenceId = createDashboardEvidenceIdFactory(before, options.idFactory)
+  const loop = await runRuneweave(runtime, {
+    contract: dashboardAtlasContract,
+    holder: "runesmith-dashboard",
+    idempotencyScope: "dashboard-os",
+    ttlMs: 30_000,
+    staleAfterMs: dashboardStaleAfterMs,
+    proofPlanOptions: options.proofPlanOptions,
+    proofCommandRunner: options.runProofCommand ?? runDashboardShellCommand,
+    nextEvidenceId,
+    now: options.now,
+    maxSteps: action.maxSteps,
+    risk: {
+      verdict: action.verdict ?? "accepted",
+      summary: action.summary,
+      evidenceIdFactory: () => nextEvidenceId(),
+    },
+  })
+  if (!loop.ok) return { ok: false, error: loop.error }
+
+  return {
+    ok: true,
+    value: {
+      action: "run-os-loop",
+      missionId: loop.value.missionId,
+      taskId: loop.value.taskId,
+      status: mapRuneweaveStatus(loop.value.status),
+      loopStatus: loop.value.status,
+      proofStatus: loop.value.proofStatus as DashboardRuntimeActionValue["proofStatus"],
+      missingEvidence: loop.value.finalPulse.missingEvidence,
+      commands: loop.value.commands,
+      snapshot: runtime.snapshot(),
+    },
+  }
+}
+
 function resolveDashboardRisk(
   runtime: ReturnType<typeof createRuntime>,
   action: Extract<DashboardRuntimeAction, { type: "resolve-risk" }>,
@@ -340,6 +395,17 @@ function mapRunebookNextStatus(
   if (status === "proof-failed" || status === "risk-held") return "waiting-for-evidence"
   if (status === "proof-idle" || status === "idle") return "idle"
   if (nextStatus) return mapDashboardRunicStatus(nextStatus)
+
+  return "running"
+}
+
+function mapRuneweaveStatus(status: RuneweaveStatus): DashboardRuntimeActionValue["status"] {
+  if (status === "sealed") return "completed"
+  if (status === "idle") return "idle"
+  if (status === "needs-work") return "running"
+  if (status === "risk-held" || status === "proof-failed" || status === "blocked" || status === "step-limit") {
+    return "waiting-for-evidence"
+  }
 
   return "running"
 }

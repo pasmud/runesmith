@@ -14,6 +14,7 @@ import {
   deriveRunebook,
   loadRuntimeCapsule,
   resolveRunicRisk,
+  runRuneweave,
   runRunebookNext,
   runProofPlan,
   saveRuntimeCapsule,
@@ -176,6 +177,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     return runNextFromCli(args.slice(1), host)
   }
 
+  if (command === "run") {
+    return runOsFromCli(args.slice(1), host)
+  }
+
   if (command === "launch") {
     return launchOpenCode(args.slice(1), host)
   }
@@ -270,7 +275,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     ].join("\n"))
   }
 
-  return failure("Usage: runesmith <up|status|next|launch|prove|install|init|doctor|risk resolve|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
+  return failure("Usage: runesmith <up|status|run|next|launch|prove|install|init|doctor|risk resolve|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
 }
 
 function success(stdout: string): CliResult {
@@ -818,6 +823,64 @@ async function runNextFromCli(args: string[], host: CliHost): Promise<CliResult>
   }
 }
 
+async function runOsFromCli(args: string[], host: CliHost): Promise<CliResult> {
+  const options = parseFlagOptions(args)
+  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  if (!capsule.ok) return failure(`${capsule.error.message}\n`)
+  if (!capsule.value) return failure(`Runtime capsule not found: ${defaultRuntimeCapsulePath}\n`)
+
+  const idFactory = createCliIdFactory(capsule.value.runtime)
+  const runtime = createRuntime({
+    snapshot: capsule.value.runtime,
+    idFactory,
+  })
+  runtime.registerContract(cliAtlasContract)
+
+  const proofOptions = await readProofPlanOptions(host)
+  const loop = await runRuneweave(runtime, {
+    contract: cliAtlasContract,
+    holder: "runesmith-cli",
+    idempotencyScope: "cli-os",
+    ttlMs: 30_000,
+    proofPlanOptions: proofOptions,
+    proofCommandRunner: host.runShellCommand
+      ? (command) => host.runShellCommand!(command.command)
+      : undefined,
+    nextEvidenceId: () => idFactory("evidence"),
+    maxSteps: parseMaxSteps(options["max-steps"]),
+    risk: {
+      verdict: parseRiskVerdict(options.verdict),
+      summary: options.summary,
+      evidenceIdFactory: () => idFactory("evidence"),
+    },
+  })
+  if (!loop.ok) return failure(`${loop.error.message}\n`)
+
+  const snapshot = runtime.snapshot()
+  await saveRuntimeCapsule(host, {
+    path: defaultRuntimeCapsulePath,
+    snapshot,
+  })
+  const value = loop.value
+
+  return {
+    exitCode: ["proof-failed", "risk-held", "blocked", "step-limit"].includes(value.status) ? 1 : 0,
+    stdout: [
+      "Runesmith OS run",
+      `status: ${value.status}`,
+      `reason: ${value.stopReason}`,
+      `steps: ${value.stepCount}`,
+      ...value.steps.map((step, index) => `${index + 1}. ${step.actionId} -> ${step.status}`),
+      ...formatProofRunLines(value.commands),
+      `next: ${value.finalPulse.nextAction.label} [${value.finalPulse.health}/${value.finalPulse.nextAction.priority}]`,
+      ...formatPulseDiagnostics(value.finalPulse),
+      `runtime: ${defaultRuntimeCapsulePath}`,
+      "",
+    ].join("\n"),
+    stderr: "",
+  }
+}
+
 async function resolveRiskFromCli(args: string[], host: CliHost): Promise<CliResult> {
   const options = parseFlagOptions(args)
   const verdict = parseRiskVerdict(options.verdict)
@@ -956,6 +1019,13 @@ function isEvidenceType(value: string | undefined): value is EvidenceType {
 
 function parseRiskVerdict(value: string | undefined): RiskResolutionVerdict {
   return value === "cleared" ? "cleared" : "accepted"
+}
+
+function parseMaxSteps(value: string | undefined): number | undefined {
+  if (!value) return undefined
+  const parsed = Number(value)
+
+  return Number.isInteger(parsed) ? parsed : undefined
 }
 
 function formatMissionEvidence(snapshot: RuntimeSnapshot, missionId: string): string[] {

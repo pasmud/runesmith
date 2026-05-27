@@ -17,6 +17,7 @@ import {
   deriveRunebook,
   loadRuntimeCapsule,
   resolveRunicRisk,
+  runRuneweave,
   runRunebookNext,
   runProofPlan,
   saveRuntimeCapsule,
@@ -58,6 +59,7 @@ export type RunesmithPlugin = {
   tool: {
     runesmith_autopilot_prepare: ToolDefinition<AutopilotPrepareArgs>
     runesmith_next: ToolDefinition<NextArgs>
+    runesmith_os_run: ToolDefinition<OsRunArgs>
     runesmith_autopilot_tick: ToolDefinition<AutopilotTickArgs>
     runesmith_proof_run: ToolDefinition<ProofRunArgs>
     runesmith_risk_resolve: ToolDefinition<RiskResolveArgs>
@@ -107,6 +109,10 @@ type NextArgs = {
   riskSummary?: string
   riskVerdict?: RiskResolutionVerdict
   evidenceId?: string
+}
+
+type OsRunArgs = NextArgs & {
+  maxSteps?: number
 }
 
 type AutopilotTickArgs = Record<string, never>
@@ -239,6 +245,27 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
         }),
         async execute(args) {
           return runNextFromOpenCode({
+            runtime,
+            proofPlanOptions,
+            proofCommandRunner: options.proofCommandRunner,
+            runtimeStore: options.runtimeStore,
+            idFactory: options.idFactory,
+            now: options.now,
+            args,
+          })
+        },
+      },
+      runesmith_os_run: {
+        description:
+          "Run the Runeweave OS loop: repeatedly execute engine-owned Runebook actions until work is sealed, proof fails, risk needs a decision, or implementation work is required.",
+        parameters: objectSchema({
+          maxSteps: numberSchema("Optional safety limit for Runebook actions in this OS run"),
+          riskSummary: stringSchema("Optional decision summary when the loop reaches a risk hold"),
+          riskVerdict: stringSchema("Optional risk verdict: accepted or cleared"),
+          evidenceId: stringSchema("Optional stable risk decision evidence id"),
+        }),
+        async execute(args) {
+          return runOsFromOpenCode({
             runtime,
             proofPlanOptions,
             proofCommandRunner: options.proofCommandRunner,
@@ -818,6 +845,10 @@ type RunNextFromOpenCodeInput = RunProofFromOpenCodeInput & {
   args: NextArgs
 }
 
+type RunOsFromOpenCodeInput = RunProofFromOpenCodeInput & {
+  args: OsRunArgs
+}
+
 type ResolveRiskFromOpenCodeInput = {
   runtime: RunesmithRuntime
   proofPlanOptions?: ProofPlanOptions
@@ -851,6 +882,33 @@ async function runNextFromOpenCode(input: RunNextFromOpenCodeInput): Promise<Too
   await persistRuntime(input.runtimeStore, input.runtime)
 
   return formatValue("Runebook next", next.value as unknown as Record<string, unknown>)
+}
+
+async function runOsFromOpenCode(input: RunOsFromOpenCodeInput): Promise<ToolResponse> {
+  const snapshot = input.runtime.snapshot()
+  const nextEvidenceId = createProofEvidenceIdFactory(snapshot, input.idFactory)
+  const loop = await runRuneweave(input.runtime, {
+    contract: defaultAtlasContract,
+    holder: "runesmith-autopilot",
+    idempotencyScope: "os-run",
+    ttlMs: 30_000,
+    staleAfterMs: autopilotStaleAfterMs,
+    proofPlanOptions: input.proofPlanOptions,
+    proofCommandRunner: input.proofCommandRunner ?? runShellProofCommand,
+    nextEvidenceId,
+    now: input.now,
+    maxSteps: parseMaxSteps(input.args.maxSteps),
+    risk: {
+      verdict: parseRiskVerdict(input.args.riskVerdict),
+      summary: input.args.riskSummary,
+      evidenceIdFactory: () => input.args.evidenceId ?? input.idFactory?.("evidence") ?? `evidence_${crypto.randomUUID()}`,
+    },
+  })
+  if (!loop.ok) return formatError("Runesmith OS run rejected", loop.error)
+
+  await persistRuntime(input.runtimeStore, input.runtime)
+
+  return formatValue("Runesmith OS run", loop.value as unknown as Record<string, unknown>)
 }
 
 async function runProofFromOpenCode(input: RunProofFromOpenCodeInput): Promise<ToolResponse> {
@@ -1173,6 +1231,7 @@ function buildAutopilotPrompt(): string {
     "If you reach a session-idle point before preparation, Runesmith can infer the latest user goal from chat context and prepare the mission automatically.",
     "Continue under the returned mission, task, and lease. New autopilot missions are planned as Forge, Review, and Seal tasks. Runesmith records shell, test, file-change, and safe Covenant decision evidence automatically; use `runesmith_task_evidence` for risks, diagnostics, external proof, or decisions the tool hooks cannot infer.",
     "Follow the active Runesmith Runebook card and Active runes as automatic procedure, not as user-invoked workflows.",
+    "Prefer `runesmith_os_run` when you need Runesmith to keep executing engine-owned Runebook cards until the mission is sealed or a real stop condition appears.",
     "Prefer `runesmith_next` when you need Runesmith to execute the current Runebook card without choosing a lower-level tool.",
     "When proof is missing or repair is active, call `runesmith_proof_run` to execute the live Runesmith Proof Plan before asking for completion.",
     "When Loop Pulse says `Resolve risk`, call `runesmith_risk_resolve` with a short decision summary instead of asking the user to find mission ids or manually attach decision evidence.",
@@ -1361,6 +1420,12 @@ function normalizeGoal(goal: unknown): string | undefined {
 
 function parseRiskVerdict(value: unknown): RiskResolutionVerdict {
   return value === "cleared" ? "cleared" : "accepted"
+}
+
+function parseMaxSteps(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isInteger(value)) return undefined
+
+  return value
 }
 
 function fingerprint(value: string): string {

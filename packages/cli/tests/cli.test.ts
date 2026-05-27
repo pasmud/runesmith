@@ -893,6 +893,57 @@ describe("runesmith cli", () => {
     expect(capsule.runtime.graphs.mission_alpha.mission.status).toBe("complete")
   })
 
+  test("run weaves OS actions until proof-ready work is sealed", async () => {
+    const launched: Array<{ command: string }> = []
+    const host = createMemoryHost(
+      {
+        "package.json": JSON.stringify({
+          packageManager: "bun@1.3.13",
+          scripts: {
+            test: "bun test",
+          },
+        }),
+        ".runesmith/runtime/capsule.json": JSON.stringify({
+          version: 1,
+          updatedAt: "2026-05-27T00:00:00.000Z",
+          runtime: snapshot,
+        }),
+      },
+      {
+        runShellCommand(command) {
+          launched.push({ command })
+          return {
+            exitCode: 0,
+            stdout: "tests passed\n",
+            stderr: "",
+          }
+        },
+      },
+    )
+
+    const result = await runCli(["run", "--max-steps", "4"], host)
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Runesmith OS run",
+        "status: sealed",
+        "reason: No active mission remains after verified work was sealed.",
+        "steps: 1",
+        "1. capture-proof -> proof-passed",
+        "- PASS Run tests: bun test",
+        "next: Wait for goal [clear/low]",
+        "runtime: .runesmith/runtime/capsule.json",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+    expect(launched).toEqual([{ command: "bun test" }])
+
+    const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
+    expect(capsule.runtime.graphs.mission_alpha.mission.status).toBe("complete")
+  })
+
   test("prove records a diagnostic and stops when the proof command fails", async () => {
     const launched: Array<{ command: string }> = []
     const host = createMemoryHost(

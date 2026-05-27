@@ -122,6 +122,7 @@ export type DashboardAction =
   | { type: "run-verifier" }
   | { type: "run-autopilot-cycle" }
   | { type: "run-next-action"; verdict?: RiskResolutionVerdict; summary?: string }
+  | { type: "run-os-loop"; maxSteps?: number; verdict?: RiskResolutionVerdict; summary?: string }
   | { type: "run-proof-plan" }
   | { type: "resolve-risk"; verdict?: RiskResolutionVerdict; summary?: string }
   | { type: "forge-directive"; prompt: string }
@@ -573,6 +574,9 @@ export function reduceDashboardModel(model: DashboardModel, action: DashboardAct
 
     case "run-next-action":
       return runNextActionInModel(model, action)
+
+    case "run-os-loop":
+      return runOsLoopInModel(model, action)
 
     case "resolve-risk":
       return resolveRiskInModel(model, action)
@@ -1261,6 +1265,22 @@ function runNextActionInModel(
   }
 
   return runAutopilotCycle(model)
+}
+
+function runOsLoopInModel(
+  model: DashboardModel,
+  action: Extract<DashboardAction, { type: "run-os-loop" }>,
+): DashboardModel {
+  const next = runNextActionInModel(model, {
+    type: "run-next-action",
+    verdict: action.verdict,
+    summary: action.summary,
+  })
+
+  return {
+    ...next,
+    notice: next.notice.replace("Runebook next", "Runesmith OS"),
+  }
 }
 
 function resolveRiskInModel(

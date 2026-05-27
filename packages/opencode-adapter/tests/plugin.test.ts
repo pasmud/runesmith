@@ -430,6 +430,67 @@ describe("opencode adapter", () => {
     expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.mission.status).toBe("complete")
   })
 
+  test("runs the Runeweave OS loop through one OpenCode tool", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const commands: string[] = []
+    const writes: string[] = []
+    const plugin = createRunesmithPlugin({
+      runtime,
+      proofPlanOptions: false,
+      proofCommandRunner(command) {
+        commands.push(command.command)
+        return {
+          exitCode: 0,
+          stdout: "os proof passed",
+          stderr: "",
+        }
+      },
+      runtimeStore: {
+        save(snapshot) {
+          writes.push(JSON.stringify(snapshot))
+        },
+      },
+    })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Run the OS loop",
+    })
+    await plugin["tool.execute.after"]?.(
+      { tool: "edit" },
+      {
+        args: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+        result: { status: "changed" },
+      },
+    )
+
+    const osRun = await plugin.tool.runesmith_os_run.execute({ maxSteps: 4 })
+
+    expect(JSON.parse(osRun.output)).toMatchObject({
+      ok: true,
+      value: {
+        status: "sealed",
+        stepCount: 1,
+        finalActionId: "wait-for-goal",
+        steps: [
+          {
+            status: "proof-passed",
+            actionId: "capture-proof",
+          },
+        ],
+        commands: [
+          {
+            command: "bun test",
+            evidenceType: "test-result",
+            exitCode: 0,
+          },
+        ],
+      },
+    })
+    expect(commands).toEqual(["bun test"])
+    expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("complete")
+    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.mission.status).toBe("complete")
+  })
+
   test("records evidence automatically from OpenCode tool execution events", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const writes: string[] = []
