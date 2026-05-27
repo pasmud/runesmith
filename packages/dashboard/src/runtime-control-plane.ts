@@ -1,7 +1,12 @@
 import {
+  createCovenantTaskPlan,
   createRuntime,
+  getRequiredEvidenceForTask,
+  missingRequiredEvidence,
+  taskDependenciesComplete,
   type AgentContract,
   type EvidenceType,
+  type MissionTask,
   type RuntimeOptions,
   type RuntimeSnapshot,
 } from "@runesmith/core"
@@ -19,6 +24,8 @@ export type DashboardRuntimeActionValue = {
   action: DashboardRuntimeAction["type"]
   missionId?: string
   taskId?: string
+  nextTaskId?: string
+  nextTaskStatus?: string
   status: "running" | "waiting-for-evidence" | "completed" | "idle" | "recovered"
   missingEvidence?: EvidenceType[]
   snapshot: RuntimeSnapshot
@@ -90,7 +97,10 @@ function forgeDashboardDirective(
     }
   }
 
-  const started = runtime.startMission({ goal })
+  const started = runtime.startMission({
+    goal,
+    taskPlan: createCovenantTaskPlan(goal),
+  })
   if (!started.ok) return { ok: false, error: started.error }
 
   const claimed = runtime.claimTask({
@@ -173,7 +183,7 @@ function runDashboardAutopilotCycle(
   const missingEvidence = getMissingEvidence(snapshot, {
     missionId: target.missionId,
     taskId: target.taskId,
-    requiredEvidence: contract.requiredEvidence,
+    requiredEvidence: getRequiredEvidenceForTask(task, contract),
   })
 
   if (missingEvidence.length > 0) {
@@ -197,19 +207,45 @@ function runDashboardAutopilotCycle(
   })
   if (!completed.ok) return { ok: false, error: completed.error }
 
+  const nextTarget = selectActiveTask(runtime.snapshot(), target.missionId)
+  const nextTask = nextTarget ? runtime.snapshot().graphs[nextTarget.missionId]?.tasks[nextTarget.taskId] : undefined
+  const nextClaimed = nextTask?.status === "queued"
+    ? claimDashboardTask(runtime, {
+        missionId: target.missionId,
+        task: nextTask,
+      })
+    : undefined
+  if (nextClaimed && !nextClaimed.ok) return { ok: false, error: nextClaimed.error }
+
   return {
     ok: true,
     value: {
       action: "run-autopilot-cycle",
       missionId: target.missionId,
       taskId: target.taskId,
+      nextTaskId: nextClaimed?.ok ? nextClaimed.value.task.id : undefined,
+      nextTaskStatus: nextClaimed?.ok ? nextClaimed.value.task.status : undefined,
       status: "completed",
       snapshot: runtime.snapshot(),
     },
   }
 }
 
-function selectActiveTask(snapshot: RuntimeSnapshot): { missionId: string; taskId: string } | undefined {
+function claimDashboardTask(
+  runtime: ReturnType<typeof createRuntime>,
+  input: { missionId: string; task: MissionTask },
+) {
+  return runtime.claimTask({
+    missionId: input.missionId,
+    taskId: input.task.id,
+    contractId: dashboardAtlasContract.id,
+    holder: "runesmith-dashboard",
+    idempotencyKey: `dashboard:${input.missionId}:${input.task.id}`,
+    ttlMs: 30_000,
+  })
+}
+
+function selectActiveTask(snapshot: RuntimeSnapshot, missionId?: string): { missionId: string; taskId: string } | undefined {
   const rank: Record<string, number> = {
     running: 0,
     verifying: 1,
@@ -219,10 +255,14 @@ function selectActiveTask(snapshot: RuntimeSnapshot): { missionId: string; taskI
   }
 
   return Object.values(snapshot.graphs)
+    .filter((graph) => !missionId || graph.mission.id === missionId)
     .filter((graph) => !["complete", "failed", "cancelled"].includes(graph.mission.status))
     .flatMap((graph) => {
       return Object.values(graph.tasks)
-        .filter((task) => !["complete", "failed", "cancelled"].includes(task.status))
+        .filter((task) => {
+          return !["complete", "failed", "cancelled"].includes(task.status)
+            && (task.status !== "queued" || taskDependenciesComplete(graph, task))
+        })
         .map((task) => ({
           missionId: graph.mission.id,
           taskId: task.id,
@@ -241,13 +281,10 @@ function getMissingEvidence(
   snapshot: RuntimeSnapshot,
   input: { missionId: string; taskId: string; requiredEvidence: EvidenceType[] },
 ): EvidenceType[] {
-  const present = new Set(
-    Object.values(snapshot.ledgers[input.missionId]?.evidence ?? {})
-      .filter((evidence) => evidence.taskId === input.taskId)
-      .map((evidence) => evidence.type),
-  )
+  const ledger = snapshot.ledgers[input.missionId]
+  if (!ledger) return input.requiredEvidence
 
-  return input.requiredEvidence.filter((type) => !present.has(type))
+  return missingRequiredEvidence(ledger, input)
 }
 
 function normalizeDirective(prompt: string): string {

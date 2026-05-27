@@ -1,11 +1,31 @@
 import { runtimeError } from "./errors"
-import { err, ok, type Clock, type IdFactory, type MissionGraph, type TaskStatus } from "./types"
+import {
+  err,
+  ok,
+  type Clock,
+  type EvidenceType,
+  type IdFactory,
+  type MissionGraph,
+  type MissionStatus,
+  type MissionTask,
+  type TaskStatus,
+} from "./types"
 
 export type CreateMissionGraphInput = {
   goal: string
   idFactory?: IdFactory
   now?: Clock
   requiredCapabilities?: string[]
+  taskPlan?: MissionTaskPlanItem[]
+}
+
+export type MissionTaskPlanItem = {
+  key: string
+  title: string
+  description: string
+  requiredCapabilities?: string[]
+  requiredEvidence?: EvidenceType[]
+  dependsOn?: string[]
 }
 
 export type TransitionTaskInput = {
@@ -43,6 +63,27 @@ export function createMissionGraph(input: CreateMissionGraphInput) {
   const missionId = idFactory("mission")
   const rootTaskId = idFactory("task")
   const eventId = idFactory("event")
+  const taskPlan = input.taskPlan?.length ? input.taskPlan : undefined
+  const tasks = taskPlan
+    ? buildPlannedTasks({
+        missionId,
+        rootTaskId,
+        now,
+        defaultCapabilities: input.requiredCapabilities ?? [],
+        taskPlan,
+      })
+    : {
+        [rootTaskId]: {
+          id: rootTaskId,
+          missionId,
+          title: "Mission root",
+          description: input.goal,
+          status: "queued" as const,
+          requiredCapabilities: input.requiredCapabilities ?? [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      }
 
   const graph: MissionGraph = {
     mission: {
@@ -53,18 +94,7 @@ export function createMissionGraph(input: CreateMissionGraphInput) {
       createdAt: now,
       updatedAt: now,
     },
-    tasks: {
-      [rootTaskId]: {
-        id: rootTaskId,
-        missionId,
-        title: "Mission root",
-        description: input.goal,
-        status: "queued",
-        requiredCapabilities: input.requiredCapabilities ?? [],
-        createdAt: now,
-        updatedAt: now,
-      },
-    },
+    tasks,
     events: [
       {
         id: eventId,
@@ -72,7 +102,7 @@ export function createMissionGraph(input: CreateMissionGraphInput) {
         at: now,
         targetId: missionId,
         message: "Mission created",
-        data: { rootTaskId },
+        data: taskPlan ? { rootTaskId, taskCount: taskPlan.length } : { rootTaskId },
       },
     ],
   }
@@ -105,17 +135,18 @@ export function transitionTask(graph: MissionGraph, input: TransitionTaskInput) 
     updatedAt: now,
     lastHeartbeatAt: to === "running" ? now : existing.lastHeartbeatAt,
   }
+  const tasks = {
+    ...graph.tasks,
+    [input.taskId]: updatedTask,
+  }
 
   const nextGraph: MissionGraph = {
     mission: {
       ...graph.mission,
-      status: resolveMissionStatus(graph, input.taskId, to),
+      status: resolveMissionStatus(graph, tasks, input.taskId, to),
       updatedAt: now,
     },
-    tasks: {
-      ...graph.tasks,
-      [input.taskId]: updatedTask,
-    },
+    tasks,
     events: [
       ...graph.events,
       {
@@ -132,15 +163,64 @@ export function transitionTask(graph: MissionGraph, input: TransitionTaskInput) 
   return ok(nextGraph)
 }
 
-function resolveMissionStatus(graph: MissionGraph, taskId: string, nextStatus: TaskStatus) {
-  if (taskId !== graph.mission.rootTaskId) {
-    return graph.mission.status
+export function taskDependenciesComplete(graph: MissionGraph, task: MissionTask): boolean {
+  return (task.dependsOn ?? []).every((dependencyId) => graph.tasks[dependencyId]?.status === "complete")
+}
+
+function buildPlannedTasks(input: {
+  missionId: string
+  rootTaskId: string
+  now: string
+  defaultCapabilities: string[]
+  taskPlan: MissionTaskPlanItem[]
+}): Record<string, MissionTask> {
+  const taskIds = new Map(
+    input.taskPlan.map((item, index) => {
+      return [item.key, index === 0 ? input.rootTaskId : `${input.rootTaskId}_${normalizePlanKey(item.key)}`]
+    }),
+  )
+
+  return Object.fromEntries(
+    input.taskPlan.map((item, index) => {
+      const id = taskIds.get(item.key)!
+      const task: MissionTask = {
+        id,
+        missionId: input.missionId,
+        parentId: index === 0 ? undefined : input.rootTaskId,
+        title: item.title,
+        description: item.description,
+        status: "queued",
+        requiredCapabilities: item.requiredCapabilities ?? input.defaultCapabilities,
+        requiredEvidence: item.requiredEvidence ? [...item.requiredEvidence] : undefined,
+        dependsOn: item.dependsOn?.map((dependencyKey) => taskIds.get(dependencyKey) ?? dependencyKey),
+        createdAt: input.now,
+        updatedAt: input.now,
+      }
+
+      return [id, task]
+    }),
+  )
+}
+
+function normalizePlanKey(key: string): string {
+  const normalized = key.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
+  return normalized || "task"
+}
+
+function resolveMissionStatus(
+  graph: MissionGraph,
+  tasks: Record<string, MissionTask>,
+  taskId: string,
+  nextStatus: TaskStatus,
+): MissionStatus {
+  if (taskId === graph.mission.rootTaskId) {
+    if (nextStatus === "failed") return "failed"
+    if (nextStatus === "cancelled") return "cancelled"
   }
 
-  if (nextStatus === "complete") return "complete"
-  if (nextStatus === "failed") return "failed"
-  if (nextStatus === "cancelled") return "cancelled"
-  if (nextStatus === "blocked") return "blocked"
+  const taskList = Object.values(tasks)
+  if (taskList.length > 0 && taskList.every((task) => task.status === "complete")) return "complete"
+  if (taskList.some((task) => task.status === "blocked")) return "blocked"
   if (terminalStatuses.has(nextStatus)) return graph.mission.status
 
   return "running"

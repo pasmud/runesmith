@@ -213,6 +213,11 @@ describe("opencode adapter", () => {
     })
     expect(runtime.snapshot().graphs.mission_alpha.mission.goal).toBe("Build a durable OpenCode harness")
     expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.assignedAgentId).toBe("agent_atlas")
+    expect(Object.keys(runtime.snapshot().graphs.mission_alpha.tasks)).toEqual([
+      "task_alpha",
+      "task_alpha_review",
+      "task_alpha_seal",
+    ])
     expect(writes.length).toBeGreaterThanOrEqual(2)
   })
 
@@ -353,8 +358,10 @@ describe("opencode adapter", () => {
     )
 
     expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.status).toBe("complete")
-    expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("complete")
-    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.mission.status).toBe("complete")
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_review.status).toBe("running")
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_review.assignedAgentId).toBe("agent_atlas")
+    expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("running")
+    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.tasks.task_alpha_review.status).toBe("running")
   })
 
   test("does not seal the active task when captured tests fail", async () => {
@@ -439,7 +446,8 @@ describe("opencode adapter", () => {
     await plugin.event?.({ event: { type: "session.idle" } })
 
     expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.status).toBe("complete")
-    expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("complete")
-    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.mission.status).toBe("complete")
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_review.status).toBe("running")
+    expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("running")
+    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.tasks.task_alpha_review.status).toBe("running")
   })
 })

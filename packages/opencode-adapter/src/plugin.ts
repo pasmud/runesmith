@@ -1,14 +1,18 @@
 import {
   buildCovenantControlBrief,
   buildCovenantPrompt,
+  createCovenantTaskPlan,
   createRuntime,
   createRunicCovenant,
   defaultRuntimeCapsulePath,
+  getRequiredEvidenceForTask,
   loadRuntimeCapsule,
   missingRequiredEvidence,
   saveRuntimeCapsule,
+  taskDependenciesComplete,
   type AgentContract,
   type EvidenceType,
+  type MissionTask,
   type RunicCovenant,
   type RunesmithRuntime,
   type RuntimeOptions,
@@ -169,7 +173,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
     tool: {
       runesmith_autopilot_prepare: {
         description:
-          "Prepare the current OpenCode request as a durable Runesmith mission and claim its root task automatically.",
+          "Prepare the current OpenCode request as a planned Runesmith mission and claim its next ready task automatically.",
         parameters: objectSchema({
           goal: stringSchema("Optional explicit mission goal. If omitted, Runesmith reads the latest user message."),
           messages: valueArraySchema("Recent OpenCode chat messages used to infer the mission goal."),
@@ -441,11 +445,16 @@ async function prepareAutopilotMission(input: PrepareAutopilotMissionInput): Pro
 
   const existing = findActiveMissionForGoal(input.runtime.snapshot(), goal)
   let missionId = existing?.mission.id
-  let taskId = existing?.mission.rootTaskId
+  let taskId = missionId
+    ? selectActiveTask(input.runtime.snapshot(), missionId)?.taskId ?? existing?.mission.rootTaskId
+    : undefined
   let missionCreated = false
 
   if (!missionId || !taskId) {
-    const started = input.runtime.startMission({ goal })
+    const started = input.runtime.startMission({
+      goal,
+      taskPlan: createCovenantTaskPlan(goal),
+    })
     if (!started.ok) return formatError("Autopilot mission start rejected", started.error)
 
     missionId = started.value.missionId
@@ -459,7 +468,7 @@ async function prepareAutopilotMission(input: PrepareAutopilotMissionInput): Pro
     taskId,
     contractId: defaultAtlasContract.id,
     holder: "runesmith-autopilot",
-    idempotencyKey: `autopilot:${fingerprint(goal)}`,
+    idempotencyKey: `autopilot:${missionId}:${taskId}`,
     ttlMs: 30_000,
   })
   if (!claimed.ok) return formatError("Autopilot task claim rejected", claimed.error)
@@ -570,10 +579,30 @@ async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<T
 
   const contractId = task.assignedAgentId ?? defaultAtlasContract.id
   const contract = snapshot.contracts[contractId] ?? defaultAtlasContract
+  if (task.status === "queued") {
+    const claimed = claimAutopilotTask(input.runtime, {
+      missionId: target.missionId,
+      task,
+      contractId,
+    })
+    if (!claimed.ok) return formatError("Autopilot tick claim rejected", claimed.error)
+
+    await persistRuntime(input.runtimeStore, input.runtime)
+
+    return formatValue("Autopilot tick claimed", {
+      status: "claimed",
+      missionId: target.missionId,
+      taskId: target.taskId,
+      leaseId: claimed.value.lease.id,
+      agentId: claimed.value.task.assignedAgentId,
+      replayed: claimed.value.replayed,
+    })
+  }
+
   const missingEvidence = getMissingEvidence(snapshot, {
     missionId: target.missionId,
     taskId: target.taskId,
-    requiredEvidence: contract.requiredEvidence,
+    requiredEvidence: getRequiredEvidenceForTask(task, contract),
   })
 
   if (missingEvidence.length > 0) {
@@ -592,6 +621,17 @@ async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<T
   })
   if (!completed.ok) return formatError("Autopilot tick rejected", completed.error)
 
+  const nextTarget = selectActiveTask(input.runtime.snapshot(), target.missionId)
+  const nextTask = nextTarget ? input.runtime.snapshot().graphs[nextTarget.missionId]?.tasks[nextTarget.taskId] : undefined
+  const nextClaimed = nextTask?.status === "queued"
+    ? claimAutopilotTask(input.runtime, {
+        missionId: target.missionId,
+        task: nextTask,
+        contractId: defaultAtlasContract.id,
+      })
+    : undefined
+  if (nextClaimed && !nextClaimed.ok) return formatError("Autopilot next task claim rejected", nextClaimed.error)
+
   await persistRuntime(input.runtimeStore, input.runtime)
 
   return formatValue("Autopilot tick completed", {
@@ -599,7 +639,23 @@ async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<T
     missionId: target.missionId,
     taskId: target.taskId,
     taskStatus: completed.value.task.status,
-    missionStatus: completed.value.graph.mission.status,
+    missionStatus: input.runtime.snapshot().graphs[target.missionId]?.mission.status ?? completed.value.graph.mission.status,
+    nextTaskId: nextClaimed?.ok ? nextClaimed.value.task.id : undefined,
+    nextTaskStatus: nextClaimed?.ok ? nextClaimed.value.task.status : undefined,
+  })
+}
+
+function claimAutopilotTask(
+  runtime: RunesmithRuntime,
+  input: { missionId: string; task: MissionTask; contractId: string },
+) {
+  return runtime.claimTask({
+    missionId: input.missionId,
+    taskId: input.task.id,
+    contractId: input.contractId,
+    holder: "runesmith-autopilot",
+    idempotencyKey: `autopilot:${input.missionId}:${input.task.id}`,
+    ttlMs: 30_000,
   })
 }
 
@@ -618,7 +674,7 @@ function getOpenCodeEventType(input: OpenCodeEventInput): string | undefined {
   return normalizeGoal(event.type) ?? normalizeGoal(event.name)
 }
 
-function selectActiveTask(snapshot: RuntimeSnapshot): { missionId: string; taskId: string } | undefined {
+function selectActiveTask(snapshot: RuntimeSnapshot, missionId?: string): { missionId: string; taskId: string } | undefined {
   const terminalMissionStatuses = new Set(["complete", "failed", "cancelled"])
   const terminalTaskStatuses = new Set(["complete", "failed", "cancelled"])
   const statusRank: Record<string, number> = {
@@ -630,10 +686,13 @@ function selectActiveTask(snapshot: RuntimeSnapshot): { missionId: string; taskI
   }
 
   return Object.values(snapshot.graphs)
+    .filter((graph) => !missionId || graph.mission.id === missionId)
     .filter((graph) => !terminalMissionStatuses.has(graph.mission.status))
     .flatMap((graph) => {
       return Object.values(graph.tasks)
-        .filter((task) => !terminalTaskStatuses.has(task.status))
+        .filter((task) => {
+          return !terminalTaskStatuses.has(task.status) && (task.status !== "queued" || taskDependenciesComplete(graph, task))
+        })
         .map((task) => ({
           missionId: graph.mission.id,
           taskId: task.id,
@@ -825,8 +884,8 @@ function buildAutopilotPrompt(): string {
     "## Runesmith Autopilot",
     "Runesmith is installed as the orchestration engine for this OpenCode session.",
     "When the user asks for coding, repo, debugging, UI, or research-to-implementation work, call `runesmith_autopilot_prepare` with the latest user goal or message list before starting edits.",
-    "Continue under the returned mission, task, and lease. Runesmith records shell, test, and file-change tool evidence automatically; use `runesmith_task_evidence` only for decisions, risks, diagnostics, or external proof the tool hooks cannot see.",
-    "When the active task has required evidence, call `runesmith_autopilot_tick` or let session-idle events advance it. The tick may complete the task only after the evidence gate is satisfied.",
+    "Continue under the returned mission, task, and lease. New autopilot missions are planned as Forge, Review, and Seal tasks. Runesmith records shell, test, and file-change tool evidence automatically; use `runesmith_task_evidence` for decisions, risks, diagnostics, or external proof the tool hooks cannot see.",
+    "When the active task has required evidence, call `runesmith_autopilot_tick` or let session-idle events advance it. The tick may complete the task only after the evidence gate is satisfied, then claim the next dependency-ready task.",
     "Do not ask the user to invoke Runesmith, skills, or a workflow by name. Keep the user experience install-once and direct.",
     "Before claiming completion, attach required evidence and use `runesmith_task_complete`; if state looks stale or conflicting, run `runesmith_recover` first.",
   ].join("\n")

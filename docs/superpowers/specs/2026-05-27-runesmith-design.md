@@ -27,6 +27,7 @@ The first production slice includes:
 - Automatic evidence capture from OpenCode tool execution events for shell commands, test runs, and file edits, followed by an immediate evidence-gated advance attempt.
 - Evidence-gated autopilot ticks that can complete the active task on OpenCode idle events once proof requirements are satisfied.
 - A state-aware Runesmith Control Brief that tells OpenCode the active mission, active task, next Runic Covenant stage, required evidence, and missing proof directly from runtime state.
+- A default Covenant task plan that expands coding goals into Forge, Review, and Seal tasks with dependency-aware claiming and task-level evidence requirements.
 
 Out of scope for the first slice:
 
@@ -108,7 +109,7 @@ Responsibilities:
 
 ### Mission Graph
 
-A mission graph contains a root mission and nodes for tasks, agents, tool calls, checks, evidence, blockers, and decisions. Nodes have stable IDs, timestamps, status, parent-child relationships, and event history.
+A mission graph contains a root mission and nodes for tasks, agents, tool calls, checks, evidence, blockers, and decisions. Nodes have stable IDs, timestamps, status, parent-child relationships, dependencies, task-level evidence requirements, and event history.
 
 Mission statuses:
 
@@ -164,7 +165,7 @@ Contract fields:
 - `requiredEvidence`
 - `fallbacks`
 
-Contracts are validated before task assignment. If a task requires a capability or evidence type the agent lacks, the runtime rejects the assignment.
+Contracts are validated before task assignment. If a task requires a capability the agent lacks, the runtime rejects the assignment. Task-level `requiredEvidence` can narrow or specialize a contract for a specific stage. For example, Forge requires `file-change` and passing `test-result`, while Review and Seal can require `decision` evidence.
 
 ### Evidence Ledger
 
@@ -179,7 +180,7 @@ Evidence types:
 - `decision`
 - `risk`
 
-A task cannot move to `complete` unless its contract-required evidence exists. This is the primary guard against false completion.
+A task cannot move to `complete` unless its task-level or contract-level required evidence exists. This is the primary guard against false completion.
 For `test-result` requirements, evidence must prove a passing run, such as `exitCode: 0` or an explicit success status. Failed or unknown test runs are diagnostic context, not completion proof.
 
 ### Runtime Capsule
@@ -220,21 +221,28 @@ Every stage carries gates and evidence signals. The covenant is a workflow polic
 
 The runtime also derives a live Runesmith Control Brief from the current snapshot. This brief does not ask the user to run a skill. It tells the coding agent what stage comes next, which mission and task are active, what proof is required, and which evidence is still missing. Failed or unknown test runs are treated as diagnostics, so the brief keeps the task in Proof Gate until passing test proof exists.
 
+The default Covenant task plan is:
+
+- Forge: implementation work requiring `file-change` and passing `test-result` evidence.
+- Review: dependent review work requiring `decision` evidence.
+- Seal: dependent checkpoint and handoff work requiring `decision` evidence.
+
 ### Runesmith Autopilot
 
 Runesmith Autopilot is the install-once bridge between OpenCode chat and the runtime. The system transform hook tells the coding agent to prepare a mission when a real coding goal appears. The `runesmith_autopilot_prepare` tool then:
 
 - Infers the goal from the explicit tool argument or latest user message.
 - Reuses a matching active mission instead of creating duplicate work.
-- Claims the root task with the default Atlas contract and a stable idempotency key.
+- Creates the default Covenant task graph when starting a new mission.
+- Claims the next dependency-ready task with the default Atlas contract and a stable idempotency key.
 - Persists the runtime capsule after mission creation and claim.
 - Returns mission, task, lease, replay, and agent metadata for subsequent evidence and completion calls.
 
 For zero-touch operation, the adapter also uses `tool.execute.before`. When the first mutating or shell tool is about to run, and no active task exists, Runesmith infers the latest user goal from message context and runs the same prepare path. Read-only tools and Runesmith's own tools are ignored to avoid creating noisy missions.
 
-After a mission is prepared, the `tool.execute.after` hook records routine proof automatically. Shell commands become `command-output` evidence, recognized passing test commands become `test-result` evidence, failed test commands become `diagnostic` evidence, and file mutation tools become `file-change` evidence on the active non-terminal task. After recording evidence, the hook runs the evidence-gated advance loop so a task can seal immediately when the required proof exists. Runesmith ignores read-only tools and its own tools to avoid noisy ledgers and feedback loops.
+After a mission is prepared, the `tool.execute.after` hook records routine proof automatically. Shell commands become `command-output` evidence, recognized passing test commands become `test-result` evidence, failed test commands become `diagnostic` evidence, and file mutation tools become `file-change` evidence on the active non-terminal task. After recording evidence, the hook runs the evidence-gated advance loop so a task can seal immediately when the required proof exists. If the mission has another dependency-ready task, autopilot claims it immediately so the agent continues the loop instead of stopping after implementation proof. Runesmith ignores read-only tools and its own tools to avoid noisy ledgers and feedback loops.
 
-The `runesmith_autopilot_tick` tool, and the same loop on OpenCode `session.idle` events, checks the active task's assigned contract. If required evidence is missing, it holds with a missing-evidence list. If proof is present, it calls the runtime completion gate and persists the capsule. This keeps the agent loop automatic while preserving evidence-gated completion.
+The `runesmith_autopilot_tick` tool, and the same loop on OpenCode `session.idle` events, checks the active task's assigned contract and task-level evidence requirements. If required evidence is missing, it holds with a missing-evidence list. If proof is present, it calls the runtime completion gate, claims the next dependency-ready task when one exists, and persists the capsule. This keeps the agent loop automatic while preserving evidence-gated completion.
 
 The compaction hook appends a mission capsule summary containing active missions, tasks, leases, and evidence counts. This gives continuation sessions enough orchestration state to recover or keep working before starting a new loop.
 
@@ -255,7 +263,7 @@ Initial policies:
 
 The first adapter exposes these tools:
 
-- `runesmith_autopilot_prepare`: infer or accept the current goal, start or resume a mission, claim the root task, and persist the capsule.
+- `runesmith_autopilot_prepare`: infer or accept the current goal, start or resume a mission, claim the next dependency-ready task, and persist the capsule.
 - `runesmith_autopilot_tick`: advance the active task through the evidence gate and complete it when the contract is satisfied.
 - `runesmith_covenant_status`: report the active autonomous workflow stages installed by Runesmith.
 - `runesmith_mission_start`: create a mission from a user goal.
@@ -290,8 +298,8 @@ Runtime-backed controls:
 
 - `/api/runtime-capsule` reads the local runtime capsule.
 - `/api/runtime-control` accepts dashboard actions and persists the resulting capsule.
-- Command Forge starts a mission from the dashboard directive, registers the default Atlas contract, claims the root task, and saves the capsule.
-- Guarded Autopilot runs an evidence-gated cycle over the persisted mission. It recovers stale work first, holds if proof is missing, and completes through the runtime gate once required evidence exists.
+- Command Forge starts a planned Covenant mission from the dashboard directive, registers the default Atlas contract, claims the first task, and saves the capsule.
+- Guarded Autopilot runs an evidence-gated cycle over the persisted mission. It recovers stale work first, holds if proof is missing, completes through the runtime gate once required evidence exists, and claims the next dependency-ready task.
 
 Visual rules:
 

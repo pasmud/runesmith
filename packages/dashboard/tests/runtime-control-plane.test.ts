@@ -36,7 +36,9 @@ describe("dashboard runtime control plane", () => {
 
     const graph = result.value.snapshot.graphs.mission_alpha
     expect(graph.mission.goal).toBe("Build runtime backed dashboard controls")
+    expect(Object.keys(graph.tasks)).toEqual(["task_alpha", "task_alpha_review", "task_alpha_seal"])
     expect(graph.tasks.task_alpha.assignedAgentId).toBe("agent_atlas")
+    expect(graph.tasks.task_alpha_review.dependsOn).toEqual(["task_alpha"])
     expect(result.value.snapshot.contracts.agent_atlas?.displayName).toBe("Atlas")
     expect(result.value.snapshot.leases.leases.lease_alpha?.holder).toBe("runesmith-dashboard")
   })
@@ -93,11 +95,14 @@ describe("dashboard runtime control plane", () => {
         status: "completed",
         missionId: "mission_alpha",
         taskId: "task_alpha",
+        nextTaskId: "task_alpha_review",
+        nextTaskStatus: "running",
       },
     })
     if (!result.ok) return
 
-    expect(result.value.snapshot.graphs.mission_alpha.mission.status).toBe("complete")
+    expect(result.value.snapshot.graphs.mission_alpha.mission.status).toBe("running")
     expect(result.value.snapshot.graphs.mission_alpha.tasks.task_alpha.status).toBe("complete")
+    expect(result.value.snapshot.graphs.mission_alpha.tasks.task_alpha_review.status).toBe("running")
   })
 })

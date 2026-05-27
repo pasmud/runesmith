@@ -1,4 +1,6 @@
 import { createEvidenceLedger, missingRequiredEvidence } from "./evidence-ledger"
+import { getRequiredEvidenceForTask } from "./contracts"
+import { taskDependenciesComplete, type MissionTaskPlanItem } from "./mission-graph"
 import type { RuntimeSnapshot } from "./runtime"
 import type { EvidenceType, MissionGraph, MissionTask } from "./types"
 
@@ -165,6 +167,36 @@ export function buildCovenantPrompt(covenant: RunicCovenant = createRunicCovenan
   ].join("\n")
 }
 
+export function createCovenantTaskPlan(goal: string): MissionTaskPlanItem[] {
+  const normalizedGoal = normalizeGoalForTaskTitle(goal)
+
+  return [
+    {
+      key: "forge",
+      title: `Forge: ${normalizedGoal}`,
+      description: `Implement the smallest useful change for: ${normalizedGoal}`,
+      requiredCapabilities: ["typescript", "testing"],
+      requiredEvidence: ["file-change", "test-result"],
+    },
+    {
+      key: "review",
+      title: `Review: ${normalizedGoal}`,
+      description: `Review the diff, behavior, and residual risk for: ${normalizedGoal}`,
+      requiredCapabilities: ["testing"],
+      requiredEvidence: ["decision"],
+      dependsOn: ["forge"],
+    },
+    {
+      key: "seal",
+      title: `Seal: ${normalizedGoal}`,
+      description: `Capture the final checkpoint and handoff for: ${normalizedGoal}`,
+      requiredCapabilities: ["repository-maintenance"],
+      requiredEvidence: ["decision"],
+      dependsOn: ["review"],
+    },
+  ]
+}
+
 export function deriveCovenantControlBrief(
   snapshot: RuntimeSnapshot,
   covenant: RunicCovenant = createRunicCovenant(),
@@ -184,7 +216,7 @@ export function deriveCovenantControlBrief(
   }
 
   const contract = active.task.assignedAgentId ? snapshot.contracts[active.task.assignedAgentId] : undefined
-  const requiredEvidence = contract?.requiredEvidence ?? []
+  const requiredEvidence = contract ? getRequiredEvidenceForTask(active.task, contract) : active.task.requiredEvidence ?? []
   const ledger = snapshot.ledgers[active.graph.mission.id] ?? createEvidenceLedger()
   const missingEvidence = missingRequiredEvidence(ledger, {
     taskId: active.task.id,
@@ -260,7 +292,9 @@ function selectCovenantTask(snapshot: RuntimeSnapshot): { graph: MissionGraph; t
     .filter((graph) => !terminalMissionStatuses.has(graph.mission.status))
     .flatMap((graph) => {
       return Object.values(graph.tasks)
-        .filter((task) => !terminalTaskStatuses.has(task.status))
+        .filter((task) => {
+          return !terminalTaskStatuses.has(task.status) && (task.status !== "queued" || taskDependenciesComplete(graph, task))
+        })
         .map((task) => ({ graph, task }))
     })
     .sort((left, right) => {
@@ -284,6 +318,8 @@ function selectStageId(
   if (task.status === "verifying") return "review"
   if (missingEvidence.length === 0) return "review"
   if (missingEvidence.includes("file-change")) return "forge"
+  if (isSealTask(task)) return "seal"
+  if (missingEvidence.some((type) => type === "decision" || type === "risk" || type === "diagnostic")) return "review"
 
   return "prove"
 }
@@ -311,6 +347,13 @@ function buildControlDirectives(stageId: CovenantStageId, missingEvidence: Evide
     ]
   }
 
+  if (stageId === "seal") {
+    return [
+      "Record the final checkpoint decision for this mission stage.",
+      "Keep the mission capsule current before reporting handoff status.",
+    ]
+  }
+
   if (stageId === "recover") {
     return [
       "Recover stale or blocked work before making unrelated edits.",
@@ -329,4 +372,13 @@ function buildControlDirectives(stageId: CovenantStageId, missingEvidence: Evide
     "Frame the goal, inspect relevant repo context, and avoid unnecessary clarification blocks.",
     "Map the work into the mission graph before execution.",
   ]
+}
+
+function normalizeGoalForTaskTitle(goal: string): string {
+  const normalized = goal.replace(/\s+/g, " ").trim()
+  return normalized.length > 0 ? normalized : "Mission"
+}
+
+function isSealTask(task: MissionTask): boolean {
+  return task.title.toLowerCase().startsWith("seal:")
 }

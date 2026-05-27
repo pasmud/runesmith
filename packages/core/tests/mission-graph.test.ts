@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { createMissionGraph, transitionTask } from "../src/index"
+import { createCovenantTaskPlan, createMissionGraph, transitionTask } from "../src/index"
 
 const fixedNow = () => new Date("2026-05-27T00:00:00.000Z")
 const fixedIds = (prefix: string) => `${prefix}_alpha`
@@ -48,6 +48,50 @@ describe("mission graph", () => {
           data: { rootTaskId: "task_alpha" },
         },
       ],
+    })
+  })
+
+  test("creates a Covenant mission graph with actionable dependent tasks", () => {
+    const result = createMissionGraph({
+      goal: "Build zero-touch OpenCode orchestration",
+      idFactory: fixedIds,
+      now: fixedNow,
+      taskPlan: createCovenantTaskPlan("Build zero-touch OpenCode orchestration"),
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(Object.keys(result.value.tasks)).toEqual([
+      "task_alpha",
+      "task_alpha_review",
+      "task_alpha_seal",
+    ])
+    expect(result.value.tasks.task_alpha).toMatchObject({
+      id: "task_alpha",
+      title: "Forge: Build zero-touch OpenCode orchestration",
+      requiredCapabilities: ["typescript", "testing"],
+      requiredEvidence: ["file-change", "test-result"],
+    })
+    expect(result.value.tasks.task_alpha_review).toMatchObject({
+      id: "task_alpha_review",
+      parentId: "task_alpha",
+      title: "Review: Build zero-touch OpenCode orchestration",
+      requiredCapabilities: ["testing"],
+      requiredEvidence: ["decision"],
+      dependsOn: ["task_alpha"],
+    })
+    expect(result.value.tasks.task_alpha_seal).toMatchObject({
+      id: "task_alpha_seal",
+      parentId: "task_alpha",
+      title: "Seal: Build zero-touch OpenCode orchestration",
+      requiredCapabilities: ["repository-maintenance"],
+      requiredEvidence: ["decision"],
+      dependsOn: ["task_alpha_review"],
+    })
+    expect(result.value.events[0]?.data).toMatchObject({
+      rootTaskId: "task_alpha",
+      taskCount: 3,
     })
   })
 

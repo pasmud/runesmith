@@ -82,6 +82,8 @@ export type MissionTask = {
   description: string
   status: TaskStatus
   requiredCapabilities: string[]
+  requiredEvidence?: EvidenceType[]
+  dependsOn?: string[]
   assignedAgentId?: string
   createdAt: string
   updatedAt: string

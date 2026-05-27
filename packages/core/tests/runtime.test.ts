@@ -177,6 +177,98 @@ describe("runesmith runtime", () => {
     expect(completed.value.graph.mission.status).toBe("complete")
   })
 
+  test("uses task-level evidence and keeps planned missions running until every task is complete", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    const mission = runtime.startMission({
+      goal: "Run planned mission",
+      taskPlan: [
+        {
+          key: "forge",
+          title: "Forge planned mission",
+          description: "Make the implementation change.",
+          requiredCapabilities: ["typescript"],
+          requiredEvidence: ["file-change"],
+        },
+        {
+          key: "review",
+          title: "Review planned mission",
+          description: "Review the change before sealing.",
+          requiredCapabilities: ["testing"],
+          requiredEvidence: ["decision"],
+          dependsOn: ["forge"],
+        },
+      ],
+    })
+    if (!mission.ok) throw new Error("mission start failed")
+
+    const claimedForge = runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-forge",
+      ttlMs: 30_000,
+    })
+    if (!claimedForge.ok) throw new Error("forge claim failed")
+
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runtime files",
+        payload: { files: ["packages/core/src/runtime.ts"] },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+
+    const completedForge = runtime.completeTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+    })
+
+    expect(completedForge.ok).toBe(true)
+    if (!completedForge.ok) return
+    expect(completedForge.value.task.status).toBe("complete")
+    expect(completedForge.value.graph.mission.status).toBe("running")
+
+    const claimedReview = runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha_review",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-review",
+      ttlMs: 30_000,
+    })
+    expect(claimedReview.ok).toBe(true)
+    if (!claimedReview.ok) return
+
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_decision",
+        taskId: "task_alpha_review",
+        type: "decision",
+        summary: "Review found no blockers",
+        payload: { verdict: "approved" },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+
+    const completedReview = runtime.completeTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha_review",
+      contractId: "agent_atlas",
+    })
+
+    expect(completedReview.ok).toBe(true)
+    if (!completedReview.ok) return
+    expect(completedReview.value.graph.mission.status).toBe("complete")
+  })
+
   test("runs stale recovery against stored missions", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

@@ -1,7 +1,7 @@
-import { validateAgentForTask } from "./contracts"
+import { getRequiredEvidenceForTask, validateAgentForTask } from "./contracts"
 import { addEvidence, assertRequiredEvidence, createEvidenceLedger, type EvidenceLedger } from "./evidence-ledger"
 import { acquireLease, createLeaseBook, type LeaseBook } from "./lease-scheduler"
-import { createMissionGraph, transitionTask } from "./mission-graph"
+import { createMissionGraph, taskDependenciesComplete, transitionTask, type MissionTaskPlanItem } from "./mission-graph"
 import { recoverStaleTasks } from "./recovery"
 import {
   err,
@@ -26,6 +26,7 @@ export type RuntimeOptions = {
 export type StartMissionInput = {
   goal: string
   requiredCapabilities?: string[]
+  taskPlan?: MissionTaskPlanItem[]
 }
 
 export type ClaimTaskInput = {
@@ -98,6 +99,7 @@ export class RunesmithRuntime {
       idFactory: this.options.idFactory,
       now: this.options.now,
       requiredCapabilities: input.requiredCapabilities,
+      taskPlan: input.taskPlan,
     })
 
     if (!created.ok) return created
@@ -131,6 +133,15 @@ export class RunesmithRuntime {
 
     const valid = validateAgentForTask(contract, task)
     if (!valid.ok) return valid
+
+    if (task.status === "queued" && !taskDependenciesComplete(graph, task)) {
+      return err(
+        runtimeError("INVALID_TRANSITION", "Task dependencies are not complete", {
+          taskId: task.id,
+          missingDependencies: (task.dependsOn ?? []).filter((taskId) => graph.tasks[taskId]?.status !== "complete"),
+        }),
+      )
+    }
 
     const lease = acquireLease(this.leases, {
       targetId: input.taskId,
@@ -209,7 +220,7 @@ export class RunesmithRuntime {
 
     const evidence = assertRequiredEvidence(this.ledgers.get(input.missionId) ?? createEvidenceLedger(), {
       taskId: input.taskId,
-      requiredEvidence: contract.requiredEvidence,
+      requiredEvidence: getRequiredEvidenceForTask(task, contract),
     })
     if (!evidence.ok) return evidence
 
