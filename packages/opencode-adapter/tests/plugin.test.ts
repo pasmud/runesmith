@@ -997,7 +997,42 @@ describe("opencode adapter", () => {
         }),
       ]),
     )
+    expect(runtime.snapshot().graphs.mission_alpha.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "runeweave.stopped",
+          targetId: "task_alpha",
+          message: "Runeweave sealed: No active mission remains after verified work was sealed.",
+          data: expect.objectContaining({
+            mode: "session.idle",
+            status: "sealed",
+            stopReason: "No active mission remains after verified work was sealed.",
+            stepCount: 1,
+            finalActionId: "wait-for-goal",
+            proofStatus: "passed",
+            commands: [
+              expect.objectContaining({
+                command: "bun test",
+                exitCode: 0,
+                evidenceType: "test-result",
+              }),
+            ],
+          }),
+        }),
+      ]),
+    )
     expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.mission.status).toBe("complete")
+    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "runeweave.stopped",
+          data: expect.objectContaining({
+            mode: "session.idle",
+            status: "sealed",
+          }),
+        }),
+      ]),
+    )
   })
 
   test("session idle holds failed proof until a repair edit creates new evidence", async () => {
@@ -1100,8 +1135,37 @@ describe("opencode adapter", () => {
     expect(snapshot.graphs.mission_alpha.mission.goal).toBe("Build an idle-start orchestration loop")
     expect(snapshot.graphs.mission_alpha.tasks.task_alpha.status).toBe("running")
     expect(snapshot.graphs.mission_alpha.tasks.task_alpha.assignedAgentId).toBe("agent_atlas")
+    expect(snapshot.graphs.mission_alpha.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "runeweave.stopped",
+          targetId: "task_alpha",
+          message:
+            "Runeweave needs-work: The active Runebook card requires implementation evidence before Runesmith can continue autonomously.",
+          data: expect.objectContaining({
+            mode: "session.idle",
+            status: "needs-work",
+            stopReason:
+              "The active Runebook card requires implementation evidence before Runesmith can continue autonomously.",
+            stepCount: 1,
+            finalActionId: "continue-forge",
+          }),
+        }),
+      ]),
+    )
     expect(snapshot.leases.leases.lease_alpha?.holder).toBe("runesmith-autopilot")
     expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.tasks.task_alpha.status).toBe("running")
+    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "runeweave.stopped",
+          data: expect.objectContaining({
+            mode: "session.idle",
+            status: "needs-work",
+          }),
+        }),
+      ]),
+    )
   })
 
   test("autopilot tick completes the active task once captured evidence satisfies the contract", async () => {

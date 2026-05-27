@@ -31,7 +31,7 @@ The first production slice includes:
 - Fresh-proof evidence gates that reject passing `test-result` evidence when a newer file-change or diagnostic exists on the task.
 - Human-hold risk gates that reject completion after unresolved `risk` evidence until a later `decision` explicitly clears, accepts, or holds the risk.
 - Direct risk resolution controls in core, OpenCode, CLI, and dashboard surfaces so the user does not need to inspect mission ids or write raw decision evidence.
-- Engine-owned OpenCode idle orchestration that recovers stale work first, runs the active Proof Plan after implementation evidence exists, holds failed proof as a repair target, retries after a new repair edit, and completes the active task once proof requirements are satisfied.
+- Engine-owned OpenCode idle orchestration that runs Runeweave automatically, recovers stale work first, prepares the first mission from chat context, runs the active Proof Plan after implementation evidence exists, advances Review and Seal when evidence requirements are satisfied, records a `runeweave.stopped` mission event, holds failed proof as a repair target, and retries after a new repair edit.
 - A shared Runic mission loop kernel in `packages/core` so OpenCode, CLI, and dashboard surfaces use the same recovery, claim, evidence, decision, and completion state machine.
 - A state-aware Runesmith Control Brief that tells OpenCode the active mission, active task, next Runic Covenant stage, required evidence, and missing proof directly from runtime state.
 - A Runesmith Loop Pulse that derives one authoritative next action, compact execution plan, health signal, priority, blockers, required evidence, and active runes from the runtime capsule.
@@ -77,7 +77,7 @@ Responsibilities:
 - Inject the Runic Covenant and Runesmith Autopilot through OpenCode's system transform hook.
 - Inject a mission capsule summary through OpenCode's compaction hook.
 - Record evidence from OpenCode tool execution hooks without requiring the agent to call evidence tools manually for routine shell, test, and file-change proof.
-- Advance the active mission from idle events only through the runtime evidence gate, with automatic Proof Plan execution gated by implementation or repair evidence.
+- Advance the active mission from idle events through Runeweave and the runtime evidence gate, with automatic Proof Plan execution gated by implementation or repair evidence and stop reasons recorded on the mission graph.
 - Translate OpenCode events into core runtime events.
 - Use the core lease scheduler before sending any internal prompt or continuation.
 - Keep OpenCode-specific types and instability out of `packages/core`.
@@ -283,7 +283,7 @@ After a mission is prepared, the `tool.execute.after` hook records routine proof
 
 The `runesmith_os_run` tool is the preferred OpenCode tool for routine progress. It runs Runeweave until the current mission is sealed or until a real stop condition appears. The `runesmith_next` tool remains available for a single bounded card execution: it reads the active Runebook card and delegates to Proof Runner, recovery, risk decision application, or the shared mission loop as needed. The `runesmith_autopilot_tick` tool remains available as an explicit low-level advance control: it checks the active task's assigned contract and task-level evidence requirements. If required evidence is missing, it holds with a missing-evidence list. If failed verification is present, the tool response includes diagnostic summaries plus the live `Repair diagnostic` Loop Pulse so OpenCode can repair without a separate user-invoked workflow. If unresolved risk is present, the tool response includes the live `Resolve risk` Loop Pulse and refuses completion until later decision evidence exists. The `runesmith_risk_resolve` tool records that decision directly, then advances the mission loop so the agent does not need to ask the user for raw evidence plumbing. If proof is present, the tick calls the runtime completion gate, synthesizes safe Covenant decisions for Review and Seal, claims the next dependency-ready task when one exists, and persists the capsule.
 
-OpenCode `session.idle` events add the hands-off proof layer above that tick. Idle orchestration gives stale recovery priority, then runs the active Proof Plan automatically when implementation evidence exists and passing proof is missing. A failed proof run becomes diagnostic evidence and stops the run. Runesmith will not repeat the same failed proof on every idle event; it waits until a later file-change evidence entry shows that the agent made a repair edit, then reruns the focused diagnostic command before broader proof. This keeps the user experience install-once while preventing noisy retry loops.
+OpenCode `session.idle` events run the same Runeweave OS loop exposed by `runesmith_os_run`. Idle can prepare the first mission from chat context, recover stale work, run eligible Proof Plan commands, advance through Review and Seal, and write a `runeweave.stopped` mission event that includes mode, status, stop reason, final action, proof status, and command summaries. A failed proof run becomes diagnostic evidence and stops the run. Runesmith will not repeat the same failed proof on every idle event; it waits until a later file-change evidence entry shows that the agent made a repair edit, then reruns the focused diagnostic command before broader proof. This keeps the user experience install-once while preventing noisy retry loops.
 
 The tick logic is implemented once in the core Runic mission loop and reused by OpenCode, `runesmith mission tick`, and dashboard runtime controls. Surface adapters only provide holder identity, idempotency scope, persistence, and response formatting.
 
@@ -330,7 +330,7 @@ The adapter also exposes documented OpenCode hooks:
 - `experimental.session.compacting`: appends the current mission capsule summary, live Control Brief, Loop Pulse, Runebook, Mission Memory, and Proof Plan to compaction context.
 - `tool.execute.before`: starts or resumes orchestration before mutating/shell tools run when no active task exists.
 - `tool.execute.after`: records useful command, test, and file-change evidence against the active Runesmith task, then runs the evidence-gated advance loop.
-- `event`: runs idle orchestration on `session.idle` events: prepare the first mission from chat context when no active mission exists, recover stale work first, run eligible Proof Plan commands, hold failed proof until a repair edit appears, then advance through the evidence gate.
+- `event`: runs Runeweave on `session.idle` events: prepare the first mission from chat context when no active mission exists, recover stale work first, run eligible Proof Plan commands, hold failed proof until a repair edit appears, advance through Review and Seal, and record the OS stop reason.
 
 ## Dashboard Direction
 

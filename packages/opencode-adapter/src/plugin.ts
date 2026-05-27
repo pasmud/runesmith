@@ -25,12 +25,14 @@ import {
   type AgentContract,
   type EvidenceType,
   type IdFactory,
+  type MissionEvent,
   type ProofCommandExecution,
   type ProofCommandRunner,
   type ProofPlan,
   type ProofPlanCommand,
   type ProofPlanOptions,
   type RunicCovenant,
+  type RuneweaveValue,
   type RunesmithRuntime,
   type RiskResolutionVerdict,
   type RuntimeOptions,
@@ -749,8 +751,8 @@ type AdvanceIdleOrchestrationInput = {
 }
 
 async function advanceIdleOrchestration(input: AdvanceIdleOrchestrationInput): Promise<void> {
-  const snapshot = input.runtime.snapshot()
-  const loopPulse = deriveLoopPulse(snapshot)
+  let snapshot = input.runtime.snapshot()
+  let loopPulse = deriveLoopPulse(snapshot)
 
   if (loopPulse.nextAction.id === "wait-for-goal") {
     const messages = extractMessages(input.eventInput) ?? extractMessages(asRecord(input.eventInput?.event))
@@ -767,11 +769,17 @@ async function advanceIdleOrchestration(input: AdvanceIdleOrchestrationInput): P
           messages,
         },
       })
+      snapshot = input.runtime.snapshot()
+      loopPulse = deriveLoopPulse(snapshot)
+    } else {
       return
     }
   }
 
-  if (loopPulse.nextAction.id === "recover-stale") {
+  if (!loopPulse.missionId) return
+
+  const proofPlan = deriveProofPlan(snapshot, input.proofPlanOptions)
+  if (shouldHoldProofActionOnIdle(loopPulse.nextAction.id, snapshot, proofPlan)) {
     await advanceAutopilotLoop({
       runtime: input.runtime,
       proofPlanOptions: input.proofPlanOptions,
@@ -780,24 +788,7 @@ async function advanceIdleOrchestration(input: AdvanceIdleOrchestrationInput): P
     return
   }
 
-  const proofPlan = deriveProofPlan(snapshot, input.proofPlanOptions)
-  if (shouldRunProofPlanOnIdle(snapshot, proofPlan)) {
-    await runProofFromOpenCode({
-      runtime: input.runtime,
-      proofPlanOptions: input.proofPlanOptions,
-      proofCommandRunner: input.proofCommandRunner,
-      runtimeStore: input.runtimeStore,
-      idFactory: input.idFactory,
-      now: input.now,
-    })
-    return
-  }
-
-  await advanceAutopilotLoop({
-    runtime: input.runtime,
-    proofPlanOptions: input.proofPlanOptions,
-    runtimeStore: input.runtimeStore,
-  })
+  await runIdleRuneweave(input)
 }
 
 async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<ToolResponse> {
@@ -848,6 +839,8 @@ type RunNextFromOpenCodeInput = RunProofFromOpenCodeInput & {
 type RunOsFromOpenCodeInput = RunProofFromOpenCodeInput & {
   args: OsRunArgs
 }
+
+type RunIdleRuneweaveInput = RunProofFromOpenCodeInput
 
 type ResolveRiskFromOpenCodeInput = {
   runtime: RunesmithRuntime
@@ -906,9 +899,33 @@ async function runOsFromOpenCode(input: RunOsFromOpenCodeInput): Promise<ToolRes
   })
   if (!loop.ok) return formatError("Runesmith OS run rejected", loop.error)
 
+  recordRuneweaveStop(input.runtime, loop.value, "tool")
   await persistRuntime(input.runtimeStore, input.runtime)
 
   return formatValue("Runesmith OS run", loop.value as unknown as Record<string, unknown>)
+}
+
+async function runIdleRuneweave(input: RunIdleRuneweaveInput): Promise<ToolResponse> {
+  const snapshot = input.runtime.snapshot()
+  const nextEvidenceId = createProofEvidenceIdFactory(snapshot, input.idFactory)
+  const loop = await runRuneweave(input.runtime, {
+    contract: defaultAtlasContract,
+    holder: "runesmith-autopilot",
+    idempotencyScope: "idle-os",
+    ttlMs: 30_000,
+    staleAfterMs: autopilotStaleAfterMs,
+    proofPlanOptions: input.proofPlanOptions,
+    proofCommandRunner: input.proofCommandRunner ?? runShellProofCommand,
+    nextEvidenceId,
+    now: input.now,
+    maxSteps: 8,
+  })
+  if (!loop.ok) return formatError("Runesmith idle OS rejected", loop.error)
+
+  recordRuneweaveStop(input.runtime, loop.value, "session.idle")
+  await persistRuntime(input.runtimeStore, input.runtime)
+
+  return formatValue("Runesmith idle OS run", loop.value as unknown as Record<string, unknown>)
 }
 
 async function runProofFromOpenCode(input: RunProofFromOpenCodeInput): Promise<ToolResponse> {
@@ -1004,6 +1021,64 @@ function shouldRunProofPlanOnIdle(snapshot: RuntimeSnapshot, proofPlan: ProofPla
   }
 
   return false
+}
+
+function shouldHoldProofActionOnIdle(actionId: string, snapshot: RuntimeSnapshot, proofPlan: ProofPlan): boolean {
+  if (actionId !== "capture-proof" && actionId !== "repair-diagnostic") return false
+
+  return !shouldRunProofPlanOnIdle(snapshot, proofPlan)
+}
+
+function recordRuneweaveStop(
+  runtime: RunesmithRuntime,
+  loop: RuneweaveValue,
+  mode: "session.idle" | "tool",
+): void {
+  if (!loop.missionId) return
+
+  const targetId = loop.taskId ?? loop.missionId
+  const graph = runtime.snapshot().graphs[loop.missionId]
+  if (!graph || isDuplicateRuneweaveStop(graph.events, loop, mode, targetId)) return
+
+  runtime.recordMissionEvent({
+    missionId: loop.missionId,
+    type: "runeweave.stopped",
+    targetId,
+    message: `Runeweave ${loop.status}: ${loop.stopReason}`,
+    data: {
+      mode,
+      status: loop.status,
+      stopReason: loop.stopReason,
+      stepCount: loop.stepCount,
+      finalActionId: loop.finalActionId,
+      proofStatus: loop.proofStatus,
+      commands: loop.commands.map((command) => ({
+        evidenceId: command.evidenceId,
+        command: command.command,
+        kind: command.kind,
+        label: command.label,
+        exitCode: command.exitCode,
+        evidenceType: command.evidenceType,
+      })),
+    },
+  })
+}
+
+function isDuplicateRuneweaveStop(
+  events: MissionEvent[],
+  loop: RuneweaveValue,
+  mode: "session.idle" | "tool",
+  targetId: string,
+): boolean {
+  const latest = events.at(-1)
+  if (!latest || latest.type !== "runeweave.stopped" || latest.targetId !== targetId) return false
+
+  const data = asRecord(latest.data)
+  return data?.mode === mode
+    && data?.status === loop.status
+    && data?.stopReason === loop.stopReason
+    && data?.finalActionId === loop.finalActionId
+    && data?.proofStatus === loop.proofStatus
 }
 
 function hasTaskEvidenceOfType(

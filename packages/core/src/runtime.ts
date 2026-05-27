@@ -11,6 +11,7 @@ import {
   type Evidence,
   type IdFactory,
   type Lease,
+  type MissionEvent,
   type MissionGraph,
   type MissionTask,
   type Result,
@@ -48,6 +49,19 @@ export type ClaimTaskValue = {
 export type AddTaskEvidenceInput = {
   missionId: string
   evidence: Evidence
+}
+
+export type RecordMissionEventInput = {
+  missionId: string
+  type: string
+  targetId?: string
+  message: string
+  data?: Record<string, unknown>
+}
+
+export type RecordMissionEventValue = {
+  graph: MissionGraph
+  event: MissionEvent
 }
 
 export type CompleteTaskInput = {
@@ -243,6 +257,37 @@ export class RunesmithRuntime {
     this.ledgers.set(input.missionId, next.value)
     this.graphs.set(input.missionId, updatedGraph)
     return next
+  }
+
+  recordMissionEvent(input: RecordMissionEventInput): Result<RecordMissionEventValue> {
+    const graph = this.graphs.get(input.missionId)
+    if (!graph) {
+      return err(runtimeError("MISSION_NOT_FOUND", "Mission does not exist", { missionId: input.missionId }))
+    }
+
+    const at = (this.options.now ?? (() => new Date()))().toISOString()
+    const event: MissionEvent = {
+      id: this.options.idFactory?.("event") ?? `event_${graph.events.length + 1}`,
+      type: input.type,
+      at,
+      targetId: input.targetId ?? input.missionId,
+      message: input.message,
+      data: input.data,
+    }
+    const nextGraph: MissionGraph = {
+      ...graph,
+      mission: {
+        ...graph.mission,
+        updatedAt: at,
+      },
+      events: [
+        ...graph.events,
+        event,
+      ],
+    }
+
+    this.graphs.set(input.missionId, nextGraph)
+    return ok({ graph: nextGraph, event })
   }
 
   completeTask(input: CompleteTaskInput): Result<TaskMutationValue> {

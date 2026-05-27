@@ -157,6 +157,48 @@ describe("runesmith runtime", () => {
     })
   })
 
+  test("records mission-level OS events for orchestration telemetry", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const mission = runtime.startMission({
+      goal: "Record Runeweave telemetry",
+      requiredCapabilities: ["typescript"],
+    })
+    if (!mission.ok) throw new Error("mission start failed")
+
+    const recorded = runtime.recordMissionEvent({
+      missionId: "mission_alpha",
+      type: "runeweave.stopped",
+      targetId: "mission_alpha",
+      message: "Runeweave stopped at needs-work",
+      data: {
+        status: "needs-work",
+        stopReason: "Implementation evidence required",
+      },
+    })
+
+    expect(recorded).toMatchObject({
+      ok: true,
+      value: {
+        graph: {
+          events: [
+            {},
+            {
+              id: "event_alpha",
+              type: "runeweave.stopped",
+              at: "2026-05-27T00:00:00.000Z",
+              targetId: "mission_alpha",
+              message: "Runeweave stopped at needs-work",
+              data: {
+                status: "needs-work",
+                stopReason: "Implementation evidence required",
+              },
+            },
+          ],
+        },
+      },
+    })
+  })
+
   test("treats recorded evidence as task activity before stale recovery", () => {
     let current = new Date("2026-05-27T00:00:00.000Z")
     const runtime = createRuntime({
