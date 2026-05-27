@@ -74,6 +74,13 @@ function classifyRuneweaveStop(step: RunebookNextValue): { status: RuneweaveStat
     }
   }
 
+  if (step.status === "decision-held" && step.decisionGuard) {
+    return {
+      status: "blocked",
+      reason: `Autonomous ${step.decisionGuard.stage} decision held: ${step.decisionGuard.reason}`,
+    }
+  }
+
   if (step.status === "risk-held" || step.loopPulse.nextAction.id === "resolve-risk") {
     return {
       status: "risk-held",

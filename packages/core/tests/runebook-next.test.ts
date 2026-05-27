@@ -198,6 +198,79 @@ describe("runebook next action", () => {
     })
   })
 
+  test("reports held autonomous decisions when Review Lens blocks approval", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Hold blocked review",
+      taskPlan: createCovenantTaskPlan("Hold blocked review"),
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runtime and environment",
+        payload: { files: ["packages/core/src/runebook-next.ts", ".env"] },
+        createdAt: fixedNow().toISOString(),
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Runebook next tests passed",
+        payload: { command: "bun test packages/core/tests/runebook-next.test.ts", exitCode: 0 },
+        createdAt: fixedNow().toISOString(),
+      },
+    })
+
+    const result = await runRunebookNext(runtime, {
+      contract: atlas,
+      holder: "runesmith-test",
+      idempotencyScope: "test-next",
+      ttlMs: 30_000,
+      now: fixedNow,
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        status: "decision-held",
+        actionId: "review-change",
+        missionId: "mission_alpha",
+        taskId: "task_alpha_review",
+        nextStatus: "waiting-for-evidence",
+        missingEvidence: ["decision"],
+        decisionGuard: {
+          stage: "review",
+          status: "blocked",
+          findings: [".env is outside agent_atlas file scope."],
+        },
+      },
+    })
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_review.status).toBe("running")
+    expect(Object.values(runtime.snapshot().ledgers.mission_alpha.evidence)).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task_alpha_review",
+          type: "decision",
+        }),
+      ]),
+    )
+  })
+
   test("resolves the current Faultline card with a supplied architecture path", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

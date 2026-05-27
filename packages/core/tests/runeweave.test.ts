@@ -179,4 +179,75 @@ describe("runeweave OS loop", () => {
     expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_runtime_forge.status).toBe("running")
     expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_interface_forge.status).toBe("running")
   })
+
+  test("stops cleanly when autonomous review is held by guard findings", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Do not spin on blocked review",
+      taskPlan: createCovenantTaskPlan("Do not spin on blocked review"),
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runtime and environment",
+        payload: { files: ["packages/core/src/runeweave.ts", ".env"] },
+        createdAt: fixedNow().toISOString(),
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Runeweave tests passed",
+        payload: { command: "bun test packages/core/tests/runeweave.test.ts", exitCode: 0 },
+        createdAt: fixedNow().toISOString(),
+      },
+    })
+
+    const result = await runRuneweave(runtime, {
+      contract: atlas,
+      holder: "runesmith-test",
+      idempotencyScope: "test-runeweave",
+      ttlMs: 30_000,
+      proofCommandRunner() {
+        throw new Error("proof should not run while review is held")
+      },
+      maxSteps: 4,
+      now: fixedNow,
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        status: "blocked",
+        stopReason: "Autonomous review decision held: Resolve critical review findings before seal.",
+        stepCount: 1,
+        finalActionId: "review-change",
+      },
+    })
+    if (!result.ok) return
+
+    expect(result.value.steps[0]).toMatchObject({
+      status: "decision-held",
+      decisionGuard: {
+        stage: "review",
+        findings: [".env is outside agent_atlas file scope."],
+      },
+    })
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_review.status).toBe("running")
+  })
 })

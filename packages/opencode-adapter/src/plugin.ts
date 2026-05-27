@@ -57,6 +57,7 @@ import {
   type ProofPlanCommand,
   type ProofPlanOptions,
   type RunicCovenant,
+  type RunicDecisionGuard,
   type RuneweaveValue,
   type RunesmithRuntime,
   type RiskResolutionVerdict,
@@ -997,6 +998,7 @@ async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<T
     taskStatus: advanced.value.nextTaskStatus,
     missionStatus: advanced.value.missionStatus,
     missingEvidence: advanced.value.missingEvidence,
+    decisionGuard: advanced.value.decisionGuard,
     diagnostics: loopPulse.diagnostics,
     missionMemory,
     proofPlan,
@@ -1137,6 +1139,7 @@ async function runProofFromOpenCode(input: RunProofFromOpenCodeInput): Promise<T
   })
 
   let status = proofRun.status === "failed" ? "waiting-for-evidence" : proofRun.status
+  let decisionGuard: RunicDecisionGuard | undefined
   if (proofRun.status === "passed") {
     const advanced = advanceRunicMissionLoop(input.runtime, {
       contract: defaultAtlasContract,
@@ -1148,6 +1151,7 @@ async function runProofFromOpenCode(input: RunProofFromOpenCodeInput): Promise<T
     })
     if (!advanced.ok) return formatError("Proof run advance rejected", advanced.error)
     status = advanced.value.status
+    decisionGuard = advanced.value.decisionGuard
   }
 
   await persistRuntime(input.runtimeStore, input.runtime)
@@ -1164,6 +1168,7 @@ async function runProofFromOpenCode(input: RunProofFromOpenCodeInput): Promise<T
     taskId: proofRun.taskId,
     commands: proofRun.commands,
     missingEvidence: loopPulse.missingEvidence,
+    decisionGuard,
     diagnostics: loopPulse.diagnostics,
     missionMemory,
     proofPlan: nextProofPlan,

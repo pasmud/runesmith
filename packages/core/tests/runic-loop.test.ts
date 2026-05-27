@@ -143,6 +143,185 @@ describe("runic mission loop", () => {
     )
   })
 
+  test("holds autonomous review when Review Lens has critical findings", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Do not approve scope drift",
+      taskPlan: createCovenantTaskPlan("Do not approve scope drift"),
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runtime and environment",
+        payload: { files: ["packages/core/src/runic-loop.ts", ".env"] },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Core loop tests passed",
+        payload: { command: "bun test packages/core/tests/runic-loop.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+
+    const advanced = advanceRunicMissionLoop(runtime, loopDefaults())
+
+    expect(advanced).toMatchObject({
+      ok: true,
+      value: {
+        status: "waiting-for-evidence",
+        missionId: "mission_alpha",
+        taskId: "task_alpha_review",
+        missionStatus: "running",
+        missingEvidence: ["decision"],
+      },
+    })
+
+    const snapshot = runtime.snapshot()
+    const evidence = Object.values(snapshot.ledgers.mission_alpha.evidence)
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha.status).toBe("complete")
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_review.status).toBe("running")
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_seal.status).toBe("queued")
+    expect(snapshot.graphs.mission_alpha.mission.status).toBe("running")
+    expect(evidence).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task_alpha_review",
+          type: "decision",
+        }),
+      ]),
+    )
+  })
+
+  test("holds autonomous seal when Seal Audit has blocking findings", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Do not seal scope drift",
+      taskPlan: createCovenantTaskPlan("Do not seal scope drift"),
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runtime and environment",
+        payload: { files: ["packages/core/src/runic-loop.ts", ".env"] },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Runic loop tests passed",
+        payload: { command: "bun test packages/core/tests/runic-loop.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.completeTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha_review",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha-review",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_review_decision",
+        taskId: "task_alpha_review",
+        type: "decision",
+        summary: "Manual review accepted the scope exception",
+        payload: { stage: "review", verdict: "approved" },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+    runtime.completeTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha_review",
+      contractId: "agent_atlas",
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha_seal",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha-seal",
+      ttlMs: 30_000,
+    })
+
+    const advanced = advanceRunicMissionLoop(runtime, loopDefaults())
+
+    expect(advanced).toMatchObject({
+      ok: true,
+      value: {
+        status: "waiting-for-evidence",
+        missionId: "mission_alpha",
+        taskId: "task_alpha_seal",
+        missionStatus: "running",
+        missingEvidence: ["decision"],
+      },
+    })
+
+    const snapshot = runtime.snapshot()
+    const evidence = Object.values(snapshot.ledgers.mission_alpha.evidence)
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha.status).toBe("complete")
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_review.status).toBe("complete")
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_seal.status).toBe("running")
+    expect(snapshot.graphs.mission_alpha.mission.status).toBe("running")
+    expect(evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task_alpha_review",
+          type: "decision",
+        }),
+      ]),
+    )
+    expect(evidence).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task_alpha_seal",
+          type: "decision",
+        }),
+      ]),
+    )
+  })
+
   test("resolves active risk with a decision and advances the mission loop", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

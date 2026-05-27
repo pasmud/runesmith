@@ -25,6 +25,17 @@ export type RunicMissionLoopStatus =
   | "completed"
   | "recovered"
 
+export type RunicDecisionGuardStage = "review" | "seal"
+
+export type RunicDecisionGuard = {
+  stage: RunicDecisionGuardStage
+  status: "blocked"
+  reason: string
+  findings: string[]
+  reviewLens?: Record<string, unknown>
+  sealAudit?: Record<string, unknown>
+}
+
 export type AdvanceRunicMissionLoopOptions = {
   contract: AgentContract
   holder: string
@@ -67,6 +78,7 @@ export type AdvanceRunicMissionLoopValue = {
   missionStatus?: string
   missingEvidence?: EvidenceType[]
   nextTaskStatus?: string
+  decisionGuard?: RunicDecisionGuard
 }
 
 export type ResolveRunicRiskValue = {
@@ -156,8 +168,18 @@ export function advanceRunicMissionLoop(
   })
   const decisionDraft = createCovenantDecisionDraft(task)
   if (decisionDraft && missingEvidence.length === 1 && missingEvidence[0] === "decision") {
-    const reviewLens = decisionDraft.stage === "review" ? summarizeReviewLens(deriveReviewLens(snapshot)) : undefined
-    const sealAudit = decisionDraft.stage === "seal" ? summarizeSealAudit(deriveSealAudit(snapshot)) : undefined
+    const decisionGate = guardAutonomousDecision(snapshot, decisionDraft.stage)
+    if (!decisionGate.allowed) {
+      return ok({
+        status: "waiting-for-evidence",
+        missionId: target.missionId,
+        taskId: target.taskId,
+        missionStatus: graph.mission.status,
+        missingEvidence,
+        decisionGuard: decisionGate.guard,
+      })
+    }
+
     const recorded = runtime.addTaskEvidence({
       missionId: target.missionId,
       evidence: {
@@ -171,8 +193,8 @@ export function advanceRunicMissionLoop(
         summary: decisionDraft.summary,
         payload: {
           ...decisionDraft.payload,
-          ...(reviewLens ? { reviewLens } : {}),
-          ...(sealAudit ? { sealAudit } : {}),
+          ...(decisionGate.reviewLens ? { reviewLens: decisionGate.reviewLens } : {}),
+          ...(decisionGate.sealAudit ? { sealAudit: decisionGate.sealAudit } : {}),
         },
         createdAt: (options.now ?? (() => new Date()))().toISOString(),
       },
@@ -507,6 +529,68 @@ function getMissingEvidence(
   return missingRequiredEvidence(ledger, input)
 }
 
+function guardAutonomousDecision(
+  snapshot: RuntimeSnapshot,
+  stage: RunicDecisionGuardStage,
+): {
+  allowed: true
+  reviewLens?: Record<string, unknown>
+  sealAudit?: Record<string, unknown>
+} | {
+  allowed: false
+  guard: RunicDecisionGuard
+} {
+  if (stage === "review") {
+    const lens = deriveReviewLens(snapshot)
+    const reviewLens = summarizeReviewLens(lens)
+    const blockingChecks = lens.checklist.filter((check) => check.status === "blocked" && check.id !== "review-decision")
+    const criticalFindings = lens.findings.filter((finding) => finding.severity === "critical")
+
+    if (lens.status !== "ready" || blockingChecks.length > 0 || criticalFindings.length > 0) {
+      const findings = [
+        ...criticalFindings.map((finding) => finding.summary),
+        ...blockingChecks.map((check) => check.detail),
+      ]
+      return {
+        allowed: false,
+        guard: {
+          stage,
+          status: "blocked",
+          reason: lens.nextAction,
+          findings: uniqueStrings(findings.length > 0 ? findings : [lens.summary]),
+          reviewLens,
+        },
+      }
+    }
+
+    return { allowed: true, reviewLens }
+  }
+
+  const audit = deriveSealAudit(snapshot)
+  const sealAudit = summarizeSealAudit(audit)
+  const blockingChecks = audit.checks.filter((check) => check.status === "blocked" && check.id !== "seal-decision")
+  const criticalFindings = audit.findings.filter((finding) => finding.severity === "critical")
+
+  if (audit.status !== "ready" || blockingChecks.length > 0 || criticalFindings.length > 0) {
+    const findings = [
+      ...criticalFindings.map((finding) => finding.summary),
+      ...blockingChecks.map((check) => check.detail),
+    ]
+    return {
+      allowed: false,
+      guard: {
+        stage,
+        status: "blocked",
+        reason: audit.nextAction,
+        findings: uniqueStrings(findings.length > 0 ? findings : [audit.summary]),
+        sealAudit,
+      },
+    }
+  }
+
+  return { allowed: true, sealAudit }
+}
+
 function buildDecisionEvidenceId(
   options: AdvanceRunicMissionLoopOptions,
   input: { missionId: string; task: MissionTask; stage: "review" | "seal" },
@@ -553,4 +637,8 @@ function fingerprint(value: string): string {
   }
 
   return (hash >>> 0).toString(36)
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.filter((value) => value.trim().length > 0))]
 }

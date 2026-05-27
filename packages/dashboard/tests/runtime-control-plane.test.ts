@@ -128,6 +128,78 @@ describe("dashboard runtime control plane", () => {
     )
   })
 
+  test("surfaces decision guard holds from dashboard next action", async () => {
+    const forged = await applyDashboardRuntimeAction(emptySnapshot, {
+      type: "forge-directive",
+      prompt: "Hold blocked review from dashboard",
+    }, {
+      idFactory: ids,
+      now: fixedNow,
+    })
+    if (!forged.ok) throw new Error("forge failed")
+
+    const hydrated = createRuntime({
+      snapshot: forged.value.snapshot,
+      idFactory: ids,
+      now: fixedNow,
+    })
+    hydrated.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed dashboard and environment",
+        payload: { files: ["packages/dashboard/src/runtime-control-plane.ts", ".env"] },
+        createdAt: fixedNow().toISOString(),
+      },
+    })
+    hydrated.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Dashboard tests passed",
+        payload: { command: "bun test packages/dashboard/tests", exitCode: 0 },
+        createdAt: fixedNow().toISOString(),
+      },
+    })
+
+    const result = await applyDashboardRuntimeAction(hydrated.snapshot(), {
+      type: "run-next-action",
+    }, {
+      idFactory: ids,
+      now: fixedNow,
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        action: "run-next-action",
+        status: "waiting-for-evidence",
+        missionId: "mission_alpha",
+        taskId: "task_alpha_review",
+        decisionGuard: {
+          stage: "review",
+          status: "blocked",
+          findings: [".env is outside agent_atlas file scope."],
+        },
+      },
+    })
+    if (!result.ok) return
+
+    expect(result.value.snapshot.graphs.mission_alpha.tasks.task_alpha_review.status).toBe("running")
+    expect(Object.values(result.value.snapshot.ledgers.mission_alpha.evidence)).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task_alpha_review",
+          type: "decision",
+        }),
+      ]),
+    )
+  })
+
   test("runs the proof plan from dashboard control and advances persisted work", async () => {
     const forged = await applyDashboardRuntimeAction(emptySnapshot, {
       type: "forge-directive",

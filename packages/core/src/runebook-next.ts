@@ -3,6 +3,7 @@ import {
   resolveRunicFaultline,
   resolveRunicRisk,
   type RiskResolutionVerdict,
+  type RunicDecisionGuard,
   type RunicMissionLoopStatus,
 } from "./runic-loop.js"
 import { deriveLoopPulse, type LoopPulseActionId } from "./loop-pulse.js"
@@ -21,6 +22,7 @@ export type RunebookNextStatus =
   | "proof-failed"
   | "proof-idle"
   | "plan-refined"
+  | "decision-held"
   | "faultline-resolved"
   | "faultline-held"
   | "risk-resolved"
@@ -70,6 +72,7 @@ export type RunebookNextValue = {
   taskId?: string
   nextStatus?: RunicMissionLoopStatus
   missingEvidence?: EvidenceType[]
+  decisionGuard?: RunicDecisionGuard
   proofStatus?: ProofRunStatus
   commands?: ProofRunCommandResult[]
   riskResolution?: {
@@ -133,13 +136,14 @@ export async function runRunebookNext(
   if (!advanced.ok) return advanced
 
   return ok(buildValue(runtime, options, {
-    status: advanced.value.status === "idle" ? "idle" : "advanced",
+    status: selectAdvancedRunebookStatus(advanced.value.status, advanced.value.decisionGuard),
     actionId,
     card,
     missionId: advanced.value.missionId,
     taskId: advanced.value.taskId,
     nextStatus: advanced.value.status,
     missingEvidence: advanced.value.missingEvidence,
+    decisionGuard: advanced.value.decisionGuard,
   }))
 }
 
@@ -302,9 +306,20 @@ async function runProofNext(
     taskId: proofRun.taskId,
     nextStatus: advanced.value.status,
     missingEvidence: advanced.value.missingEvidence,
+    decisionGuard: advanced.value.decisionGuard,
     proofStatus: proofRun.status,
     commands: proofRun.commands,
   }))
+}
+
+function selectAdvancedRunebookStatus(
+  status: RunicMissionLoopStatus,
+  decisionGuard: RunicDecisionGuard | undefined,
+): RunebookNextStatus {
+  if (decisionGuard) return "decision-held"
+  if (status === "idle") return "idle"
+
+  return "advanced"
 }
 
 function resolveFaultlineNext(

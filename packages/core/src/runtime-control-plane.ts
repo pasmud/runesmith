@@ -13,6 +13,7 @@ import {
   resolveRunicFaultline,
   resolveRunicRisk,
   type RiskResolutionVerdict,
+  type RunicDecisionGuard,
   type RunicMissionLoopStatus,
 } from "./runic-loop.js"
 import type { AgentContract, EvidenceType } from "./types.js"
@@ -64,6 +65,7 @@ export type RuntimeControlActionValue = {
   status: "running" | "waiting-for-evidence" | "completed" | "idle" | "recovered"
   loopStatus?: RuneweaveStatus
   missingEvidence?: EvidenceType[]
+  decisionGuard?: RunicDecisionGuard
   proofStatus?: "idle" | "passed" | "failed"
   commands?: ProofRunCommandResult[]
   riskResolution?: {
@@ -226,6 +228,7 @@ function runRuntimeAutopilotCycle(
       nextTaskStatus: advanced.value.nextTaskStatus,
       status: mapRuntimeControlRunicStatus(advanced.value.status),
       missingEvidence: advanced.value.missingEvidence,
+      decisionGuard: advanced.value.decisionGuard,
       snapshot: runtime.snapshot(),
     },
   }
@@ -322,6 +325,7 @@ async function runRuntimeNextAction(
       status: mapRunebookNextStatus(next.value.status, next.value.nextStatus),
       proofStatus: next.value.proofStatus,
       missingEvidence: next.value.loopPulse.missingEvidence,
+      decisionGuard: next.value.decisionGuard,
       commands: next.value.commands,
       riskResolution: next.value.riskResolution,
       faultlineResolution: next.value.faultlineResolution,
@@ -371,6 +375,7 @@ async function runRuntimeOsLoop(
       loopStatus: loop.value.status,
       proofStatus: loop.value.proofStatus as RuntimeControlActionValue["proofStatus"],
       missingEvidence: loop.value.finalPulse.missingEvidence,
+      decisionGuard: [...loop.value.steps].reverse().find((step) => step.decisionGuard)?.decisionGuard,
       commands: loop.value.commands,
       snapshot: runtime.snapshot(),
     },
@@ -474,6 +479,7 @@ async function runRuntimeProofPlan(
 
   let status: RuntimeControlActionValue["status"] =
     proofRun.status === "idle" ? "idle" : proofRun.status === "failed" ? "waiting-for-evidence" : "running"
+  let decisionGuard: RunicDecisionGuard | undefined
   if (proofRun.status === "passed") {
     const advanced = advanceRunicMissionLoop(runtime, {
       contract: defaultRuntimeControlContract,
@@ -486,6 +492,7 @@ async function runRuntimeProofPlan(
     })
     if (!advanced.ok) return { ok: false, error: advanced.error }
     status = mapRuntimeControlRunicStatus(advanced.value.status)
+    decisionGuard = advanced.value.decisionGuard
   }
 
   const snapshot = runtime.snapshot()
@@ -500,6 +507,7 @@ async function runRuntimeProofPlan(
       status,
       proofStatus: proofRun.status,
       missingEvidence: pulse.missingEvidence,
+      decisionGuard,
       commands: proofRun.commands,
       snapshot,
     },
@@ -514,7 +522,9 @@ function mapRunebookNextStatus(
   status: RunebookNextStatus,
   nextStatus: RunicMissionLoopStatus | undefined,
 ): RuntimeControlActionValue["status"] {
-  if (status === "proof-failed" || status === "risk-held" || status === "faultline-held") return "waiting-for-evidence"
+  if (status === "proof-failed" || status === "risk-held" || status === "faultline-held" || status === "decision-held") {
+    return "waiting-for-evidence"
+  }
   if (status === "proof-idle" || status === "idle") return "idle"
   if (nextStatus) return mapRuntimeControlRunicStatus(nextStatus)
 
