@@ -1,5 +1,5 @@
 import { getRequiredEvidenceForTask, validateAgentForTask } from "./contracts"
-import { addEvidence, assertRequiredEvidence, createEvidenceLedger, type EvidenceLedger } from "./evidence-ledger"
+import { addEvidence, assertRequiredEvidence, createEvidenceLedger, sameEvidence, type EvidenceLedger } from "./evidence-ledger"
 import { acquireLease, createLeaseBook, type LeaseBook } from "./lease-scheduler"
 import { createMissionGraph, taskDependenciesComplete, transitionTask, type MissionTaskPlanItem } from "./mission-graph"
 import { recoverStaleTasks } from "./recovery"
@@ -216,6 +216,11 @@ export class RunesmithRuntime {
     }
 
     const ledger = this.ledgers.get(input.missionId) ?? createEvidenceLedger()
+    const existing = ledger.evidence[input.evidence.id]
+    if (existing && sameEvidence(existing, input.evidence)) {
+      return ok(ledger)
+    }
+
     const next = addEvidence(ledger, input.evidence)
     if (!next.ok) return next
 

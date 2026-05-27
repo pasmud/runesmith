@@ -157,6 +157,132 @@ describe("runesmith runtime", () => {
     })
   })
 
+  test("replays identical evidence ids without duplicating proof events", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    const mission = runtime.startMission({
+      goal: "Replay tool hook evidence",
+      requiredCapabilities: ["typescript"],
+    })
+    if (!mission.ok) throw new Error("mission start failed")
+    const evidence = {
+      id: "evidence_tool_call",
+      taskId: "task_alpha",
+      type: "file-change" as const,
+      summary: "edit changed packages/core/src/runtime.ts",
+      payload: { filePath: "packages/core/src/runtime.ts" },
+      createdAt: "2026-05-27T00:00:30.000Z",
+    }
+
+    const first = runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence,
+    })
+    const eventCountAfterFirst = runtime.snapshot().graphs.mission_alpha.events.length
+    const replay = runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence,
+    })
+    const snapshot = runtime.snapshot()
+
+    expect(first.ok).toBe(true)
+    expect(replay.ok).toBe(true)
+    expect(Object.keys(snapshot.ledgers.mission_alpha.evidence)).toEqual(["evidence_tool_call"])
+    expect(snapshot.graphs.mission_alpha.events).toHaveLength(eventCountAfterFirst)
+  })
+
+  test("treats reordered evidence payload keys as the same replay", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    const mission = runtime.startMission({
+      goal: "Replay reordered hook evidence",
+      requiredCapabilities: ["typescript"],
+    })
+    if (!mission.ok) throw new Error("mission start failed")
+    const first = runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_tool_call",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "bun test passed",
+        payload: {
+          command: "bun test",
+          exitCode: 0,
+          meta: { cwd: "E:/dev/Oh-my/runesmith", source: "opencode" },
+        },
+        createdAt: "2026-05-27T00:00:30.000Z",
+      },
+    })
+    const eventCountAfterFirst = runtime.snapshot().graphs.mission_alpha.events.length
+    const replay = runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_tool_call",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "bun test passed",
+        payload: {
+          meta: { source: "opencode", cwd: "E:/dev/Oh-my/runesmith" },
+          exitCode: 0,
+          command: "bun test",
+        },
+        createdAt: "2026-05-27T00:00:30.000Z",
+      },
+    })
+    const snapshot = runtime.snapshot()
+
+    expect(first.ok).toBe(true)
+    expect(replay.ok).toBe(true)
+    expect(Object.keys(snapshot.ledgers.mission_alpha.evidence)).toEqual(["evidence_tool_call"])
+    expect(snapshot.graphs.mission_alpha.events).toHaveLength(eventCountAfterFirst)
+  })
+
+  test("rejects conflicting evidence with an existing id", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    const mission = runtime.startMission({
+      goal: "Protect proof history",
+      requiredCapabilities: ["typescript"],
+    })
+    if (!mission.ok) throw new Error("mission start failed")
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_tool_call",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "edit changed packages/core/src/runtime.ts",
+        payload: { filePath: "packages/core/src/runtime.ts" },
+        createdAt: "2026-05-27T00:00:30.000Z",
+      },
+    })
+
+    const conflicting = runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_tool_call",
+        taskId: "task_alpha",
+        type: "diagnostic",
+        summary: "same id but different evidence",
+        payload: { command: "bun test", exitCode: 1 },
+        createdAt: "2026-05-27T00:00:45.000Z",
+      },
+    })
+
+    expect(conflicting).toEqual({
+      ok: false,
+      error: {
+        code: "EVIDENCE_CONFLICT",
+        message: "Evidence id already exists with different content",
+        details: {
+          evidenceId: "evidence_tool_call",
+          taskId: "task_alpha",
+        },
+      },
+    })
+  })
+
   test("records mission-level OS events for orchestration telemetry", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const mission = runtime.startMission({

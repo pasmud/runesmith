@@ -15,12 +15,56 @@ export function createEvidenceLedger(): EvidenceLedger {
 }
 
 export function addEvidence(ledger: EvidenceLedger, evidence: Evidence) {
+  const existing = ledger.evidence[evidence.id]
+  if (existing) {
+    if (sameEvidence(existing, evidence)) return ok<EvidenceLedger>(ledger)
+
+    return err(
+      runtimeError("EVIDENCE_CONFLICT", "Evidence id already exists with different content", {
+        evidenceId: evidence.id,
+        taskId: evidence.taskId,
+      }),
+    )
+  }
+
   return ok<EvidenceLedger>({
     evidence: {
       ...ledger.evidence,
       [evidence.id]: evidence,
     },
   })
+}
+
+export function sameEvidence(left: Evidence, right: Evidence): boolean {
+  return left.id === right.id
+    && left.taskId === right.taskId
+    && left.type === right.type
+    && left.summary === right.summary
+    && left.createdAt === right.createdAt
+    && samePayload(left.payload, right.payload)
+}
+
+function samePayload(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right)) return false
+    if (left.length !== right.length) return false
+
+    return left.every((value, index) => samePayload(value, right[index]))
+  }
+  if (!isPayloadRecord(left) || !isPayloadRecord(right)) return false
+
+  const leftKeys = Object.keys(left).sort()
+  const rightKeys = Object.keys(right).sort()
+  if (leftKeys.length !== rightKeys.length) return false
+
+  return leftKeys.every((key, index) => {
+    return key === rightKeys[index] && samePayload(left[key], right[key])
+  })
+}
+
+function isPayloadRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
 export function evidenceForTask(ledger: EvidenceLedger, taskId: string): Evidence[] {
