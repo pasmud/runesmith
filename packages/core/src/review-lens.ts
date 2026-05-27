@@ -1,5 +1,6 @@
 import { missingRequiredEvidence } from "./evidence-ledger"
 import { getRequiredEvidenceForTask } from "./contracts"
+import { deriveScopeSentinel, type ScopeSentinel } from "./scope-sentinel"
 import type { RuntimeSnapshot } from "./runtime"
 import type { Evidence, EvidenceType, MissionGraph, MissionTask } from "./types"
 
@@ -62,19 +63,21 @@ export function deriveReviewLens(snapshot: RuntimeSnapshot): ReviewLens {
   const reviewEvidence = reviewTask ? evidence.filter((entry) => entry.taskId === reviewTask.id) : []
   const contract = implementationTask.assignedAgentId ? snapshot.contracts[implementationTask.assignedAgentId] : undefined
   const requiredEvidence = contract ? getRequiredEvidenceForTask(implementationTask, contract) : implementationTask.requiredEvidence ?? []
+  const scopeSentinel = deriveScopeSentinel(snapshot)
   const missingEvidence = missingRequiredEvidence({ evidence: Object.fromEntries(evidence.map((entry) => [entry.id, entry])) }, {
     taskId: implementationTask.id,
     requiredEvidence,
   })
   const unresolvedRisks = collectUnresolvedRiskSummaries(taskEvidence)
   const reviewDecision = reviewEvidence.find((entry) => entry.type === "decision")
-  const status = selectReviewStatus(graph, missingEvidence, unresolvedRisks, reviewDecision)
-  const findings = buildFindings(implementationTask, missingEvidence, unresolvedRisks, taskEvidence)
+  const status = selectReviewStatus(graph, missingEvidence, unresolvedRisks, reviewDecision, scopeSentinel)
+  const findings = buildFindings(implementationTask, missingEvidence, unresolvedRisks, taskEvidence, scopeSentinel)
   const checklist = buildChecklist({
     implementationTask,
     missingEvidence,
     unresolvedRisks,
     reviewDecision,
+    scopeSentinel,
     status,
     taskEvidence,
   })
@@ -158,8 +161,10 @@ function selectReviewStatus(
   missingEvidence: EvidenceType[],
   unresolvedRisks: string[],
   reviewDecision: Evidence | undefined,
+  scopeSentinel: ScopeSentinel,
 ): ReviewLensStatus {
   if (graph.mission.status === "complete") return "sealed"
+  if (scopeSentinel.status === "blocked") return "blocked"
   if (reviewDecision) return "approved"
   if (unresolvedRisks.length > 0) return "blocked"
   if (missingEvidence.length > 0) return "waiting-for-proof"
@@ -172,21 +177,32 @@ function buildChecklist(input: {
   missingEvidence: EvidenceType[]
   unresolvedRisks: string[]
   reviewDecision: Evidence | undefined
+  scopeSentinel: ScopeSentinel
   status: ReviewLensStatus
   taskEvidence: Evidence[]
 }): ReviewLensCheck[] {
   const hasFileChange = input.taskEvidence.some((entry) => entry.type === "file-change")
   const proofBlocked = input.missingEvidence.includes("test-result")
   const risksBlocked = input.unresolvedRisks.length > 0
+  const scopeFinding = input.scopeSentinel.findings.find((finding) => finding.severity === "critical")
+    ?? input.scopeSentinel.findings[0]
+  const diffScopeStatus: ReviewLensCheckStatus = input.scopeSentinel.status === "blocked"
+    ? "blocked"
+    : input.scopeSentinel.status === "attention" && hasFileChange
+      ? "attention"
+      : hasFileChange
+        ? "passed"
+        : "blocked"
 
   return [
     {
       id: "diff-scope",
       label: "Diff scope",
-      status: hasFileChange ? "passed" : "blocked",
-      detail: hasFileChange
-        ? `${input.implementationTask.id} has implementation evidence.`
-        : `${input.implementationTask.id} has no file-change evidence yet.`,
+      status: diffScopeStatus,
+      detail: scopeFinding?.summary
+        ?? (hasFileChange
+          ? input.scopeSentinel.summary
+          : `${input.implementationTask.id} has no file-change evidence yet.`),
     },
     {
       id: "proof-freshness",
@@ -222,6 +238,7 @@ function buildFindings(
   missingEvidence: EvidenceType[],
   unresolvedRisks: string[],
   taskEvidence: Evidence[],
+  scopeSentinel: ScopeSentinel,
 ): ReviewLensFinding[] {
   const findings: ReviewLensFinding[] = []
 
@@ -236,6 +253,14 @@ function buildFindings(
     findings.push({
       severity: "critical",
       summary: `Unresolved risk for ${task.id}: ${risk}.`,
+    })
+  }
+
+  for (const finding of scopeSentinel.findings) {
+    if (finding.severity === "info") continue
+    findings.push({
+      severity: finding.severity,
+      summary: finding.summary,
     })
   }
 

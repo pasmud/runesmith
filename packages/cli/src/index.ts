@@ -15,6 +15,7 @@ import {
   deriveReviewLens,
   deriveRunicProtocolDeck,
   deriveRunebook,
+  deriveScopeSentinel,
   loadRuntimeCapsule,
   resolveRunicRisk,
   runRuneweave,
@@ -33,6 +34,7 @@ import {
   type ReviewLens,
   type RunicProtocolDeck,
   type Runebook,
+  type ScopeSentinel,
   type RiskResolutionVerdict,
   type RuntimeSnapshot,
 } from "@runesmith/core"
@@ -244,6 +246,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     const proofOptions = await readProofPlanOptions(host)
     const pulse = deriveLoopPulse(snapshot.value)
     const missionMap = deriveMissionMap(snapshot.value)
+    const scopeSentinel = deriveScopeSentinel(snapshot.value)
     const reviewLens = deriveReviewLens(snapshot.value)
     const memory = deriveMissionMemory(snapshot.value)
     const proofPlan = deriveProofPlan(snapshot.value, proofOptions)
@@ -269,6 +272,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
       "Mission map:",
       `Summary: ${missionMap.summary}`,
       ...formatMissionMapTaskLines(missionMap),
+      "Scope sentinel:",
+      `Summary: ${scopeSentinel.summary}`,
+      ...formatScopeSentinelChangeLines(scopeSentinel),
+      `Findings: ${formatScopeSentinelFindings(scopeSentinel)}`,
       "Review lens:",
       `Summary: ${reviewLens.summary}`,
       ...formatReviewLensBlockedLines(reviewLens),
@@ -412,6 +419,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
   const proofOptions = await readProofPlanOptions(host)
   const pulse = deriveLoopPulse(snapshot)
   const missionMap = deriveMissionMap(snapshot)
+  const scopeSentinel = deriveScopeSentinel(snapshot)
   const reviewLens = deriveReviewLens(snapshot)
   const memory = deriveMissionMemory(snapshot)
   const proofPlan = deriveProofPlan(snapshot, proofOptions)
@@ -431,6 +439,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     `handoff: ${memory.handoff}`,
     `proof plan: ${formatProofPlanCommands(proofPlan)}`,
     `mission map: ${formatMissionMapSummary(missionMap)}`,
+    `scope sentinel: ${formatScopeSentinelSummary(scopeSentinel)}`,
     `review lens: ${formatReviewLensSummary(reviewLens)}`,
     `mission: ${mission ? `${mission.id} ${mission.status} ${mission.goal}` : "none"}`,
     `task: ${task ? `${task.id} ${task.status} ${task.title}` : "none"}`,
@@ -1115,6 +1124,21 @@ function formatMissionMapTaskLines(map: MissionMap): string[] {
   return map.tasks.map((task) => {
     return `- ${task.status} ${task.key} ${task.id}: ${task.title}; ready: ${task.ready ? "yes" : "no"}; blocked by: ${formatList(task.blockedBy)}; required evidence: ${formatList(task.requiredEvidence)}`
   })
+}
+
+function formatScopeSentinelSummary(sentinel: ScopeSentinel): string {
+  const label = sentinel.findings.length === 1 ? "finding" : "findings"
+  return `${sentinel.status}; ${sentinel.findings.length} ${label}`
+}
+
+function formatScopeSentinelChangeLines(sentinel: ScopeSentinel): string[] {
+  if (sentinel.changes.length === 0) return ["- none"]
+
+  return sentinel.changes.map((change) => `- ${change.path}: ${change.status}`)
+}
+
+function formatScopeSentinelFindings(sentinel: ScopeSentinel): string {
+  return sentinel.findings.length > 0 ? sentinel.findings.map((finding) => finding.summary).join("; ") : "none"
 }
 
 function formatReviewLensSummary(lens: ReviewLens): string {

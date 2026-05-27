@@ -683,6 +683,7 @@ function RightRail({ dispatch, model }: { dispatch: DashboardDispatch; model: Da
     <aside className="right-rail">
       <LoopPulsePanel model={model} />
       <MissionMapPanel model={model} />
+      <ScopeSentinelPanel model={model} />
       <ReviewLensPanel model={model} />
       <ProtocolDeckPanel model={model} />
       <MissionMemoryPanel model={model} />
@@ -834,6 +835,60 @@ function ProtocolDeckPanel({ model }: { model: DashboardModel }) {
         </div>
       ) : null}
       {forbiddenMove ? <p className="protocol-forbidden">{forbiddenMove}</p> : null}
+    </section>
+  )
+}
+
+function ScopeSentinelPanel({ model }: { model: DashboardModel }) {
+  const sentinel = model.scopeSentinel
+  const drift = sentinel.changes.filter((change) => change.status !== "in-scope")
+  const changes = drift.length > 0 ? drift.slice(0, 3) : sentinel.changes.slice(0, 3)
+  const tone: MissionStatus =
+    sentinel.status === "blocked"
+      ? "blocked"
+      : sentinel.status === "clear"
+        ? "verified"
+        : "stale"
+
+  return (
+    <section className="scope-sentinel-panel" aria-label="Runesmith scope sentinel">
+      <div className="inspector-header">
+        <p className="eyebrow">Scope Sentinel</p>
+        <Badge tone={tone}>{sentinel.status}</Badge>
+      </div>
+      <div className="scope-sentinel-head">
+        <span className={`tile-icon tile-icon-${tone}`}><Lock aria-hidden="true" /></span>
+        <div>
+          <h2>{sentinel.agentId ?? "No scoped agent"}</h2>
+          <p>{sentinel.summary}</p>
+        </div>
+      </div>
+      <div className="scope-sentinel-facts">
+        <span>{sentinel.findings.length} findings</span>
+        <span>{sentinel.allowedScopes.length} scopes</span>
+      </div>
+      <div className="scope-sentinel-changes" aria-label="Scope checked changes">
+        {changes.length > 0 ? changes.map((change) => (
+          <span data-status={change.status} key={`${change.evidenceId}-${change.path}`}>
+            <strong>{change.status}</strong>
+            <small>{change.path}</small>
+          </span>
+        )) : (
+          <span data-status="unknown">
+            <strong>Awaiting file evidence</strong>
+            <small>No scoped changes captured yet.</small>
+          </span>
+        )}
+      </div>
+      {sentinel.findings.length > 0 ? (
+        <div className="scope-sentinel-findings" aria-label="Scope findings">
+          {sentinel.findings.slice(0, 2).map((finding) => (
+            <p data-severity={finding.severity} key={`${finding.severity}-${finding.summary}`}>
+              {finding.summary}
+            </p>
+          ))}
+        </div>
+      ) : null}
     </section>
   )
 }

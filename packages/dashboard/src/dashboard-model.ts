@@ -7,6 +7,7 @@ import {
   deriveReviewLens,
   deriveRunicProtocolDeck,
   deriveRunebook,
+  deriveScopeSentinel,
   getNextCovenantStage,
   type AgentContract,
   type CovenantStage,
@@ -21,6 +22,7 @@ import {
   type ReviewLens,
   type RunicProtocolDeck,
   type Runebook,
+  type ScopeSentinel,
   type RiskResolutionVerdict,
   type RuntimeCapsule,
   type RuntimeSnapshot,
@@ -108,6 +110,7 @@ export type DashboardModel = {
   protocolDeck: RunicProtocolDeck
   reviewLens: ReviewLens
   runebook: Runebook
+  scopeSentinel: ScopeSentinel
   metrics: Record<MissionStatus, number>
   mode: OsMode
   notice: string
@@ -680,6 +683,9 @@ function deriveDashboardModel(input: {
   const reviewLens = input.runtimeSnapshot
     ? deriveReviewLens(input.runtimeSnapshot)
     : buildSeededReviewLens(input.tasks)
+  const scopeSentinel = input.runtimeSnapshot
+    ? deriveScopeSentinel(input.runtimeSnapshot)
+    : buildSeededScopeSentinel(input.tasks)
   const runebook = input.runtimeSnapshot
     ? deriveRunebook(input.runtimeSnapshot)
     : buildSeededRunebook(input.tasks)
@@ -698,6 +704,7 @@ function deriveDashboardModel(input: {
     protocolDeck,
     reviewLens,
     runebook,
+    scopeSentinel,
     metrics,
     operationalScore: buildOperationalScore(input.tasks, metrics, input.policies),
     selectedAgent,
@@ -721,6 +728,14 @@ function buildSeededReviewLens(tasks: TaskCard[]): ReviewLens {
   }
 
   return deriveReviewLens(buildSeededRuntimeSnapshot(tasks))
+}
+
+function buildSeededScopeSentinel(tasks: TaskCard[]): ScopeSentinel {
+  if (tasks.length === 0) {
+    return deriveScopeSentinel(emptyRuntimeSnapshot())
+  }
+
+  return deriveScopeSentinel(buildSeededRuntimeSnapshot(tasks))
 }
 
 function buildSeededLoopPulse(tasks: TaskCard[], activeStage: CovenantStage): LoopPulse {

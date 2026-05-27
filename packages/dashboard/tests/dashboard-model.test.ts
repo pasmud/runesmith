@@ -64,7 +64,7 @@ const capsule: RuntimeCapsule = {
             taskId: "task_live",
             type: "file-change",
             summary: "Added capsule adapter",
-            payload: {},
+            payload: { filePath: "packages/dashboard/src/dashboard-model.ts" },
             createdAt: "2026-05-27T00:04:00.000Z",
           },
           evidence_test: {
@@ -339,6 +339,19 @@ describe("dashboard model", () => {
       missionId: "mission_live",
       taskCount: 2,
       nextTaskId: "task_live",
+    })
+    expect(model.scopeSentinel).toMatchObject({
+      status: "clear",
+      missionId: "mission_live",
+      taskId: "task_live",
+      agentId: "agent_atlas",
+      changes: [
+        {
+          path: "packages/dashboard/src/dashboard-model.ts",
+          status: "in-scope",
+        },
+      ],
+      findings: [],
     })
     expect(model.reviewLens).toMatchObject({
       status: "waiting-for-proof",

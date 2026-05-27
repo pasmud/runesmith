@@ -176,6 +176,12 @@ describe("opencode adapter", () => {
           implementationTaskId: "task_alpha",
           reviewTaskId: "task_alpha_review",
         },
+        scopeSentinel: {
+          status: "attention",
+          missionId: "mission_alpha",
+          taskId: "task_alpha",
+          agentId: "agent_atlas",
+        },
         runebook: {
           activeCard: {
             id: "forge-trace",
@@ -306,6 +312,7 @@ describe("opencode adapter", () => {
     expect(systemOutput.system.join("\n")).toContain("Runesmith Autopilot")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Mission Memory")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Mission Map")
+    expect(systemOutput.system.join("\n")).toContain("Runesmith Scope Sentinel")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Review Lens")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Proof Plan")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Runebook")
@@ -323,6 +330,7 @@ describe("opencode adapter", () => {
     expect(compactOutput.context.join("\n")).toContain("Runesmith Control Brief")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Mission Memory")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Mission Map")
+    expect(compactOutput.context.join("\n")).toContain("Runesmith Scope Sentinel")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Review Lens")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Proof Plan")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Runebook")

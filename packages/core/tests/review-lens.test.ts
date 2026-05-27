@@ -137,6 +137,53 @@ describe("review lens", () => {
     expect(prompt).toContain("proof-freshness: passed")
   })
 
+  test("blocks review when implementation evidence leaves the contract file scope", () => {
+    const runtime = createPlannedRuntime()
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runtime and env",
+        payload: { files: ["packages/core/src/runtime.ts", ".env"] },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Core tests passed",
+        payload: { command: "bun test packages/core/tests/runtime.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+
+    const lens = deriveReviewLens(runtime.snapshot())
+
+    expect(lens.status).toBe("blocked")
+    expect(lens.findings).toEqual(
+      expect.arrayContaining([
+        {
+          severity: "critical",
+          summary: ".env is outside agent_atlas file scope.",
+        },
+      ]),
+    )
+    expect(lens.checklist).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "diff-scope",
+          status: "blocked",
+          detail: ".env is outside agent_atlas file scope.",
+        }),
+      ]),
+    )
+  })
+
   test("embeds the Review Lens in autonomous review decision evidence", () => {
     const runtime = createPlannedRuntime()
     runtime.addTaskEvidence({

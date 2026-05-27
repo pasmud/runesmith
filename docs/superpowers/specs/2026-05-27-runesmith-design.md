@@ -39,6 +39,7 @@ The first production slice includes:
 - A Runesmith Protocol Deck that turns Loop Pulse state into engine-selected protocols with objective, procedure, verification, forbidden moves, and tool hints, giving Runesmith its own install-once workflow layer instead of relying on external skill names.
 - A Runesmith Proof Plan that turns missing proof, stale proof, and failed diagnostics into exact verification commands across OpenCode, CLI, and dashboard surfaces, including lint when a repository exposes it.
 - A Runesmith Proof Runner that executes the active Proof Plan, records passing proof or failing diagnostics, and advances the shared mission loop when proof passes.
+- A Runesmith Scope Sentinel that checks captured file-change evidence against the assigned agent contract's `fileScope`, surfaces drift in OpenCode, CLI, and dashboard views, and feeds critical scope findings into Review Lens before Seal.
 - A Runesmith Next router that executes the active Runebook card from one OpenCode tool, one CLI command, and one dashboard action, selecting proof, repair, recovery, supplied risk decision, or loop advancement from runtime state.
 - A Runeweave OS loop that repeatedly runs Runesmith Next over engine-owned cards until work is sealed or the runtime reaches a concrete stop condition: idle, needs implementation evidence, failed proof, risk hold, blocker, or safety step limit.
 - A default Covenant task plan that expands coding goals into Forge, Review, and Seal tasks with dependency-aware claiming and task-level evidence requirements.
@@ -95,7 +96,7 @@ Responsibilities:
 - `runesmith init`: create project config.
 - `runesmith doctor`: validate config, runtime capsule, host OpenCode CLI availability, OpenCode plugin wiring, and an internal Forge -> Review -> Seal loop smoke test; exit nonzero with an actionable repair hint when setup is incomplete.
 - `runesmith install --mode npm`: write only the default git-installable OpenCode package entry for existing projects, while keeping `--package` available for pinned tags, forks, or future registry releases.
-- `runesmith status`: print the current OS state, OpenCode CLI readiness, Loop Pulse next action, execution plan, Mission Map summary, Review Lens status, active mission and task, missing proof, diagnostics, active runes, active Runebook card, and Proof Plan commands without requiring users to learn the lower-level mission commands.
+- `runesmith status`: print the current OS state, OpenCode CLI readiness, Loop Pulse next action, execution plan, Mission Map summary, Scope Sentinel status, Review Lens status, active mission and task, missing proof, diagnostics, active runes, active Runebook card, and Proof Plan commands without requiring users to learn the lower-level mission commands.
 - `runesmith run`: run Runeweave over the runtime capsule until Runesmith seals the mission or stops at implementation work, failed proof, unresolved risk, blocker, idle state, or a safety step limit.
 - `runesmith next`: execute the active Runebook card from the runtime capsule, proving, repairing, recovering, applying a supplied risk decision, or advancing the shared mission loop without requiring users to choose a lower-level command.
 - `runesmith prove`: execute the active Proof Plan from the runtime capsule, record passing commands as `test-result` evidence, record the first failing command as `diagnostic` evidence, and advance the shared mission loop after passing proof.
@@ -104,7 +105,7 @@ Responsibilities:
 - `runesmith risk resolve --summary <summary>`: record a decision for the active unresolved risk and advance the shared mission loop without requiring mission or task ids.
 - `runesmith mission evidence <mission-id> <task-id>` and `runesmith mission tick`: record task proof and advance the persisted capsule through the same evidence gate used by OpenCode, including active repair diagnostics and safe autonomous Review and Seal decisions.
 - `runesmith mission list`: print active mission summaries from snapshots.
-- `runesmith mission inspect <id>`: print graph, Loop Pulse, Mission Map, Review Lens, Runebook card, Proof Plan, missing proof, active diagnostics, active runes, evidence, leases, and recovery state.
+- `runesmith mission inspect <id>`: print graph, Loop Pulse, Mission Map, Scope Sentinel, Review Lens, Runebook card, Proof Plan, missing proof, active diagnostics, active runes, evidence, leases, and recovery state.
 
 ### `packages/dashboard`
 
@@ -252,7 +253,9 @@ The Control Brief also includes Runesmith-native runes. The Runebook converts th
 
 The Protocol Deck sits beside the Runebook as Runesmith's own workflow-method layer. It derives one active protocol from Loop Pulse and Proof Plan, such as `Forge Trace Protocol`, `Proofwright Proof Protocol`, `Faultwright Repair Protocol`, `Recovery Loom Protocol`, or `Mirrorglass Risk Protocol`. Each protocol carries objective, procedure, verification, forbidden moves, and tool hints. This is where Runesmith internalizes the useful concept of explicit agent methods while keeping the user experience direct: users install Runesmith once, and the engine selects the protocol automatically.
 
-Review Lens sits beside Mission Map as the pre-seal review surface. It derives a checklist from the runtime capsule: implementation evidence, proof freshness, unresolved risk state, and review decision state. If proof is missing or risk is unresolved, it produces findings and holds review as waiting or blocked. When proof and risk gates are clear, it marks the mission ready for Mirror Review, and autonomous review decisions include a compact Review Lens summary in their decision evidence.
+Scope Sentinel sits beside Mission Map as the contract drift surface. It reads file-change evidence for the active implementation task, extracts changed paths, and checks them against the assigned contract's `fileScope`. In-scope changes are clear. Missing contract scope or uninspectable paths are attention states. Out-of-scope changes become critical findings and block Review Lens until they are reverted, justified through a later decision, or the contract scope is intentionally updated.
+
+Review Lens sits beside Mission Map as the pre-seal review surface. It derives a checklist from the runtime capsule: implementation evidence, scope health, proof freshness, unresolved risk state, and review decision state. If proof is missing, risk is unresolved, or Scope Sentinel reports critical drift, it produces findings and holds review as waiting or blocked. When proof, risk, and scope gates are clear, it marks the mission ready for Mirror Review, and autonomous review decisions include a compact Review Lens summary in their decision evidence.
 
 The Loop Pulse sits beside the Control Brief. It converts the live runtime state into one next action such as `Wait for goal`, `Continue forge`, `Capture proof`, `Repair diagnostic`, `Resolve risk`, `Recover stale work`, `Review change`, or `Seal mission`. It also derives an execution plan from that action, with active, queued, and blocked steps, required evidence, and the runes that should guide each step. OpenCode prompt injection, compaction context, CLI status, and the dashboard should all show this same pulse so the OS has one source of truth for what the agentic loop should do next.
 
@@ -303,7 +306,7 @@ Before an idle or explicit autopilot tick checks proof, it runs the recovery pol
 
 The compaction hook appends a mission capsule summary containing active missions, tasks, leases, and evidence counts. This gives continuation sessions enough orchestration state to recover or keep working before starting a new loop.
 
-The same compaction path appends the live Runesmith Control Brief, Loop Pulse, Runebook, Mission Memory, and Proof Plan, so resumed sessions keep the next stage, procedure card, proof obligations, exact verification commands, and handoff without requiring the user to install or invoke an external workflow.
+The same compaction path appends the live Runesmith Control Brief, Loop Pulse, Mission Map, Scope Sentinel, Review Lens, Runebook, Mission Memory, and Proof Plan, so resumed sessions keep the next stage, procedure card, scope guard, proof obligations, exact verification commands, and handoff without requiring the user to install or invoke an external workflow.
 
 ### Recovery Policies
 
@@ -326,7 +329,7 @@ The first adapter exposes these tools:
 - `runesmith_autopilot_tick`: advance the active task through the evidence gate, surface repair diagnostics when verification failed, and complete it when the contract is satisfied.
 - `runesmith_proof_run`: execute the active Proof Plan inside OpenCode, record passing commands as `test-result` evidence, record failing commands as `diagnostic` evidence, and advance the shared mission loop when proof passes.
 - `runesmith_risk_resolve`: record accepted or cleared decision evidence for the active unresolved risk and advance the shared mission loop.
-- `runesmith_covenant_status`: report the installed autonomous workflow plus the live Control Brief, Loop Pulse, Runebook card, Proof Plan, and active runes from runtime state.
+- `runesmith_covenant_status`: report the installed autonomous workflow plus the live Control Brief, Loop Pulse, Mission Map, Scope Sentinel, Review Lens, Runebook card, Proof Plan, and active runes from runtime state.
 - `runesmith_mission_start`: create a mission from a user goal.
 - `runesmith_mission_status`: summarize graph state.
 - `runesmith_task_claim`: claim a task with an agent contract.
@@ -339,7 +342,7 @@ The adapter must not complete tasks directly. It delegates all state transitions
 The adapter also exposes documented OpenCode hooks:
 
 - `experimental.chat.system.transform`: injects the Runic Covenant and Runesmith Autopilot bootstrap.
-- `experimental.session.compacting`: appends the current mission capsule summary, live Control Brief, Loop Pulse, Runebook, Protocol Deck, Mission Memory, and Proof Plan to compaction context.
+- `experimental.session.compacting`: appends the current mission capsule summary, live Control Brief, Loop Pulse, Mission Map, Scope Sentinel, Review Lens, Runebook, Protocol Deck, Mission Memory, and Proof Plan to compaction context.
 - `tool.execute.before`: starts or resumes orchestration before mutating/shell tools run when no active task exists.
 - `tool.execute.after`: records useful command, test, and file-change evidence against the active Runesmith task, then runs the evidence-gated advance loop.
 - `event`: runs Runeweave on `session.idle` events: prepare the first mission from chat context when no active mission exists, recover stale work first, run eligible Proof Plan commands, hold failed proof until a repair edit appears, advance through Review and Seal, and record the OS stop reason.
@@ -365,7 +368,7 @@ Runtime-backed controls:
 - Run Proof executes the active Proof Plan on the server side, persists `test-result` or `diagnostic` evidence, and advances the mission loop when the run passes.
 - Resolve Risk records accepted decision evidence for the active `Resolve risk` Loop Pulse state and persists the advanced capsule.
 - Guarded Autopilot runs an evidence-gated cycle over the persisted mission. It recovers stale work first, holds if proof is missing, holds unresolved risk until a later decision exists, completes through the runtime gate once required evidence exists, synthesizes Review and Seal decisions, and claims the next dependency-ready task.
-- The right rail shows the Loop Pulse with health, priority, next action, execution plan, Mission Map, Review Lens, missing evidence, active runes, active Runebook card, Mission Memory, and Proof Plan commands from the same runtime capsule used by OpenCode.
+- The right rail shows the Loop Pulse with health, priority, next action, execution plan, Mission Map, Scope Sentinel, Review Lens, missing evidence, active runes, active Runebook card, Mission Memory, and Proof Plan commands from the same runtime capsule used by OpenCode.
 
 Visual rules:
 
