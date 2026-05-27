@@ -193,6 +193,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
       `Next reason: ${pulse.nextAction.reason}`,
       `Required evidence: ${formatList(pulse.requiredEvidence)}`,
       `Missing evidence: ${formatList(pulse.missingEvidence)}`,
+      ...formatPulseDiagnostics(pulse, "Diagnostics"),
       `Active runes: ${formatList(pulse.runes.map((rune) => rune.name))}`,
       "Tasks:",
       ...taskLines,
@@ -535,6 +536,7 @@ async function recordEvidenceFromCli(args: string[], host: CliHost): Promise<Cli
     `evidence: ${evidenceId}`,
     `type: ${input.value.type}`,
     `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
+    ...formatPulseDiagnostics(pulse),
     `runtime: ${defaultRuntimeCapsulePath}`,
     "",
   ].join("\n"))
@@ -573,6 +575,7 @@ async function tickMissionFromCli(host: CliHost): Promise<CliResult> {
     `task: ${advanced.value.taskId ?? "none"}`,
     `mission status: ${advanced.value.missionStatus ?? "none"}`,
     `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
+    ...formatPulseDiagnostics(pulse),
     `runtime: ${defaultRuntimeCapsulePath}`,
     "",
   ].join("\n"))
@@ -690,6 +693,10 @@ function formatMissionLeases(snapshot: RuntimeSnapshot, missionId: string): stri
 
 function formatList(values: string[]): string {
   return values.length > 0 ? values.join(", ") : "none"
+}
+
+function formatPulseDiagnostics(pulse: ReturnType<typeof deriveLoopPulse>, label = "diagnostics"): string[] {
+  return pulse.diagnostics.length > 0 ? [`${label}: ${formatList(pulse.diagnostics)}`] : []
 }
 
 function compareEvidence(left: Evidence, right: Evidence): number {

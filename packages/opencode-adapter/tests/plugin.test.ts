@@ -477,6 +477,32 @@ describe("opencode adapter", () => {
       ]),
     )
     expect(evidence.some((item) => item.type === "test-result")).toBe(false)
+
+    const tick = await plugin.tool.runesmith_autopilot_tick.execute({})
+    expect(JSON.parse(tick.output)).toMatchObject({
+      ok: true,
+      value: {
+        status: "waiting-for-evidence",
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        missingEvidence: ["test-result"],
+        diagnostics: ["bash ran bun test packages/opencode-adapter/tests/plugin.test.ts"],
+        loopPulse: {
+          nextAction: {
+            id: "repair-diagnostic",
+            label: "Repair diagnostic",
+          },
+          runes: [
+            {
+              name: "Faultwright",
+            },
+            {
+              name: "Proofwright",
+            },
+          ],
+        },
+      },
+    })
   })
 
   test("autopilot tick completes the active task once captured evidence satisfies the contract", async () => {

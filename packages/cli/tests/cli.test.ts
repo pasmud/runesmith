@@ -654,6 +654,71 @@ describe("runesmith cli", () => {
     ])
   })
 
+  test("mission evidence and tick surface repair diagnostics", async () => {
+    const host = createMemoryHost()
+
+    await runCli(["mission", "start", "Repair failing CLI proof"], host)
+    await runCli([
+      "mission",
+      "evidence",
+      "mission_cli_1",
+      "task_cli_1",
+      "--type",
+      "file-change",
+      "--summary",
+      "Updated CLI files",
+      "--payload-json",
+      "{\"files\":[\"packages/cli/src/index.ts\"]}",
+    ], host)
+    const diagnostic = await runCli([
+      "mission",
+      "evidence",
+      "mission_cli_1",
+      "task_cli_1",
+      "--type",
+      "diagnostic",
+      "--summary",
+      "CLI tests failed",
+      "--payload-json",
+      "{\"command\":\"bun test packages/cli/tests\",\"exitCode\":1}",
+    ], host)
+    const tick = await runCli(["mission", "tick"], host)
+    const inspect = await runCli(["mission", "inspect", "mission_cli_1"], host)
+
+    expect(diagnostic).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Evidence recorded",
+        "mission: mission_cli_1",
+        "task: task_cli_1",
+        "evidence: evidence_cli_2",
+        "type: diagnostic",
+        "next: Repair diagnostic [attention/high]",
+        "diagnostics: CLI tests failed",
+        "runtime: .runesmith/runtime/capsule.json",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+    expect(tick).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Mission advanced",
+        "status: waiting-for-evidence",
+        "mission: mission_cli_1",
+        "task: task_cli_1",
+        "mission status: running",
+        "next: Repair diagnostic [attention/high]",
+        "diagnostics: CLI tests failed",
+        "runtime: .runesmith/runtime/capsule.json",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+    expect(inspect.stdout).toContain("Diagnostics: CLI tests failed")
+    expect(inspect.stdout).toContain("Active runes: Faultwright, Proofwright")
+  })
+
   test("mission inspect prints graph details from a snapshot", async () => {
     const host = createMemoryHost({
       "snapshot.json": JSON.stringify(snapshot),

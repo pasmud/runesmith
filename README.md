@@ -62,7 +62,7 @@ If the agent reaches for a mutating or shell tool before explicitly calling `run
 
 After that, Runesmith listens to OpenCode tool execution. Shell commands become `command-output` evidence, passing test commands become `test-result` evidence, failed test commands become `diagnostic` evidence, and file-edit tools become `file-change` evidence on the active task. Each captured evidence event runs the same evidence-gated advance loop, so a task can complete immediately after the required proof appears. When a planned task completes, Runesmith claims the next dependency-ready task automatically. Covenant Review and Seal synthesize their own `decision` evidence from the verified mission state, so routine missions can finish end to end; manual evidence calls remain available for risks, diagnostics, screenshots, external proof, or decisions the tool hooks cannot infer.
 
-When OpenCode reaches an idle point, Runesmith runs an autopilot tick. The tick first runs recovery: an expired running task becomes stale, dependency-ready stale work is requeued, stale ownership is cleared, and Runesmith claims a fresh lease for the task. If the active task still lacks required evidence, the tick holds and reports the missing proof. Once the task contract is satisfied, the tick completes the task through the runtime gate, synthesizes Covenant Review and Seal decisions when safe, claims the next dependency-ready task when one exists, and persists the updated capsule.
+When OpenCode reaches an idle point, Runesmith runs an autopilot tick. The tick first runs recovery: an expired running task becomes stale, dependency-ready stale work is requeued, stale ownership is cleared, and Runesmith claims a fresh lease for the task. If the active task still lacks required evidence, the tick holds and reports the missing proof. If failed verification is present, the tick also returns diagnostic summaries and a `Repair diagnostic` Loop Pulse so the agent knows what to fix next. Once the task contract is satisfied, the tick completes the task through the runtime gate, synthesizes Covenant Review and Seal decisions when safe, claims the next dependency-ready task when one exists, and persists the updated capsule.
 
 That same advance loop lives in `@runesmith/core` and is reused by the OpenCode plugin, `runesmith mission tick`, and the dashboard control plane. Each surface can provide its own holder name and idempotency scope, but the state machine is shared.
 
@@ -134,9 +134,9 @@ bun packages/cli/src/index.ts mission inspect <mission-id>
 
 `mission start` creates the same default Forge -> Review -> Seal Covenant graph used by OpenCode and the dashboard, registers the Atlas contract, claims the first task with a lease, and saves `.runesmith/runtime/capsule.json`.
 
-`mission evidence` records proof on a task, and `mission tick` advances the persisted capsule through the same evidence gate used by OpenCode. When Forge proof is satisfied, the tick can complete Forge, synthesize safe Review and Seal decisions, and finish the mission.
+`mission evidence` records proof on a task, and `mission tick` advances the persisted capsule through the same evidence gate used by OpenCode. When diagnostics are attached, both commands print the active repair summary so the next action is visible at the terminal. When Forge proof is satisfied, the tick can complete Forge, synthesize safe Review and Seal decisions, and finish the mission.
 
-`mission inspect` prints the mission status, Loop Pulse next action, required and missing evidence, active runes, task list, evidence ledger entries, and active leases for that mission.
+`mission inspect` prints the mission status, Loop Pulse next action, required and missing evidence, active diagnostics, active runes, task list, evidence ledger entries, and active leases for that mission.
 
 Runesmith stores the default runtime capsule at `.runesmith/runtime/capsule.json`. The CLI still accepts `--snapshot <path>` for explicit exports, but normal usage does not require it.
 
@@ -181,6 +181,6 @@ Once installed and OpenCode is restarted, users do not need to invoke a workflow
 - `tool.execute.after`: records useful shell, test, and file-change evidence, then runs the evidence-gated advance loop.
 - `event`: recovers stale work and advances the active mission on `session.idle` when evidence gates are satisfied.
 - `runesmith_autopilot_prepare`: starts or resumes the active mission from the latest user goal and claims the next ready Covenant task.
-- `runesmith_autopilot_tick`: manually run the same evidence-gated advance loop.
+- `runesmith_autopilot_tick`: manually run the same evidence-gated advance loop and return the live Loop Pulse, including repair diagnostics when verification failed.
 - `runesmith_covenant_status`: returns the installed Covenant, live Control Brief, Loop Pulse, and active Runebook runes from the runtime capsule.
 - Mission tools for status, claim, evidence, completion, and recovery.

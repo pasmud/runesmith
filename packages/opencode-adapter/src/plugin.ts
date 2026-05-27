@@ -611,6 +611,7 @@ async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<T
   if (!advanced.ok) return formatError("Autopilot tick rejected", advanced.error)
 
   await persistRuntime(input.runtimeStore, input.runtime)
+  const loopPulse = deriveLoopPulse(input.runtime.snapshot())
 
   return formatValue(formatAutopilotLoopTitle(advanced.value.status), {
     status: advanced.value.status,
@@ -619,6 +620,8 @@ async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<T
     taskStatus: advanced.value.nextTaskStatus,
     missionStatus: advanced.value.missionStatus,
     missingEvidence: advanced.value.missingEvidence,
+    diagnostics: loopPulse.diagnostics,
+    loopPulse,
   })
 }
 
