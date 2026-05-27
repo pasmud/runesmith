@@ -57,6 +57,8 @@ import {
   parseOptions,
 } from "./options"
 
+const shellOutputCaptureLimit = 64_000
+
 export type CliResult = {
   exitCode: number
   stdout: string
@@ -161,8 +163,8 @@ export function createNodeHost(): CliHost {
         stderr: "pipe",
       })
       const [stdout, stderr, exitCode] = await Promise.all([
-        new Response(child.stdout).text(),
-        new Response(child.stderr).text(),
+        readTextBounded(child.stdout, shellOutputCaptureLimit),
+        readTextBounded(child.stderr, shellOutputCaptureLimit),
         child.exited,
       ])
 
@@ -173,6 +175,39 @@ export function createNodeHost(): CliHost {
       await writeFile(path, text, "utf8")
     },
   }
+}
+
+async function readTextBounded(
+  stream: ReadableStream<Uint8Array> | null | undefined,
+  maxLength: number,
+): Promise<string> {
+  if (!stream) return ""
+
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+  let output = ""
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!value || output.length >= maxLength) continue
+
+      const text = decoder.decode(value, { stream: true })
+      const remaining = maxLength - output.length
+      output = `${output}${text.slice(0, remaining)}`
+    }
+
+    if (output.length < maxLength) {
+      const tail = decoder.decode()
+      const remaining = maxLength - output.length
+      output = `${output}${tail.slice(0, remaining)}`
+    }
+  } finally {
+    reader.releaseLock()
+  }
+
+  return output
 }
 
 export async function runCli(args: string[], host: CliHost = createNodeHost()): Promise<CliResult> {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { createMemoryHost, runCli } from "../src/index"
+import { createMemoryHost, createNodeHost, runCli } from "../src/index"
 
 const snapshot = {
   graphs: {
@@ -78,6 +78,15 @@ const snapshot = {
 }
 
 describe("runesmith cli", () => {
+  test("node host bounds noisy shell command output before returning to proof runner", async () => {
+    const host = createNodeHost()
+    const result = await host.runShellCommand!("node -e \"process.stdout.write('x'.repeat(120000))\"")
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toHaveLength(64_000)
+    expect(result.stderr).toBe("")
+  })
+
   test("init writes a project config", async () => {
     const host = createMemoryHost()
 
