@@ -842,6 +842,43 @@ describe("opencode adapter", () => {
     )
   })
 
+  test("session idle prepares and claims a mission from chat context when no mission exists", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const writes: string[] = []
+    const plugin = createRunesmithPlugin({
+      runtime,
+      runtimeStore: {
+        save(snapshot) {
+          writes.push(JSON.stringify(snapshot))
+        },
+      },
+    })
+
+    await plugin.event?.({
+      event: { type: "session.idle" },
+      messages: [
+        { role: "system", content: "Base prompt" },
+        { role: "user", parts: [{ type: "text", text: "Build an idle-start orchestration loop" }] },
+      ],
+    })
+    await plugin.event?.({
+      event: {
+        type: "session.idle",
+        messages: [
+          { role: "user", content: "Build an idle-start orchestration loop" },
+        ],
+      },
+    })
+
+    const snapshot = runtime.snapshot()
+    expect(Object.keys(snapshot.graphs)).toEqual(["mission_alpha"])
+    expect(snapshot.graphs.mission_alpha.mission.goal).toBe("Build an idle-start orchestration loop")
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha.status).toBe("running")
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha.assignedAgentId).toBe("agent_atlas")
+    expect(snapshot.leases.leases.lease_alpha?.holder).toBe("runesmith-autopilot")
+    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.tasks.task_alpha.status).toBe("running")
+  })
+
   test("autopilot tick completes the active task once captured evidence satisfies the contract", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const writes: string[] = []

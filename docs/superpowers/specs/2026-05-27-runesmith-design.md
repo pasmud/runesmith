@@ -25,6 +25,7 @@ The first production slice includes:
 - A default runtime capsule at `.runesmith/runtime/capsule.json` so mission state survives OpenCode restarts and CLI inspection works without requiring a manual snapshot flag.
 - Runesmith Autopilot hooks for OpenCode system bootstrap and compaction continuity, so the engine can prepare and resume missions without the user loading separate workflow skills.
 - Zero-touch mission preparation from OpenCode `tool.execute.before` when a mutating or shell tool is about to run and no active mission exists.
+- Zero-touch mission preparation from OpenCode `session.idle` when chat context is present and no active mission exists.
 - Automatic evidence capture from OpenCode tool execution events for shell commands, test runs, and file edits, followed by an immediate evidence-gated advance attempt.
 - Evidence writes are validated against the mission graph and refresh task heartbeat/timeline state, so active proof collection is not mistaken for stale work.
 - Fresh-proof evidence gates that reject passing `test-result` evidence when a newer file-change or diagnostic exists on the task.
@@ -263,7 +264,7 @@ Runesmith Autopilot is the install-once bridge between OpenCode chat and the run
 - Persists the runtime capsule after mission creation and claim.
 - Returns mission, task, lease, replay, and agent metadata for subsequent evidence and completion calls.
 
-For zero-touch operation, the adapter also uses `tool.execute.before`. When the first mutating or shell tool is about to run, and no active task exists, Runesmith infers the latest user goal from message context and runs the same prepare path. Read-only tools and Runesmith's own tools are ignored to avoid creating noisy missions.
+For zero-touch operation, the adapter also uses `tool.execute.before`. When the first mutating or shell tool is about to run, and no active task exists, Runesmith infers the latest user goal from message context and runs the same prepare path. OpenCode `session.idle` events use that same preparation path when no mission exists and chat context is present, so the orchestration loop can start before the first file or shell action. Read-only tools and Runesmith's own tools are ignored to avoid creating noisy missions.
 
 After a mission is prepared, the `tool.execute.after` hook records routine proof automatically. Shell commands become `command-output` evidence, recognized passing test commands become `test-result` evidence, failed test commands become `diagnostic` evidence, and file mutation tools become `file-change` evidence on the active non-terminal task. After recording evidence, the hook runs the evidence-gated advance loop so a task can seal immediately when the required proof exists. The core gate treats passing test proof as stale when a newer file-change or diagnostic exists, forcing proof to follow the latest edit or repair target. If the mission has another dependency-ready task, autopilot claims it immediately so the agent continues the loop instead of stopping after implementation proof. Covenant Review and Seal stages synthesize `decision` evidence from the verified mission state, allowing routine missions to finish without the user invoking workflow tools. Runesmith ignores read-only tools and its own tools to avoid noisy ledgers and feedback loops.
 
@@ -313,7 +314,7 @@ The adapter also exposes documented OpenCode hooks:
 - `experimental.session.compacting`: appends the current mission capsule summary, live Control Brief, Loop Pulse, Mission Memory, and Proof Plan to compaction context.
 - `tool.execute.before`: starts or resumes orchestration before mutating/shell tools run when no active task exists.
 - `tool.execute.after`: records useful command, test, and file-change evidence against the active Runesmith task, then runs the evidence-gated advance loop.
-- `event`: runs idle orchestration on `session.idle` events: recover stale work first, run eligible Proof Plan commands, hold failed proof until a repair edit appears, then advance through the evidence gate.
+- `event`: runs idle orchestration on `session.idle` events: prepare the first mission from chat context when no active mission exists, recover stale work first, run eligible Proof Plan commands, hold failed proof until a repair edit appears, then advance through the evidence gate.
 
 ## Dashboard Direction
 

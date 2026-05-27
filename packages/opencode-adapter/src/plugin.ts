@@ -499,6 +499,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
         runtimeStore: options.runtimeStore,
         idFactory: options.idFactory,
         now: options.now,
+        eventInput: input,
       })
     },
   }
@@ -663,11 +664,31 @@ type AdvanceIdleOrchestrationInput = {
   runtimeStore?: PluginRuntimeStore
   idFactory?: IdFactory
   now?: () => Date
+  eventInput?: OpenCodeEventInput
 }
 
 async function advanceIdleOrchestration(input: AdvanceIdleOrchestrationInput): Promise<void> {
   const snapshot = input.runtime.snapshot()
   const loopPulse = deriveLoopPulse(snapshot)
+
+  if (loopPulse.nextAction.id === "wait-for-goal") {
+    const messages = extractMessages(input.eventInput) ?? extractMessages(asRecord(input.eventInput?.event))
+    const goal = normalizeGoal(asRecord(input.eventInput?.event)?.goal)
+      ?? normalizeGoal(input.eventInput?.goal)
+      ?? extractLatestUserGoal(messages)
+
+    if (goal) {
+      await prepareAutopilotMission({
+        runtime: input.runtime,
+        runtimeStore: input.runtimeStore,
+        args: {
+          goal,
+          messages,
+        },
+      })
+      return
+    }
+  }
 
   if (loopPulse.nextAction.id === "recover-stale") {
     await advanceAutopilotLoop({
@@ -1016,6 +1037,7 @@ function buildAutopilotPrompt(): string {
     "## Runesmith Autopilot",
     "Runesmith is installed as the orchestration engine for this OpenCode session.",
     "When the user asks for coding, repo, debugging, UI, or research-to-implementation work, call `runesmith_autopilot_prepare` with the latest user goal or message list before starting edits.",
+    "If you reach a session-idle point before preparation, Runesmith can infer the latest user goal from chat context and prepare the mission automatically.",
     "Continue under the returned mission, task, and lease. New autopilot missions are planned as Forge, Review, and Seal tasks. Runesmith records shell, test, file-change, and safe Covenant decision evidence automatically; use `runesmith_task_evidence` for risks, diagnostics, external proof, or decisions the tool hooks cannot infer.",
     "Follow the Active runes in the live Runesmith Control Brief as automatic procedure cards. Do not ask the user to invoke them by name.",
     "When proof is missing or repair is active, call `runesmith_proof_run` to execute the live Runesmith Proof Plan before asking for completion.",

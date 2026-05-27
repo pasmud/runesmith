@@ -12,6 +12,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - The Runic Covenant is injected automatically so agents frame, map, claim, forge, prove, repair, review, seal, and recover work without the user babysitting the loop.
 - Runesmith Autopilot prepares a mission from the latest OpenCode user request, creates a Forge -> Review -> Seal task plan, claims the next ready task with a stable lease, and replays the same claim instead of duplicating work.
 - The first mutating OpenCode tool can auto-start orchestration, so the agent does not have to remember a manual mission-start step before editing.
+- OpenCode idle events can also prepare the first mission from chat context, so a session can enter the orchestration loop before any file or shell tool runs.
 - Tool execution evidence is captured automatically from OpenCode shell, test, and file-edit hooks.
 - Evidence is validated against real mission tasks and refreshes task heartbeat state, so recovery does not reclaim active work just because the agent is producing proof instead of chat.
 - Passing proof must be fresh after the latest file-change or diagnostic evidence, so an agent cannot seal new edits with stale tests from earlier in the loop.
@@ -69,7 +70,7 @@ Proof Runner executes that recipe when OpenCode, the CLI, or the dashboard asks 
 
 Runesmith Autopilot is the OpenCode-facing part of that loop. The plugin injects a short bootstrap that tells the coding agent to call `runesmith_autopilot_prepare` when a real coding goal appears. That tool reads the latest user message when no explicit goal is provided, starts or resumes the matching active mission, creates the default Covenant task graph, claims the next ready task through the lease scheduler, and saves the runtime capsule.
 
-If the agent reaches for a mutating or shell tool before explicitly calling `runesmith_autopilot_prepare`, Runesmith uses `tool.execute.before` to infer the latest user goal, start or resume the mission, and claim the first dependency-ready task. Read-only tools are ignored so repo inspection does not create noisy missions.
+If the agent reaches for a mutating or shell tool before explicitly calling `runesmith_autopilot_prepare`, Runesmith uses `tool.execute.before` to infer the latest user goal, start or resume the mission, and claim the first dependency-ready task. If OpenCode reaches `session.idle` first and includes chat messages, Runesmith uses that same prepare path from the latest user message. Read-only tools are ignored so repo inspection does not create noisy missions.
 
 After that, Runesmith listens to OpenCode tool execution. Shell commands become `command-output` evidence, passing test commands become `test-result` evidence, failed test commands become `diagnostic` evidence, and file-edit tools become `file-change` evidence on the active task. Each captured evidence event runs the same evidence-gated advance loop, so a task can complete immediately after the required proof appears. The gate requires passing proof to be newer than the latest edit or diagnostic on that task, which keeps completion tied to the current work rather than earlier green runs. When a planned task completes, Runesmith claims the next dependency-ready task automatically. Covenant Review and Seal synthesize their own `decision` evidence from the verified mission state, so routine missions can finish end to end; manual evidence calls remain available for risks, diagnostics, screenshots, external proof, or decisions the tool hooks cannot infer.
 
@@ -235,7 +236,7 @@ Once installed and OpenCode is restarted, users do not need to invoke a workflow
 - `experimental.session.compacting`: appends the current mission capsule, Control Brief, Loop Pulse, Mission Memory, and Proof Plan to compaction context.
 - `tool.execute.before`: auto-prepares and claims a mission before the first mutating/shell tool when message context is available.
 - `tool.execute.after`: records useful shell, test, and file-change evidence, then runs the evidence-gated advance loop.
-- `event`: on `session.idle`, recovers stale work first, runs the active Proof Plan when implementation or repair evidence is ready, records proof or diagnostics, and advances the active mission when evidence gates are satisfied.
+- `event`: on `session.idle`, prepares the first mission from chat context when possible, recovers stale work first, runs the active Proof Plan when implementation or repair evidence is ready, records proof or diagnostics, and advances the active mission when evidence gates are satisfied.
 - `runesmith_autopilot_prepare`: starts or resumes the active mission from the latest user goal and claims the next ready Covenant task.
 - `runesmith_autopilot_tick`: manually run the same evidence-gated advance loop and return the live Loop Pulse and Proof Plan, including repair diagnostics when verification failed.
 - `runesmith_proof_run`: execute the active Proof Plan inside OpenCode, record proof or diagnostics, and advance the mission when verification passes.
