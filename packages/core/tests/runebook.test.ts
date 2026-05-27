@@ -132,6 +132,74 @@ describe("runebook", () => {
     expect(prompt).toContain("1. Rerun failing command: bun test packages/core/tests/runebook.test.ts")
   })
 
+  test("derives a Faultline breakpoint card after repeated failed repairs", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Escalate repeated runebook diagnostics",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runebook",
+        payload: { filePath: "packages/core/src/runebook.ts" },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    for (const index of [1, 2, 3]) {
+      runtime.addTaskEvidence({
+        missionId: "mission_alpha",
+        evidence: {
+          id: `evidence_diagnostic_${index}`,
+          taskId: "task_alpha",
+          type: "diagnostic",
+          summary: `Runebook tests failed attempt ${index}`,
+          payload: { command: `bun test packages/core/tests/runebook.test.ts --attempt=${index}`, exitCode: 1 },
+          createdAt: `2026-05-27T00:0${index + 1}:00.000Z`,
+        },
+      })
+    }
+
+    const runebook = deriveRunebook(runtime.snapshot(), {
+      proofPlanOptions: {
+        packageManager: "bun@1.3.13",
+        scripts: { test: "bun test" },
+      },
+    })
+    const prompt = buildRunebookPrompt(runtime.snapshot(), {
+      proofPlanOptions: {
+        packageManager: "bun@1.3.13",
+        scripts: { test: "bun test" },
+      },
+    })
+
+    expect(runebook.activeCard).toMatchObject({
+      id: "faultline-breakpoint",
+      title: "Faultline architecture breakpoint",
+      nextActionId: "review-faultline",
+      autonomy: "guarded",
+      requiredEvidence: ["diagnostic"],
+    })
+    expect(runebook.activeCard.steps).toContain("Compare the repeated diagnostics and the repair edits between them.")
+    expect(runebook.activeCard.steps).toContain("Choose a redesign, revert, scope split, or new hypothesis before editing again.")
+    expect(runebook.activeCard.stopConditions).toContain("Do not make a fourth blind repair attempt.")
+    expect(runebook.activeCard.commands[0]?.command).toBe("bun test packages/core/tests/runebook.test.ts --attempt=3")
+    expect(prompt).toContain("Active card: Faultline architecture breakpoint [guarded]")
+    expect(prompt).toContain("Do not make a fourth blind repair attempt.")
+  })
+
   test("derives a hold-mode risk decision card without raw evidence plumbing", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

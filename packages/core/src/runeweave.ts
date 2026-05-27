@@ -107,6 +107,13 @@ function classifyRuneweaveStop(step: RunebookNextValue): { status: RuneweaveStat
     }
   }
 
+  if (step.loopPulse.nextAction.id === "review-faultline") {
+    return {
+      status: "blocked",
+      reason: "Repeated failed repairs require a Faultline architecture review before another patch.",
+    }
+  }
+
   if (step.status === "proof-idle" || step.status === "idle") {
     return {
       status: "idle",

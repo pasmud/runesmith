@@ -452,6 +452,78 @@ describe("dashboard model", () => {
     ])
   })
 
+  test("surfaces repeated failed repairs as a Faultline breakpoint", () => {
+    const faultlineCapsule: RuntimeCapsule = {
+      ...capsule,
+      runtime: {
+        ...capsule.runtime,
+        ledgers: {
+          mission_live: {
+            evidence: {
+              ...capsule.runtime.ledgers.mission_live.evidence,
+              evidence_diagnostic_1: {
+                id: "evidence_diagnostic_1",
+                taskId: "task_live",
+                type: "diagnostic",
+                summary: "Dashboard capsule tests failed attempt 1",
+                payload: { command: "bun test packages/dashboard/tests --attempt=1", exitCode: 1 },
+                createdAt: "2026-05-27T00:06:00.000Z",
+              },
+              evidence_diagnostic_2: {
+                id: "evidence_diagnostic_2",
+                taskId: "task_live",
+                type: "diagnostic",
+                summary: "Dashboard capsule tests failed attempt 2",
+                payload: { command: "bun test packages/dashboard/tests --attempt=2", exitCode: 1 },
+                createdAt: "2026-05-27T00:07:00.000Z",
+              },
+              evidence_diagnostic_3: {
+                id: "evidence_diagnostic_3",
+                taskId: "task_live",
+                type: "diagnostic",
+                summary: "Dashboard capsule tests failed attempt 3",
+                payload: { command: "bun test packages/dashboard/tests --attempt=3", exitCode: 1 },
+                createdAt: "2026-05-27T00:08:00.000Z",
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const model = buildDashboardModelFromRuntimeCapsule(faultlineCapsule)
+
+    expect(model.selectedTask.id).toBe("task_live")
+    expect(model.selectedTask.lane).toBe("Repair")
+    expect(model.loopPulse.stage.id).toBe("faultline")
+    expect(model.loopPulse.nextAction).toMatchObject({
+      id: "review-faultline",
+      label: "Review faultline",
+      priority: "critical",
+    })
+    expect(model.loopPulse.executionPlan.map((step) => step.id)).toEqual([
+      "summarize-failed-repairs",
+      "question-architecture",
+      "choose-breakthrough-path",
+    ])
+    expect(model.loopPulse.runes.map((rune) => rune.name)).toContain("Faultline")
+    expect(model.runebook.activeCard).toMatchObject({
+      id: "faultline-breakpoint",
+      title: "Faultline architecture breakpoint",
+      autonomy: "guarded",
+    })
+    expect(model.protocolDeck.active).toMatchObject({
+      id: "faultline-breakpoint-protocol",
+      name: "Faultline Breakpoint Protocol",
+      mode: "guarded",
+    })
+    expect(model.missionMemory.status).toBe("needs-architecture")
+    expect(model.missionMemory.handoff).toBe(
+      "Review faultline for task_live: 3 failed proof attempts. Question architecture before another repair.",
+    )
+    expect(model.proofPlan.commands[0]?.command).toBe("bun test packages/dashboard/tests --attempt=3")
+  })
+
   test("hydrates the dashboard from a runtime capsule action", () => {
     const model = buildDashboardModel()
 

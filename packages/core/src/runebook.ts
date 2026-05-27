@@ -12,6 +12,7 @@ export type RunebookCardId =
   | "forge-trace"
   | "proofwright-proof-gate"
   | "faultwright-repair"
+  | "faultline-breakpoint"
   | "mirrorglass-review"
   | "mirrorglass-risk-decision"
   | "sealmark-checkpoint"
@@ -257,6 +258,32 @@ function buildActiveRunebookCard(input: {
         stopConditions: [
           "Hold completion until the rerun records passing test-result evidence.",
           "Do not patch symptoms without linking the edit to the active diagnostic.",
+        ],
+      })
+    }
+    case "review-faultline": {
+      const latestDiagnostic = input.diagnostics.at(-1) ?? "the latest diagnostic"
+
+      return card({
+        id: "faultline-breakpoint",
+        title: "Faultline architecture breakpoint",
+        nextActionId: input.nextActionId,
+        autonomy: "guarded",
+        trigger: input.reason,
+        intent: "Stop repeated repair attempts and question architecture before another proof cycle.",
+        steps: [
+          `Acknowledge repeated diagnostic loop ending at: ${latestDiagnostic}.`,
+          "Compare the repeated diagnostics and the repair edits between them.",
+          "Identify the assumption, interface, dependency, or test contract that could make further local patches ineffective.",
+          "Choose a redesign, revert, scope split, or new hypothesis before editing again.",
+          "After the architecture decision or repair edit, rerun the exact failing command.",
+        ],
+        requiredEvidence: ["diagnostic"],
+        commands: input.commands,
+        toolHints: ["runesmith_task_evidence"],
+        stopConditions: [
+          "Do not make a fourth blind repair attempt.",
+          "Do not rerun proof until the architecture hypothesis or decision is explicit.",
         ],
       })
     }

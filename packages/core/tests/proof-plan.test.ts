@@ -193,6 +193,65 @@ describe("proof plan", () => {
     expect(prompt).toContain("1. Rerun failing command: bun test packages/core/tests/proof-plan.test.ts")
   })
 
+  test("keeps the latest failing command available at a Faultline breakpoint", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Break repeated proof planner repairs",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed proof planner",
+        payload: { files: ["packages/core/src/proof-plan.ts"] },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    for (const index of [1, 2, 3]) {
+      runtime.addTaskEvidence({
+        missionId: "mission_alpha",
+        evidence: {
+          id: `evidence_diagnostic_${index}`,
+          taskId: "task_alpha",
+          type: "diagnostic",
+          summary: `Proof planner tests failed attempt ${index}`,
+          payload: { command: `bun test packages/core/tests/proof-plan.test.ts --attempt=${index}`, exitCode: 1 },
+          createdAt: `2026-05-27T00:0${index + 1}:00.000Z`,
+        },
+      })
+    }
+
+    const plan = deriveProofPlan(runtime.snapshot(), { packageManager: "bun@1.3.13", scripts })
+    const prompt = buildProofPlanPrompt(runtime.snapshot(), { packageManager: "bun@1.3.13", scripts })
+
+    expect(plan.status).toBe("needs-repair")
+    expect(plan.commands.map((command) => command.command)).toEqual([
+      "bun test packages/core/tests/proof-plan.test.ts --attempt=3",
+      "bun run typecheck",
+      "bun test",
+      "bun run build",
+    ])
+    expect(plan.diagnostics).toEqual([
+      "Proof planner tests failed attempt 3",
+      "Proof planner tests failed attempt 2",
+      "Proof planner tests failed attempt 1",
+    ])
+    expect(prompt).toContain("Status: needs-repair")
+    expect(prompt).toContain("1. Rerun failing command: bun test packages/core/tests/proof-plan.test.ts --attempt=3")
+  })
+
   test("starts with the stale targeted proof command after later edits invalidate passing proof", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

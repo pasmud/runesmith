@@ -130,6 +130,69 @@ describe("runic protocol deck", () => {
     expect(prompt).not.toContain("Superpowers")
   })
 
+  test("selects a Faultline protocol after repeated failed repair proof", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Escalate repeated protocol diagnostics",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed protocol deck",
+        payload: { filePath: "packages/core/src/protocol-deck.ts" },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    for (const index of [1, 2, 3]) {
+      runtime.addTaskEvidence({
+        missionId: "mission_alpha",
+        evidence: {
+          id: `evidence_diagnostic_${index}`,
+          taskId: "task_alpha",
+          type: "diagnostic",
+          summary: `Protocol deck tests failed attempt ${index}`,
+          payload: { command: `bun test packages/core/tests/protocol-deck.test.ts --attempt=${index}`, exitCode: 1 },
+          createdAt: `2026-05-27T00:0${index + 1}:00.000Z`,
+        },
+      })
+    }
+
+    const options = {
+      proofPlanOptions: {
+        packageManager: "bun@1.3.13",
+        scripts: { test: "bun test" },
+      },
+    }
+    const deck = deriveRunicProtocolDeck(runtime.snapshot(), options)
+    const prompt = buildRunicProtocolPrompt(runtime.snapshot(), options)
+
+    expect(deck.active).toMatchObject({
+      id: "faultline-breakpoint-protocol",
+      name: "Faultline Breakpoint Protocol",
+      mode: "guarded",
+      toolHints: ["runesmith_task_evidence"],
+    })
+    expect(deck.summary).toBe("Review faultline through Faultline Breakpoint Protocol.")
+    expect(deck.active.procedure).toContain("Compare the repeated diagnostics and the repair edits between them.")
+    expect(deck.active.forbiddenMoves).toContain("Do not stack another patch on the same hypothesis.")
+    expect(deck.active.verification[0]).toBe("Rerun failing command: bun test packages/core/tests/protocol-deck.test.ts --attempt=3")
+    expect(prompt).toContain("Active protocol: Faultline Breakpoint Protocol [guarded]")
+    expect(prompt).not.toContain("Superpowers")
+  })
+
   test("selects a proof protocol with exact commands when implementation evidence is ready", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

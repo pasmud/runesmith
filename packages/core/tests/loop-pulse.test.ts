@@ -224,6 +224,76 @@ describe("loop pulse", () => {
     expect(prompt).toContain("Active runes: Faultwright, Proofwright")
   })
 
+  test("escalates repeated diagnostics into a Faultline architecture breakpoint", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Stop repeated failed repairs",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed repair target",
+        payload: { filePath: "packages/core/src/loop-pulse.ts" },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    for (const index of [1, 2, 3]) {
+      runtime.addTaskEvidence({
+        missionId: "mission_alpha",
+        evidence: {
+          id: `evidence_diagnostic_${index}`,
+          taskId: "task_alpha",
+          type: "diagnostic",
+          summary: `Loop pulse tests failed attempt ${index}`,
+          payload: { command: `bun test packages/core/tests/loop-pulse.test.ts --attempt=${index}`, exitCode: 1 },
+          createdAt: `2026-05-27T00:0${index + 1}:00.000Z`,
+        },
+      })
+    }
+
+    const pulse = deriveLoopPulse(runtime.snapshot())
+    const prompt = buildLoopPulsePrompt(runtime.snapshot())
+
+    expect(pulse).toMatchObject({
+      health: "critical",
+      stage: { id: "faultline", name: "Faultline Breakpoint" },
+      nextAction: {
+        id: "review-faultline",
+        label: "Review faultline",
+        priority: "critical",
+      },
+      missingEvidence: ["test-result"],
+    })
+    expect(pulse.runes.map((rune) => rune.name)).toContain("Faultline")
+    expect(pulse.executionPlan.map((step) => step.id)).toEqual([
+      "summarize-failed-repairs",
+      "question-architecture",
+      "choose-breakthrough-path",
+    ])
+    expect(pulse.executionPlan[0]).toMatchObject({
+      status: "active",
+      instruction: "Compare the last three diagnostics and the repair edits between them before another patch.",
+      evidence: ["diagnostic"],
+      runes: ["Faultline"],
+    })
+    expect(prompt).toContain("Next action: Review faultline")
+    expect(prompt).toContain("1. active - Summarize failed repairs")
+    expect(prompt).toContain("Active runes: Faultline, Proofwright")
+  })
+
   test("holds unresolved risk for an explicit decision", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

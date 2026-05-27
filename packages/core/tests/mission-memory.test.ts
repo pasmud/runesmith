@@ -159,6 +159,66 @@ describe("mission memory", () => {
     })
   })
 
+  test("records a Faultline handoff after repeated diagnostics", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Remember repeated repair failure",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed memory repair target",
+        payload: { files: ["packages/core/src/mission-memory.ts"] },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    for (const index of [1, 2, 3]) {
+      runtime.addTaskEvidence({
+        missionId: "mission_alpha",
+        evidence: {
+          id: `evidence_diagnostic_${index}`,
+          taskId: "task_alpha",
+          type: "diagnostic",
+          summary: `Mission memory tests failed attempt ${index}`,
+          payload: { command: `bun test packages/core/tests/mission-memory.test.ts --attempt=${index}`, exitCode: 1 },
+          createdAt: `2026-05-27T00:0${index + 1}:00.000Z`,
+        },
+      })
+    }
+
+    const memory = deriveMissionMemory(runtime.snapshot())
+    const prompt = buildMissionMemoryPrompt(runtime.snapshot())
+
+    expect(memory).toMatchObject({
+      status: "needs-architecture",
+      latestDiagnostics: [
+        "Mission memory tests failed attempt 3",
+        "Mission memory tests failed attempt 2",
+        "Mission memory tests failed attempt 1",
+      ],
+      nextAction: {
+        id: "review-faultline",
+      },
+      handoff:
+        "Review faultline for task_alpha: 3 failed proof attempts. Question architecture before another repair.",
+    })
+    expect(prompt).toContain("Status: needs-architecture")
+    expect(prompt).toContain("Review faultline for task_alpha")
+  })
+
   test("holds unresolved risk in the handoff until a later decision exists", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

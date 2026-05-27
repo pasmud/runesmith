@@ -40,6 +40,7 @@ describe("runic covenant", () => {
       "forge",
       "prove",
       "repair",
+      "faultline",
       "review",
       "seal",
       "recover",
@@ -118,6 +119,55 @@ describe("runic covenant", () => {
     expect(brief).toContain("State a falsifiable repair hypothesis from the latest diagnostic before editing.")
     expect(brief).toContain("Change one repair variable at a time, then rerun the exact failing command.")
     expect(brief).toContain("Do not patch symptoms without linking the edit to the active diagnostic.")
+  })
+
+  test("switches repeated failed repairs into a Faultline breakpoint", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Break a repeated repair loop",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed repair target",
+        payload: { filePath: "packages/core/src/covenant.ts" },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    for (const index of [1, 2, 3]) {
+      runtime.addTaskEvidence({
+        missionId: "mission_alpha",
+        evidence: {
+          id: `evidence_diagnostic_${index}`,
+          taskId: "task_alpha",
+          type: "diagnostic",
+          summary: `Core tests failed attempt ${index}`,
+          payload: { command: `bun test packages/core/tests/covenant.test.ts --attempt=${index}`, exitCode: 1 },
+          createdAt: `2026-05-27T00:0${index + 1}:00.000Z`,
+        },
+      })
+    }
+
+    const brief = buildCovenantControlBrief(runtime.snapshot())
+
+    expect(brief).toContain("Next stage: Faultline Breakpoint")
+    expect(brief).toContain("Faultline")
+    expect(brief).toContain("Repeated diagnostics reached 3 failed proof attempts.")
+    expect(brief).toContain("Stop patching and compare failed hypotheses, edits, and shared architecture before changing code.")
+    expect(brief).toContain("Do not make a fourth blind repair attempt.")
   })
 
   test("selects a recovery rune when the active task is stale", () => {

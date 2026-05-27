@@ -56,13 +56,14 @@ export function deriveProofPlan(
     }
   }
 
-  const evidence = Object.values(snapshot.ledgers[selected.graph.mission.id]?.evidence ?? {})
-    .filter((entry) => entry.taskId === selected.task.id)
-    .sort(compareEvidenceNewest)
+  const evidence = sortEvidenceNewest(
+    Object.values(snapshot.ledgers[selected.graph.mission.id]?.evidence ?? {})
+      .filter((entry) => entry.taskId === selected.task.id),
+  )
   const diagnostics = evidence.filter((entry) => entry.type === "diagnostic").map((entry) => entry.summary).slice(0, 3)
   const latestDiagnosticCommand = firstDiagnosticCommand(evidence)
   const latestPassingProofCommand = firstPassingTestCommand(evidence)
-  const needsRepair = pulse.nextAction.id === "repair-diagnostic"
+  const needsRepair = pulse.nextAction.id === "repair-diagnostic" || pulse.nextAction.id === "review-faultline"
   const needsTestProof = pulse.missingEvidence.includes("test-result")
   const commands = buildProofCommands({
     latestDiagnosticCommand: needsRepair ? latestDiagnosticCommand : undefined,
@@ -284,8 +285,14 @@ function isPassingTestResult(evidence: Evidence): boolean {
   return ["ok", "pass", "passed", "success", "successful"].includes(status.toLowerCase())
 }
 
-function compareEvidenceNewest(left: Evidence, right: Evidence): number {
-  return right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id)
+function sortEvidenceNewest(evidence: Evidence[]): Evidence[] {
+  return evidence
+    .map((entry, index) => ({ entry, index }))
+    .sort((left, right) => {
+      const createdAtDelta = right.entry.createdAt.localeCompare(left.entry.createdAt)
+      return createdAtDelta || right.index - left.index
+    })
+    .map(({ entry }) => entry)
 }
 
 function isTerminalMission(graph: MissionGraph): boolean {

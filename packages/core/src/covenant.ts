@@ -11,6 +11,7 @@ export type CovenantStageId =
   | "forge"
   | "prove"
   | "repair"
+  | "faultline"
   | "review"
   | "seal"
   | "recover"
@@ -33,6 +34,7 @@ export type CovenantRuneId =
   | "forge-trace"
   | "proofwright"
   | "faultwright"
+  | "faultline"
   | "mirrorglass"
   | "sealmark"
   | "recovery-loom"
@@ -139,6 +141,19 @@ const covenantStages: CovenantStage[] = [
     evidence: ["diagnostic", "file-change", "test-result"],
   },
   {
+    id: "faultline",
+    name: "Faultline Breakpoint",
+    purpose: "Stop repeated failed repairs and question the architecture before another patch.",
+    trigger: "The active task has three failed proof diagnostics without passing proof and the latest evidence is still diagnostic.",
+    behavior: "Compare repeated diagnostics, failed hypotheses, and shared architecture before choosing redesign, revert, scope split, or a new hypothesis.",
+    gates: [
+      "Repeated diagnostics are summarized",
+      "The failing assumption or boundary is named",
+      "The next repair path is architectural, scoped, or explicitly reset",
+    ],
+    evidence: ["diagnostic", "risk", "decision"],
+  },
+  {
     id: "review",
     name: "Mirror Review",
     purpose: "Catch integration gaps, user-facing issues, and missing proof before sealing work.",
@@ -215,6 +230,16 @@ const covenantRunes: Record<CovenantRuneId, CovenantRune> = {
       "State a falsifiable repair hypothesis from the latest diagnostic before editing.",
       "Change one repair variable at a time, then rerun the exact failing command.",
       "Attach a passing test-result before asking the completion gate to advance.",
+    ],
+  },
+  faultline: {
+    id: "faultline",
+    name: "Faultline",
+    reason: "Stop repeated repair loops before another patch reinforces a broken assumption.",
+    steps: [
+      "Compare the last three diagnostics and the edits between them.",
+      "Question the architecture, interface, dependency, or test contract before another edit.",
+      "Choose a redesign, revert, scope split, or new falsifiable hypothesis before proof runs again.",
     ],
   },
   mirrorglass: {
@@ -349,7 +374,8 @@ export function deriveCovenantControlBrief(
   const taskEvidence = evidenceForTask(ledger, active.task.id)
   const diagnostics = missingEvidence.includes("test-result") ? collectDiagnosticSummaries(taskEvidence) : []
   const risks = collectUnresolvedRiskSummaries(taskEvidence)
-  const stageId = selectStageId(active.graph, active.task, missingEvidence, diagnostics, risks)
+  const faultlineActive = hasFaultlineBreakpoint(taskEvidence, missingEvidence)
+  const stageId = selectStageId(active.graph, active.task, missingEvidence, diagnostics, risks, faultlineActive)
   const stage = covenant.stages.find((candidate) => candidate.id === stageId) ?? covenant.stages[0]!
 
   return {
@@ -496,6 +522,7 @@ function selectStageId(
   missingEvidence: EvidenceType[],
   diagnostics: string[],
   risks: string[],
+  faultlineActive: boolean,
 ): CovenantStageId {
   if (graph.mission.status === "blocked" || task.status === "blocked" || task.status === "stale") {
     return "recover"
@@ -503,6 +530,7 @@ function selectStageId(
 
   if (task.status === "queued") return "claim"
   if (risks.length > 0 && missingEvidence.includes("decision")) return "review"
+  if (faultlineActive) return "faultline"
   if (diagnostics.length > 0 && missingEvidence.includes("test-result")) return "repair"
   if (task.status === "verifying") return "review"
   if (missingEvidence.length === 0) return "review"
@@ -542,6 +570,15 @@ function buildControlDirectives(
       "Change one repair variable at a time, then rerun the exact failing command.",
       "Do not patch symptoms without linking the edit to the active diagnostic.",
       "Do not call the completion gate until a passing test-result is attached.",
+    ]
+  }
+
+  if (stageId === "faultline") {
+    return [
+      `Repeated diagnostics reached ${diagnostics.length} failed proof attempts.`,
+      "Stop patching and compare failed hypotheses, edits, and shared architecture before changing code.",
+      "Choose a redesign, revert, scope split, or new falsifiable hypothesis before another proof run.",
+      "Do not make a fourth blind repair attempt.",
     ]
   }
 
@@ -600,6 +637,8 @@ function selectControlRunes(stageId: CovenantStageId, missingEvidence: EvidenceT
     runeIds.push("proofwright")
   } else if (stageId === "repair") {
     runeIds.push("faultwright")
+  } else if (stageId === "faultline") {
+    runeIds.push("faultline")
   } else if (stageId === "review") {
     runeIds.push("mirrorglass")
   } else if (stageId === "seal") {
@@ -616,15 +655,33 @@ function selectControlRunes(stageId: CovenantStageId, missingEvidence: EvidenceT
 }
 
 function collectDiagnosticSummaries(taskEvidence: Evidence[]): string[] {
-  return taskEvidence
+  return sortEvidenceOldest(taskEvidence)
     .filter(isDiagnosticEvidence)
-    .sort(compareEvidenceCreatedAt)
     .map((evidence) => evidence.summary.trim())
     .filter((summary) => summary.length > 0)
 }
 
+function hasFaultlineBreakpoint(taskEvidence: Evidence[], missingEvidence: EvidenceType[]): boolean {
+  if (!missingEvidence.includes("test-result")) return false
+
+  const orderedEvidence = sortEvidenceOldest(taskEvidence)
+  const latestEvidence = orderedEvidence.at(-1)
+  if (!latestEvidence || !isDiagnosticEvidence(latestEvidence)) return false
+
+  let latestPassingProofIndex = -1
+  orderedEvidence.forEach((evidence, index) => {
+    if (isPassingTestResult(evidence)) latestPassingProofIndex = index
+  })
+
+  const diagnosticsSincePassingProof = orderedEvidence
+    .slice(latestPassingProofIndex + 1)
+    .filter(isDiagnosticEvidence)
+
+  return diagnosticsSincePassingProof.length >= 3
+}
+
 function collectUnresolvedRiskSummaries(taskEvidence: Evidence[]): string[] {
-  const orderedEvidence = [...taskEvidence].sort(compareEvidenceCreatedAt)
+  const orderedEvidence = sortEvidenceOldest(taskEvidence)
   let latestDecisionIndex = -1
   const riskEntries: Array<{ evidence: Evidence; index: number }> = []
 
@@ -655,8 +712,14 @@ function isPassingTestResult(evidence: Evidence): boolean {
   return ["ok", "pass", "passed", "success", "successful"].includes(status.toLowerCase())
 }
 
-function compareEvidenceCreatedAt(left: Evidence, right: Evidence): number {
-  return left.createdAt.localeCompare(right.createdAt)
+function sortEvidenceOldest(evidence: Evidence[]): Evidence[] {
+  return evidence
+    .map((entry, index) => ({ entry, index }))
+    .sort((left, right) => {
+      const createdAtDelta = left.entry.createdAt.localeCompare(right.entry.createdAt)
+      return createdAtDelta || left.index - right.index
+    })
+    .map(({ entry }) => entry)
 }
 
 function cloneRune(rune: CovenantRune): CovenantRune {

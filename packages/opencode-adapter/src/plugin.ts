@@ -292,7 +292,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       },
       runesmith_os_run: {
         description:
-          "Run the Runeweave OS loop: repeatedly execute engine-owned Runebook actions until work is sealed, proof fails, risk needs a decision, or implementation work is required.",
+          "Run the Runeweave OS loop: repeatedly execute engine-owned Runebook actions until work is sealed, proof fails, Faultline needs architecture review, risk needs a decision, or implementation work is required.",
         parameters: objectSchema({
           maxSteps: numberSchema("Optional safety limit for Runebook actions in this OS run"),
           riskSummary: stringSchema("Optional decision summary when the loop reaches a risk hold"),
@@ -1440,7 +1440,7 @@ function buildAutopilotPrompt(): string {
     "Follow the active Runesmith Runebook card and Active runes as automatic procedure, not as user-invoked workflows.",
     "Prefer `runesmith_os_run` when you need Runesmith to keep executing engine-owned Runebook cards until the mission is sealed or a real stop condition appears.",
     "Prefer `runesmith_next` when you need Runesmith to execute the current Runebook card without choosing a lower-level tool.",
-    "When proof is missing or repair is active, call `runesmith_proof_run` to execute the live Runesmith Proof Plan before asking for completion.",
+    "When proof is missing, call `runesmith_proof_run` to execute the live Runesmith Proof Plan before asking for completion. When Faultline is active, follow the architecture breakpoint before rerunning proof.",
     "When Loop Pulse says `Resolve risk`, call `runesmith_risk_resolve` with a short decision summary instead of asking the user to find mission ids or manually attach decision evidence.",
     "When the active task has required evidence, call `runesmith_autopilot_tick` or let session-idle events advance it. The tick may complete the task only after the evidence gate is satisfied, synthesize Review and Seal decisions when safe, then claim the next dependency-ready task.",
     "Do not ask the user to invoke Runesmith, skills, or a workflow by name. Keep the user experience install-once and direct.",

@@ -12,6 +12,7 @@ export type RunicProtocolId =
   | "forge-trace-protocol"
   | "proofwright-proof-protocol"
   | "faultwright-repair-protocol"
+  | "faultline-breakpoint-protocol"
   | "mirrorglass-review-protocol"
   | "mirrorglass-risk-protocol"
   | "sealmark-checkpoint-protocol"
@@ -195,6 +196,22 @@ function buildProtocol(input: {
         toolHints: ["runesmith_proof_run"],
       })
     }
+    case "review-faultline":
+      return protocol({
+        id: "faultline-breakpoint-protocol",
+        name: "Faultline Breakpoint Protocol",
+        mode: "guarded",
+        trigger: input.trigger,
+        objective: "Stop repeated failed repairs and inspect architecture before another proof attempt.",
+        procedure: input.runebookSteps,
+        verification: commandLines(input.commands),
+        forbiddenMoves: [
+          "Do not stack another patch on the same hypothesis.",
+          "Do not rerun failing proof until the architecture question has a new answer.",
+          "Do not hide repeated diagnostics behind a generic repair summary.",
+        ],
+        toolHints: input.runebookToolHints,
+      })
     case "resolve-risk": {
       const latestRisk = input.risks.at(-1) ?? "the active risk"
 

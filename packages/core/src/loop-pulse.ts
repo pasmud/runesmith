@@ -20,6 +20,7 @@ export type LoopPulseActionId =
   | "continue-forge"
   | "capture-proof"
   | "repair-diagnostic"
+  | "review-faultline"
   | "review-change"
   | "seal-mission"
 
@@ -255,6 +256,15 @@ function selectNextAction(brief: ReturnType<typeof deriveCovenantControlBrief>):
     }
   }
 
+  if (brief.stage.id === "faultline") {
+    return {
+      id: "review-faultline",
+      label: "Review faultline",
+      priority: "critical",
+      reason: "Repeated failed proof attempts require architecture review before another repair.",
+    }
+  }
+
   if (brief.stage.id === "seal" || brief.taskTitle?.toLowerCase().startsWith("seal:")) {
     return {
       id: "seal-mission",
@@ -442,6 +452,35 @@ function buildExecutionPlan(
         instruction: "Rerun the exact failing verification command and attach passing test-result evidence.",
         evidence: ["test-result"],
         runes: selectPlanRunes(brief.runes, ["Proofwright"]),
+      },
+    ]
+  }
+
+  if (nextAction.id === "review-faultline") {
+    return [
+      {
+        id: "summarize-failed-repairs",
+        label: "Summarize failed repairs",
+        status: "active",
+        instruction: "Compare the last three diagnostics and the repair edits between them before another patch.",
+        evidence: ["diagnostic"],
+        runes: selectPlanRunes(brief.runes, ["Faultline"]),
+      },
+      {
+        id: "question-architecture",
+        label: "Question architecture",
+        status: "queued",
+        instruction: "Name the assumption, interface, dependency, or test contract that could make local patches ineffective.",
+        evidence: ["risk"],
+        runes: selectPlanRunes(brief.runes, ["Faultline", "Mirrorglass"]),
+      },
+      {
+        id: "choose-breakthrough-path",
+        label: "Choose breakthrough path",
+        status: "blocked",
+        instruction: "Choose a redesign, revert, scope split, or new falsifiable hypothesis before proof is retried.",
+        evidence: ["decision"],
+        runes: selectPlanRunes(brief.runes, ["Faultline", "Proofwright"]),
       },
     ]
   }

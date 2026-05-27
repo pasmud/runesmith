@@ -32,6 +32,8 @@ When a coding goal appears, prepare or resume the Runesmith mission before mutat
 
 Completion requires current evidence in the runtime capsule. Passing proof must be newer than the latest relevant file change or diagnostic. Unresolved risk requires later decision evidence. Stale leases must be recovered before unrelated work continues.
 
+If Loop Pulse selects `Review faultline`, stop ordinary patching. Compare the repeated diagnostics, name the architecture or assumption that made local fixes ineffective, choose a redesign/revert/scope split/new hypothesis, then rerun the focused proof command only after that breakpoint is resolved.
+
 Use Seal Audit as the final completion signal. If it is `collecting-proof`, run the Proof Plan. If it is `blocked`, resolve the listed finding. Only claim completion when Seal Audit is `ready` or `sealed`.
 
 ## Fallback

@@ -129,13 +129,18 @@ describe("opencode adapter", () => {
       value: {
         name: "Runic Covenant",
         installMode: "automatic",
-        stageCount: 9,
+        stageCount: 10,
       },
     })
     expect(parsed.value.stages.map((stage: any) => stage.id)).toContain("repair")
+    expect(parsed.value.stages.map((stage: any) => stage.id)).toContain("faultline")
     expect(parsed.value.stages.find((stage: any) => stage.id === "repair")).toMatchObject({
       id: "repair",
       name: "Repair Gate",
+    })
+    expect(parsed.value.stages.find((stage: any) => stage.id === "faultline")).toMatchObject({
+      id: "faultline",
+      name: "Faultline Breakpoint",
     })
 
     const transform = plugin.experimental.chat.system.transform
@@ -1220,6 +1225,93 @@ describe("opencode adapter", () => {
           runes: [
             {
               name: "Faultwright",
+            },
+            {
+              name: "Proofwright",
+            },
+          ],
+        },
+      },
+    })
+  })
+
+  test("escalates repeated captured failures into a Faultline breakpoint", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({ runtime, proofPlanOptions: false })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Stop repeated OpenCode repair failures",
+    })
+    await plugin["tool.execute.after"]?.(
+      { tool: "edit" },
+      {
+        args: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+        result: { status: "changed" },
+      },
+    )
+    for (const index of [1, 2, 3]) {
+      await plugin["tool.execute.after"]?.(
+        { tool: "bash" },
+        {
+          args: { command: `bun test packages/opencode-adapter/tests/plugin.test.ts --attempt=${index}` },
+          result: { exitCode: 1, stdout: "", stderr: `${index} fail` },
+        },
+      )
+    }
+
+    const tick = await plugin.tool.runesmith_autopilot_tick.execute({})
+
+    expect(JSON.parse(tick.output)).toMatchObject({
+      ok: true,
+      value: {
+        status: "waiting-for-evidence",
+        missionMemory: {
+          status: "needs-architecture",
+          handoff:
+            "Review faultline for task_alpha: 3 failed proof attempts. Question architecture before another repair.",
+        },
+        proofPlan: {
+          status: "needs-repair",
+          commands: [
+            {
+              command: "bun test packages/opencode-adapter/tests/plugin.test.ts --attempt=3",
+              kind: "rerun-diagnostic",
+            },
+            {
+              command: "bun test",
+              kind: "test",
+            },
+          ],
+        },
+        runebook: {
+          activeCard: {
+            id: "faultline-breakpoint",
+            title: "Faultline architecture breakpoint",
+            toolHints: ["runesmith_task_evidence"],
+          },
+        },
+        loopPulse: {
+          nextAction: {
+            id: "review-faultline",
+            label: "Review faultline",
+          },
+          executionPlan: [
+            {
+              id: "summarize-failed-repairs",
+              status: "active",
+            },
+            {
+              id: "question-architecture",
+              status: "queued",
+            },
+            {
+              id: "choose-breakthrough-path",
+              status: "blocked",
+            },
+          ],
+          runes: [
+            {
+              name: "Faultline",
             },
             {
               name: "Proofwright",

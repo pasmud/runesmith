@@ -11,6 +11,7 @@ export type MissionMemoryStatus =
   | "blocked"
   | "needs-proof"
   | "needs-repair"
+  | "needs-architecture"
   | "needs-recovery"
   | "sealed"
 
@@ -236,6 +237,7 @@ function selectMemoryStatus(
   if (pulse.nextAction.id === "recover-stale") return "needs-recovery"
   if (pulse.nextAction.id === "resolve-blocker") return "blocked"
   if (pulse.nextAction.id === "resolve-risk") return "blocked"
+  if (pulse.nextAction.id === "review-faultline") return "needs-architecture"
   if (pulse.nextAction.id === "repair-diagnostic") return "needs-repair"
   if (missing.length > 0) return "needs-proof"
 
@@ -284,6 +286,12 @@ function buildHandoff(input: {
     return `Repair ${taskId}: ${diagnostic}. State a falsifiable hypothesis, change one repair variable, then rerun proof.`
   }
 
+  if (input.status === "needs-architecture") {
+    const attemptCount = Math.max(input.latestDiagnostics.length, input.pulse.diagnostics.length)
+
+    return `Review faultline for ${taskId}: ${attemptCount} failed proof attempts. Question architecture before another repair.`
+  }
+
   if (input.status === "needs-recovery") {
     return `Recover ${taskId}: ${input.pulse.nextAction.reason}`
   }
@@ -306,9 +314,13 @@ function evidenceSummaries(evidence: Evidence[], type: EvidenceType): string[] {
 }
 
 function sortEvidenceNewest(evidence: Evidence[]): Evidence[] {
-  return [...evidence].sort((left, right) => {
-    return right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id)
-  })
+  return evidence
+    .map((entry, index) => ({ entry, index }))
+    .sort((left, right) => {
+      const createdAtDelta = right.entry.createdAt.localeCompare(left.entry.createdAt)
+      return createdAtDelta || right.index - left.index
+    })
+    .map(({ entry }) => entry)
 }
 
 function isPassingTestResultEvidence(evidence: Evidence): boolean {

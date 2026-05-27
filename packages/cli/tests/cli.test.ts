@@ -1472,6 +1472,52 @@ describe("runesmith cli", () => {
     expect(inspect.stdout).toContain("- Rerun failing command: bun test packages/cli/tests")
   })
 
+  test("mission inspect surfaces Faultline after repeated failed diagnostics", async () => {
+    const host = createMemoryHost()
+
+    await runCli(["mission", "start", "Escalate CLI repair loop"], host)
+    await runCli([
+      "mission",
+      "evidence",
+      "mission_cli_1",
+      "task_cli_1",
+      "--type",
+      "file-change",
+      "--summary",
+      "Updated CLI files",
+      "--payload-json",
+      "{\"files\":[\"packages/cli/src/index.ts\"]}",
+    ], host)
+    for (const index of [1, 2, 3]) {
+      await runCli([
+        "mission",
+        "evidence",
+        "mission_cli_1",
+        "task_cli_1",
+        "--type",
+        "diagnostic",
+        "--summary",
+        `CLI tests failed attempt ${index}`,
+        "--payload-json",
+        `{\"command\":\"bun test packages/cli/tests --attempt=${index}\",\"exitCode\":1}`,
+      ], host)
+    }
+
+    const tick = await runCli(["mission", "tick"], host)
+    const inspect = await runCli(["mission", "inspect", "mission_cli_1"], host)
+
+    expect(tick.stdout).toContain("next: Review faultline [critical/critical]")
+    expect(tick.stdout).toContain("diagnostics: CLI tests failed attempt 1, CLI tests failed attempt 2, CLI tests failed attempt 3")
+    expect(inspect.stdout).toContain("Loop Pulse: Review faultline [critical/critical]")
+    expect(inspect.stdout).toContain("Active runes: Faultline, Proofwright")
+    expect(inspect.stdout).toContain("Active card: Faultline architecture breakpoint [guarded]")
+    expect(inspect.stdout).toContain("Active protocol: Faultline Breakpoint Protocol [guarded]")
+    expect(inspect.stdout).toContain("Commands: bun test packages/cli/tests --attempt=3 -> bun test")
+    expect(inspect.stdout).toContain(
+      "Handoff: Review faultline for task_cli_1: 3 failed proof attempts. Question architecture before another repair.",
+    )
+  })
+
   test("risk resolve records a decision and advances the active mission", async () => {
     const host = createMemoryHost()
 
