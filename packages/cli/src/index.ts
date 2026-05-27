@@ -16,6 +16,7 @@ import {
   deriveRunicProtocolDeck,
   deriveRunebook,
   deriveScopeSentinel,
+  deriveSealAudit,
   loadRuntimeCapsule,
   resolveRunicRisk,
   runRuneweave,
@@ -35,6 +36,7 @@ import {
   type RunicProtocolDeck,
   type Runebook,
   type ScopeSentinel,
+  type SealAudit,
   type RiskResolutionVerdict,
   type RuntimeSnapshot,
 } from "@runesmith/core"
@@ -248,6 +250,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     const missionMap = deriveMissionMap(snapshot.value)
     const scopeSentinel = deriveScopeSentinel(snapshot.value)
     const reviewLens = deriveReviewLens(snapshot.value)
+    const sealAudit = deriveSealAudit(snapshot.value, proofOptions)
     const memory = deriveMissionMemory(snapshot.value)
     const proofPlan = deriveProofPlan(snapshot.value, proofOptions)
     const runebook = deriveRunebook(snapshot.value, { proofPlanOptions: proofOptions })
@@ -280,6 +283,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
       `Summary: ${reviewLens.summary}`,
       ...formatReviewLensBlockedLines(reviewLens),
       `Findings: ${formatReviewLensFindings(reviewLens)}`,
+      "Seal audit:",
+      `Summary: ${sealAudit.summary}`,
+      ...formatSealAuditAttentionLines(sealAudit),
+      `Findings: ${formatSealAuditFindings(sealAudit)}`,
       `Required evidence: ${formatList(pulse.requiredEvidence)}`,
       `Missing evidence: ${formatList(pulse.missingEvidence)}`,
       ...formatPulseDiagnostics(pulse, "Diagnostics"),
@@ -421,6 +428,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
   const missionMap = deriveMissionMap(snapshot)
   const scopeSentinel = deriveScopeSentinel(snapshot)
   const reviewLens = deriveReviewLens(snapshot)
+  const sealAudit = deriveSealAudit(snapshot, proofOptions)
   const memory = deriveMissionMemory(snapshot)
   const proofPlan = deriveProofPlan(snapshot, proofOptions)
   const runebook = deriveRunebook(snapshot, { proofPlanOptions: proofOptions })
@@ -441,6 +449,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     `mission map: ${formatMissionMapSummary(missionMap)}`,
     `scope sentinel: ${formatScopeSentinelSummary(scopeSentinel)}`,
     `review lens: ${formatReviewLensSummary(reviewLens)}`,
+    `seal audit: ${formatSealAuditSummary(sealAudit)}`,
     `mission: ${mission ? `${mission.id} ${mission.status} ${mission.goal}` : "none"}`,
     `task: ${task ? `${task.id} ${task.status} ${task.title}` : "none"}`,
     `missing evidence: ${formatList(pulse.missingEvidence)}`,
@@ -1156,6 +1165,23 @@ function formatReviewLensBlockedLines(lens: ReviewLens): string[] {
 
 function formatReviewLensFindings(lens: ReviewLens): string {
   return lens.findings.length > 0 ? lens.findings.map((finding) => finding.summary).join("; ") : "none"
+}
+
+function formatSealAuditSummary(audit: SealAudit): string {
+  const label = audit.findings.length === 1 ? "finding" : "findings"
+  return `${audit.status}; ${audit.findings.length} ${label}`
+}
+
+function formatSealAuditAttentionLines(audit: SealAudit): string[] {
+  const actionable = audit.checks.filter((item) => item.status !== "passed" && item.id !== "seal-decision")
+  const checks = actionable.length > 0 ? actionable : audit.checks.filter((item) => item.status !== "passed")
+  if (checks.length === 0) return ["- none"]
+
+  return checks.map((item) => `- ${item.id}: ${item.status} - ${item.detail}`)
+}
+
+function formatSealAuditFindings(audit: SealAudit): string {
+  return audit.findings.length > 0 ? audit.findings.map((finding) => finding.summary).join("; ") : "none"
 }
 
 function formatRunebookCard(runebook: Runebook): string {

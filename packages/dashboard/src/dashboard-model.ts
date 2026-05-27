@@ -8,6 +8,7 @@ import {
   deriveRunicProtocolDeck,
   deriveRunebook,
   deriveScopeSentinel,
+  deriveSealAudit,
   getNextCovenantStage,
   type AgentContract,
   type CovenantStage,
@@ -23,6 +24,7 @@ import {
   type RunicProtocolDeck,
   type Runebook,
   type ScopeSentinel,
+  type SealAudit,
   type RiskResolutionVerdict,
   type RuntimeCapsule,
   type RuntimeSnapshot,
@@ -111,6 +113,7 @@ export type DashboardModel = {
   reviewLens: ReviewLens
   runebook: Runebook
   scopeSentinel: ScopeSentinel
+  sealAudit: SealAudit
   metrics: Record<MissionStatus, number>
   mode: OsMode
   notice: string
@@ -686,6 +689,9 @@ function deriveDashboardModel(input: {
   const scopeSentinel = input.runtimeSnapshot
     ? deriveScopeSentinel(input.runtimeSnapshot)
     : buildSeededScopeSentinel(input.tasks)
+  const sealAudit = input.runtimeSnapshot
+    ? deriveSealAudit(input.runtimeSnapshot)
+    : buildSeededSealAudit(input.tasks)
   const runebook = input.runtimeSnapshot
     ? deriveRunebook(input.runtimeSnapshot)
     : buildSeededRunebook(input.tasks)
@@ -705,6 +711,7 @@ function deriveDashboardModel(input: {
     reviewLens,
     runebook,
     scopeSentinel,
+    sealAudit,
     metrics,
     operationalScore: buildOperationalScore(input.tasks, metrics, input.policies),
     selectedAgent,
@@ -736,6 +743,14 @@ function buildSeededScopeSentinel(tasks: TaskCard[]): ScopeSentinel {
   }
 
   return deriveScopeSentinel(buildSeededRuntimeSnapshot(tasks))
+}
+
+function buildSeededSealAudit(tasks: TaskCard[]): SealAudit {
+  if (tasks.length === 0) {
+    return deriveSealAudit(emptyRuntimeSnapshot())
+  }
+
+  return deriveSealAudit(buildSeededRuntimeSnapshot(tasks))
 }
 
 function buildSeededLoopPulse(tasks: TaskCard[], activeStage: CovenantStage): LoopPulse {

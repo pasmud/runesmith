@@ -364,6 +364,19 @@ describe("dashboard model", () => {
         },
       ],
     })
+    expect(model.sealAudit).toMatchObject({
+      status: "collecting-proof",
+      missionId: "mission_live",
+      implementationTaskId: "task_live",
+      summary: "mission_live needs stronger proof before any completion claim.",
+    })
+    expect(model.sealAudit.checks.map((check) => [check.id, check.status])).toEqual([
+      ["mission-state", "passed"],
+      ["proof-gate", "attention"],
+      ["scope-gate", "passed"],
+      ["review-gate", "attention"],
+      ["seal-decision", "blocked"],
+    ])
     expect(model.runebook.activeCard.commands.map((command) => command.command)).toEqual(["bun test"])
     expect(model.missionMemory.status).toBe("needs-proof")
     expect(model.missionMemory.handoff).toBe(

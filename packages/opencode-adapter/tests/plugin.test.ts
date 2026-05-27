@@ -182,6 +182,13 @@ describe("opencode adapter", () => {
           taskId: "task_alpha",
           agentId: "agent_atlas",
         },
+        sealAudit: {
+          status: "collecting-proof",
+          missionId: "mission_alpha",
+          implementationTaskId: "task_alpha",
+          reviewTaskId: "task_alpha_review",
+          sealTaskId: "task_alpha_seal",
+        },
         runebook: {
           activeCard: {
             id: "forge-trace",
@@ -314,6 +321,7 @@ describe("opencode adapter", () => {
     expect(systemOutput.system.join("\n")).toContain("Runesmith Mission Map")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Scope Sentinel")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Review Lens")
+    expect(systemOutput.system.join("\n")).toContain("Runesmith Seal Audit")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Proof Plan")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Runebook")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Protocol Deck")
@@ -332,6 +340,7 @@ describe("opencode adapter", () => {
     expect(compactOutput.context.join("\n")).toContain("Runesmith Mission Map")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Scope Sentinel")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Review Lens")
+    expect(compactOutput.context.join("\n")).toContain("Runesmith Seal Audit")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Proof Plan")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Runebook")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Protocol Deck")

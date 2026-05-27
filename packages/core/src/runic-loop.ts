@@ -5,6 +5,7 @@ import { runtimeError } from "./errors"
 import { deriveLoopPulse } from "./loop-pulse"
 import { taskDependenciesComplete } from "./mission-graph"
 import { deriveReviewLens, summarizeReviewLens } from "./review-lens"
+import { deriveSealAudit, summarizeSealAudit } from "./seal-audit"
 import type { RunesmithRuntime, RuntimeSnapshot } from "./runtime"
 import {
   err,
@@ -122,6 +123,7 @@ export function advanceRunicMissionLoop(
   const decisionDraft = createCovenantDecisionDraft(task)
   if (decisionDraft && missingEvidence.length === 1 && missingEvidence[0] === "decision") {
     const reviewLens = decisionDraft.stage === "review" ? summarizeReviewLens(deriveReviewLens(snapshot)) : undefined
+    const sealAudit = decisionDraft.stage === "seal" ? summarizeSealAudit(deriveSealAudit(snapshot)) : undefined
     const recorded = runtime.addTaskEvidence({
       missionId: target.missionId,
       evidence: {
@@ -133,7 +135,11 @@ export function advanceRunicMissionLoop(
         taskId: target.taskId,
         type: "decision",
         summary: decisionDraft.summary,
-        payload: reviewLens ? { ...decisionDraft.payload, reviewLens } : decisionDraft.payload,
+        payload: {
+          ...decisionDraft.payload,
+          ...(reviewLens ? { reviewLens } : {}),
+          ...(sealAudit ? { sealAudit } : {}),
+        },
         createdAt: (options.now ?? (() => new Date()))().toISOString(),
       },
     })

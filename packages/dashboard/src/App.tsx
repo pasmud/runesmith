@@ -685,6 +685,7 @@ function RightRail({ dispatch, model }: { dispatch: DashboardDispatch; model: Da
       <MissionMapPanel model={model} />
       <ScopeSentinelPanel model={model} />
       <ReviewLensPanel model={model} />
+      <SealAuditPanel model={model} />
       <ProtocolDeckPanel model={model} />
       <MissionMemoryPanel model={model} />
 
@@ -939,6 +940,60 @@ function ReviewLensPanel({ model }: { model: DashboardModel }) {
       {lens.findings.length > 0 ? (
         <div className="review-lens-findings" aria-label="Review findings">
           {lens.findings.slice(0, 2).map((finding) => (
+            <p data-severity={finding.severity} key={`${finding.severity}-${finding.summary}`}>
+              {finding.summary}
+            </p>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
+function SealAuditPanel({ model }: { model: DashboardModel }) {
+  const audit = model.sealAudit
+  const nonPassing = audit.checks.filter((item) => item.status !== "passed")
+  const checks = nonPassing.length > 0 ? nonPassing.slice(0, 3) : audit.checks.slice(0, 3)
+  const tone: MissionStatus =
+    audit.status === "blocked"
+      ? "blocked"
+      : audit.status === "collecting-proof" || audit.status === "idle"
+        ? "stale"
+        : "verified"
+
+  return (
+    <section className="seal-audit-panel" aria-label="Runesmith seal audit">
+      <div className="inspector-header">
+        <p className="eyebrow">Seal Audit</p>
+        <Badge tone={tone}>{audit.status}</Badge>
+      </div>
+      <div className="seal-audit-head">
+        <span className={`tile-icon tile-icon-${tone}`}><Archive aria-hidden="true" /></span>
+        <div>
+          <h2>{audit.sealTaskId ?? audit.implementationTaskId ?? "No seal target"}</h2>
+          <p>{audit.summary}</p>
+        </div>
+      </div>
+      <div className="seal-audit-facts">
+        <span>{audit.findings.length} findings</span>
+        <span>{audit.nextAction}</span>
+      </div>
+      <div className="seal-audit-checks" aria-label="Seal audit checks">
+        {checks.length > 0 ? checks.map((item) => (
+          <span data-status={item.status} key={item.id}>
+            <strong>{item.label}</strong>
+            <small>{item.detail}</small>
+          </span>
+        )) : (
+          <span data-status="attention">
+            <strong>Awaiting mission</strong>
+            <small>{audit.nextAction}</small>
+          </span>
+        )}
+      </div>
+      {audit.findings.length > 0 ? (
+        <div className="seal-audit-findings" aria-label="Seal findings">
+          {audit.findings.slice(0, 2).map((finding) => (
             <p data-severity={finding.severity} key={`${finding.severity}-${finding.summary}`}>
               {finding.summary}
             </p>

@@ -10,6 +10,7 @@ import {
   buildRunicProtocolPrompt,
   buildRunebookPrompt,
   buildScopeSentinelPrompt,
+  buildSealAuditPrompt,
   createCovenantTaskPlan,
   createRuntime,
   createRunicCovenant,
@@ -23,6 +24,7 @@ import {
   deriveRunicProtocolDeck,
   deriveRunebook,
   deriveScopeSentinel,
+  deriveSealAudit,
   loadRuntimeCapsule,
   resolveRunicRisk,
   runRuneweave,
@@ -364,6 +366,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           const missionMap = deriveMissionMap(snapshot)
           const scopeSentinel = deriveScopeSentinel(snapshot)
           const reviewLens = deriveReviewLens(snapshot)
+          const sealAudit = deriveSealAudit(snapshot, proofPlanOptions)
           const missionMemory = deriveMissionMemory(snapshot, covenant)
           const proofPlan = deriveProofPlan(snapshot, proofPlanOptions)
           const runebook = deriveRunebook(snapshot, { proofPlanOptions, covenant })
@@ -400,6 +403,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             missionMap,
             scopeSentinel,
             reviewLens,
+            sealAudit,
             missionMemory,
             proofPlan,
             runebook,
@@ -572,6 +576,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             prompt = upsertPromptSection(prompt, buildMissionMapPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildScopeSentinelPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildReviewLensPrompt(snapshot))
+            prompt = upsertPromptSection(prompt, buildSealAuditPrompt(snapshot, proofPlanOptions))
             prompt = upsertPromptSection(prompt, buildRunebookPrompt(snapshot, { proofPlanOptions, covenant }))
             prompt = upsertPromptSection(prompt, buildRunicProtocolPrompt(snapshot, { proofPlanOptions, covenant }))
             prompt = upsertPromptSection(prompt, buildMissionMemoryPrompt(snapshot, covenant))
@@ -588,6 +593,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       upsertSystemSection(output, buildMissionMapPrompt(snapshot))
       upsertSystemSection(output, buildScopeSentinelPrompt(snapshot))
       upsertSystemSection(output, buildReviewLensPrompt(snapshot))
+      upsertSystemSection(output, buildSealAuditPrompt(snapshot, proofPlanOptions))
       upsertSystemSection(output, buildRunebookPrompt(snapshot, { proofPlanOptions, covenant }))
       upsertSystemSection(output, buildRunicProtocolPrompt(snapshot, { proofPlanOptions, covenant }))
       upsertSystemSection(output, buildMissionMemoryPrompt(snapshot, covenant))
@@ -1585,6 +1591,7 @@ function appendCompactionContext(
   upsertTextListSection(context, buildMissionMapPrompt(snapshot))
   upsertTextListSection(context, buildScopeSentinelPrompt(snapshot))
   upsertTextListSection(context, buildReviewLensPrompt(snapshot))
+  upsertTextListSection(context, buildSealAuditPrompt(snapshot, proofPlanOptions))
   upsertTextListSection(context, buildRunebookPrompt(snapshot, { proofPlanOptions }))
   upsertTextListSection(context, buildRunicProtocolPrompt(snapshot, { proofPlanOptions }))
   upsertTextListSection(context, buildMissionMemoryPrompt(snapshot))

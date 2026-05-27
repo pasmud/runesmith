@@ -16,6 +16,7 @@ Do not ask the user to load skills, name workflows, or manually pick a process. 
 - Runebook selects the executable card.
 - Mission Memory carries the handoff.
 - Proof Plan chooses verification commands.
+- Seal Audit decides whether completion can be claimed.
 - Runeweave runs engine-owned actions until a real stop condition appears.
 
 ## Direct Use
@@ -30,6 +31,8 @@ When a coding goal appears, prepare or resume the Runesmith mission before mutat
 ## Completion Discipline
 
 Completion requires current evidence in the runtime capsule. Passing proof must be newer than the latest relevant file change or diagnostic. Unresolved risk requires later decision evidence. Stale leases must be recovered before unrelated work continues.
+
+Use Seal Audit as the final completion signal. If it is `collecting-proof`, run the Proof Plan. If it is `blocked`, resolve the listed finding. Only claim completion when Seal Audit is `ready` or `sealed`.
 
 ## Fallback
 
