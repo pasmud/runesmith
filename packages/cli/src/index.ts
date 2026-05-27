@@ -330,6 +330,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     `runtime: ${defaultRuntimeCapsulePath}`,
     `opencode: ${openCodeCli ? `found ${openCodeCli}` : "missing"}`,
     `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
+    `plan: ${formatExecutionPlan(pulse.executionPlan)}`,
     `mission: ${mission ? `${mission.id} ${mission.status} ${mission.goal}` : "none"}`,
     `task: ${task ? `${task.id} ${task.status} ${task.title}` : "none"}`,
     `missing evidence: ${formatList(pulse.missingEvidence)}`,
@@ -735,6 +736,10 @@ function formatMissionLeases(snapshot: RuntimeSnapshot, missionId: string): stri
 
 function formatList(values: string[]): string {
   return values.length > 0 ? values.join(", ") : "none"
+}
+
+function formatExecutionPlan(plan: ReturnType<typeof deriveLoopPulse>["executionPlan"]): string {
+  return plan.length > 0 ? plan.map((step) => step.label).join(" -> ") : "none"
 }
 
 function formatPulseDiagnostics(pulse: ReturnType<typeof deriveLoopPulse>, label = "diagnostics"): string[] {

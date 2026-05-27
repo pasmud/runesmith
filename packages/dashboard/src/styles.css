@@ -1000,6 +1000,53 @@ svg {
   color: #3267ff;
 }
 
+.pulse-plan {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.pulse-plan span {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 1px solid #e8edf5;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.pulse-plan small {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 6px;
+  background: #eef5ff;
+  color: #3267ff;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.pulse-plan strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pulse-plan em {
+  color: var(--muted);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .pulse-diagnostics {
   display: grid;
   gap: 6px;
@@ -1369,7 +1416,49 @@ svg {
 
 @media (max-width: 540px) {
   .sidebar {
-    padding: 18px 14px;
+    padding: 14px 12px;
+  }
+
+  .brand-lockup {
+    margin-bottom: 12px;
+  }
+
+  .search-box {
+    margin-bottom: 10px;
+  }
+
+  .sidebar .rs-separator,
+  .sidebar-group {
+    display: none;
+  }
+
+  .nav-stack {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .nav-item {
+    position: relative;
+    justify-content: center;
+    height: 38px;
+    padding: 0;
+    font-size: 0;
+  }
+
+  .nav-item svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .nav-item .rs-badge {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    min-width: 15px;
+    height: 15px;
+    padding: 0;
+    font-size: 9px;
   }
 
   .topbar-actions,

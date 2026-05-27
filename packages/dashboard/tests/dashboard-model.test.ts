@@ -300,6 +300,10 @@ describe("dashboard model", () => {
     expect(model.agents[0]?.activeLease).toBe("task_live")
     expect(model.snapshots[0]?.label).toBe("Live capsule")
     expect(model.loopPulse.nextAction.label).toBe("Capture proof")
+    expect(model.loopPulse.executionPlan.map((step) => step.label)).toEqual([
+      "Run targeted verification",
+      "Advance evidence gate",
+    ])
     expect(model.loopPulse.runes.map((rune) => rune.name)).toContain("Proofwright")
     expect(model.notice).toBe("Loaded runtime capsule from 2026-05-27T00:00:00.000Z.")
   })
@@ -335,6 +339,11 @@ describe("dashboard model", () => {
     expect(model.loopPulse.stage.id).toBe("repair")
     expect(model.loopPulse.nextAction.label).toBe("Repair diagnostic")
     expect(model.loopPulse.diagnostics).toEqual(["Dashboard capsule tests failed"])
+    expect(model.loopPulse.executionPlan.map((step) => step.id)).toEqual([
+      "acknowledge-diagnostic",
+      "repair-smallest-cause",
+      "rerun-failing-command",
+    ])
     expect(model.loopPulse.runes.map((rune) => rune.name)).toContain("Faultwright")
   })
 

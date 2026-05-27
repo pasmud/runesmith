@@ -492,6 +492,20 @@ describe("opencode adapter", () => {
             id: "repair-diagnostic",
             label: "Repair diagnostic",
           },
+          executionPlan: [
+            {
+              id: "acknowledge-diagnostic",
+              status: "active",
+            },
+            {
+              id: "repair-smallest-cause",
+              status: "queued",
+            },
+            {
+              id: "rerun-failing-command",
+              status: "blocked",
+            },
+          ],
           runes: [
             {
               name: "Faultwright",

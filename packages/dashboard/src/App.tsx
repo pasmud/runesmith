@@ -721,6 +721,15 @@ function LoopPulsePanel({ model }: { model: DashboardModel }) {
           <span key={rune.id}>{rune.name}</span>
         ))}
       </div>
+      <div className="pulse-plan" aria-label="Execution plan">
+        {pulse.executionPlan.slice(0, 3).map((step, index) => (
+          <span key={step.id}>
+            <small>{index + 1}</small>
+            <strong>{step.label}</strong>
+            <em>{step.status}</em>
+          </span>
+        ))}
+      </div>
       {pulse.diagnostics.length > 0 ? (
         <div className="pulse-diagnostics" aria-label="Active diagnostics">
           <strong>Diagnostics</strong>

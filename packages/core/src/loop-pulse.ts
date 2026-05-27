@@ -29,6 +29,17 @@ export type LoopPulseAction = {
   reason: string
 }
 
+export type LoopPulsePlanStepStatus = "active" | "queued" | "blocked"
+
+export type LoopPulsePlanStep = {
+  id: string
+  label: string
+  status: LoopPulsePlanStepStatus
+  instruction: string
+  evidence: EvidenceType[]
+  runes: string[]
+}
+
 export type LoopPulse = {
   status: LoopPulseStatus
   health: LoopPulseHealth
@@ -43,6 +54,7 @@ export type LoopPulse = {
   runes: CovenantRune[]
   blockers: string[]
   nextAction: LoopPulseAction
+  executionPlan: LoopPulsePlanStep[]
 }
 
 export function deriveLoopPulse(
@@ -68,6 +80,16 @@ export function deriveLoopPulse(
         priority: "low",
         reason: "Runesmith has no active mission in the runtime capsule.",
       },
+      executionPlan: [
+        {
+          id: "wait-for-user-goal",
+          label: "Wait for user goal",
+          status: "active",
+          instruction: "Wait for a concrete coding goal, then prepare or resume a mission before mutating files.",
+          evidence: [],
+          runes: runeNames(brief.runes),
+        },
+      ],
     }
   }
 
@@ -88,6 +110,7 @@ export function deriveLoopPulse(
     runes: brief.runes,
     blockers,
     nextAction,
+    executionPlan: buildExecutionPlan(brief, nextAction),
   }
 }
 
@@ -103,6 +126,13 @@ export function buildLoopPulsePrompt(
   const runes = pulse.runes.length > 0 ? pulse.runes.map((rune) => rune.name).join(", ") : "none"
   const missionLine = pulse.missionId ? `Mission: ${pulse.missionId}` : "Mission: none"
   const taskLine = pulse.taskId ? `Task: ${pulse.taskId} (${pulse.taskStatus ?? "unknown"})` : "Task: none"
+  const planLines = pulse.executionPlan.length > 0
+    ? pulse.executionPlan.map((step, index) => {
+        const evidence = step.evidence.length > 0 ? step.evidence.join(", ") : "none"
+        const stepRunes = step.runes.length > 0 ? step.runes.join(", ") : "none"
+        return `${index + 1}. ${step.status} - ${step.label}: ${step.instruction} Evidence: ${evidence}. Runes: ${stepRunes}.`
+      })
+    : ["none"]
 
   return [
     "## Runesmith Loop Pulse",
@@ -118,6 +148,8 @@ export function buildLoopPulsePrompt(
     `Diagnostics: ${diagnostics}`,
     `Blockers: ${blockers}`,
     `Active runes: ${runes}`,
+    "Execution plan:",
+    ...planLines,
   ].join("\n")
 }
 
@@ -229,4 +261,186 @@ function selectHealth(
   if (blockers.length > 0 || missingEvidence.length > 0) return "attention"
 
   return "clear"
+}
+
+function buildExecutionPlan(
+  brief: ReturnType<typeof deriveCovenantControlBrief>,
+  nextAction: LoopPulseAction,
+): LoopPulsePlanStep[] {
+  if (nextAction.id === "recover-stale") {
+    return [
+      {
+        id: "reclaim-stale-task",
+        label: "Reclaim stale task",
+        status: "active",
+        instruction: "Run recovery, requeue dependency-ready stale work, and claim a fresh lease.",
+        evidence: ["diagnostic"],
+        runes: selectPlanRunes(brief.runes, ["Recovery Loom"]),
+      },
+      {
+        id: "resume-recovered-work",
+        label: "Resume recovered work",
+        status: "queued",
+        instruction: "Continue the recovered task under the new lease before unrelated edits.",
+        evidence: brief.missingEvidence,
+        runes: selectPlanRunes(brief.runes, ["Forge Trace", "Proofwright"]),
+      },
+    ]
+  }
+
+  if (nextAction.id === "resolve-blocker") {
+    return [
+      {
+        id: "identify-blocker",
+        label: "Identify blocker",
+        status: "active",
+        instruction: "Read the blocker and existing evidence before taking new action.",
+        evidence: ["diagnostic", "risk"],
+        runes: runeNames(brief.runes),
+      },
+      {
+        id: "clear-or-hold-blocker",
+        label: "Clear or hold blocker",
+        status: "blocked",
+        instruction: "Attach explicit evidence for the unblock path, or hold for user input when recovery is unsafe.",
+        evidence: brief.missingEvidence,
+        runes: selectPlanRunes(brief.runes, ["Recovery Loom", "Proofwright"]),
+      },
+    ]
+  }
+
+  if (nextAction.id === "claim-task") {
+    return [
+      {
+        id: "claim-ready-task",
+        label: "Claim ready task",
+        status: "active",
+        instruction: "Claim dependency-ready work with the matching contract and stable idempotency key.",
+        evidence: [],
+        runes: selectPlanRunes(brief.runes, ["Claim Ward"]),
+      },
+    ]
+  }
+
+  if (nextAction.id === "continue-forge") {
+    return [
+      {
+        id: "inspect-scoped-surface",
+        label: "Inspect scoped surface",
+        status: "active",
+        instruction: "Read the smallest relevant repo surface for the active task before editing.",
+        evidence: ["command-output"],
+        runes: selectPlanRunes(brief.runes, ["Pathfinder", "Forge Trace"]),
+      },
+      {
+        id: "make-scoped-change",
+        label: "Make scoped change",
+        status: "queued",
+        instruction: "Apply the smallest useful change and let tool hooks capture file-change evidence.",
+        evidence: ["file-change"],
+        runes: selectPlanRunes(brief.runes, ["Forge Trace"]),
+      },
+      {
+        id: "run-targeted-verification",
+        label: "Run targeted verification",
+        status: "blocked",
+        instruction: "Run targeted verification once the implementation change exists.",
+        evidence: ["test-result"],
+        runes: selectPlanRunes(brief.runes, ["Proofwright"]),
+      },
+    ]
+  }
+
+  if (nextAction.id === "capture-proof") {
+    return [
+      {
+        id: "run-targeted-verification",
+        label: "Run targeted verification",
+        status: "active",
+        instruction: "Run the strongest practical verification for the active change and capture passing proof.",
+        evidence: ["test-result"],
+        runes: selectPlanRunes(brief.runes, ["Proofwright"]),
+      },
+      {
+        id: "advance-evidence-gate",
+        label: "Advance evidence gate",
+        status: "queued",
+        instruction: "Let the autopilot tick complete the task once required evidence is attached.",
+        evidence: [],
+        runes: selectPlanRunes(brief.runes, ["Proofwright"]),
+      },
+    ]
+  }
+
+  if (nextAction.id === "repair-diagnostic") {
+    const latestDiagnostic = brief.diagnostics[brief.diagnostics.length - 1] ?? "the latest diagnostic"
+
+    return [
+      {
+        id: "acknowledge-diagnostic",
+        label: "Acknowledge diagnostic",
+        status: "active",
+        instruction: `Treat this diagnostic as the active repair target: ${latestDiagnostic}.`,
+        evidence: ["diagnostic"],
+        runes: selectPlanRunes(brief.runes, ["Faultwright"]),
+      },
+      {
+        id: "repair-smallest-cause",
+        label: "Repair smallest cause",
+        status: "queued",
+        instruction: "Make the smallest likely fix and avoid unrelated scope expansion.",
+        evidence: ["file-change"],
+        runes: selectPlanRunes(brief.runes, ["Faultwright"]),
+      },
+      {
+        id: "rerun-failing-command",
+        label: "Rerun failing command",
+        status: "blocked",
+        instruction: "Rerun the exact failing verification command and attach passing test-result evidence.",
+        evidence: ["test-result"],
+        runes: selectPlanRunes(brief.runes, ["Proofwright"]),
+      },
+    ]
+  }
+
+  if (nextAction.id === "seal-mission") {
+    return [
+      {
+        id: "seal-checkpoint",
+        label: "Seal checkpoint",
+        status: "active",
+        instruction: "Record a final checkpoint decision and keep the runtime capsule current.",
+        evidence: ["decision"],
+        runes: selectPlanRunes(brief.runes, ["Sealmark"]),
+      },
+    ]
+  }
+
+  return [
+    {
+      id: "review-diff-and-behavior",
+      label: "Review diff and behavior",
+      status: "active",
+      instruction: "Inspect the diff and runtime behavior for gaps before completion.",
+      evidence: ["decision"],
+      runes: selectPlanRunes(brief.runes, ["Mirrorglass"]),
+    },
+    {
+      id: "seal-after-review",
+      label: "Seal after review",
+      status: "queued",
+      instruction: "Seal a checkpoint after review finds no blocking gap.",
+      evidence: ["decision"],
+      runes: selectPlanRunes(brief.runes, ["Sealmark"]),
+    },
+  ]
+}
+
+function selectPlanRunes(runes: CovenantRune[], names: string[]): string[] {
+  const selected = runes.map((rune) => rune.name).filter((name) => names.includes(name))
+  return selected.length > 0 ? selected : names
+}
+
+function runeNames(runes: CovenantRune[]): string[] {
+  return runes.map((rune) => rune.name)
 }

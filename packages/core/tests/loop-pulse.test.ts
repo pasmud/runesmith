@@ -38,6 +38,16 @@ describe("loop pulse", () => {
       },
     })
     expect(pulse.runes.map((rune) => rune.name)).toContain("Pathfinder")
+    expect(pulse.executionPlan).toEqual([
+      {
+        id: "wait-for-user-goal",
+        label: "Wait for user goal",
+        status: "active",
+        instruction: "Wait for a concrete coding goal, then prepare or resume a mission before mutating files.",
+        evidence: [],
+        runes: ["Pathfinder"],
+      },
+    ])
   })
 
   test("prioritizes recovery when the active task is stale", () => {
@@ -122,6 +132,15 @@ describe("loop pulse", () => {
       missingEvidence: ["test-result"],
     })
     expect(pulse.runes.map((rune) => rune.name)).toContain("Proofwright")
+    expect(pulse.executionPlan.map((step) => step.id)).toEqual([
+      "run-targeted-verification",
+      "advance-evidence-gate",
+    ])
+    expect(pulse.executionPlan[0]).toMatchObject({
+      status: "active",
+      evidence: ["test-result"],
+      runes: ["Proofwright"],
+    })
   })
 
   test("prioritizes diagnostic repair when verification failed", () => {
@@ -177,7 +196,24 @@ describe("loop pulse", () => {
     })
     expect(pulse.runes.map((rune) => rune.name)).toContain("Faultwright")
     expect(pulse.blockers).toContain("diagnostic: bun test packages/core/tests failed")
+    expect(pulse.executionPlan.map((step) => step.id)).toEqual([
+      "acknowledge-diagnostic",
+      "repair-smallest-cause",
+      "rerun-failing-command",
+    ])
+    expect(pulse.executionPlan[0]).toMatchObject({
+      status: "active",
+      evidence: ["diagnostic"],
+      runes: ["Faultwright"],
+    })
+    expect(pulse.executionPlan[2]).toMatchObject({
+      status: "blocked",
+      evidence: ["test-result"],
+      runes: ["Proofwright"],
+    })
     expect(prompt).toContain("Next action: Repair diagnostic")
+    expect(prompt).toContain("Execution plan:")
+    expect(prompt).toContain("1. active - Acknowledge diagnostic")
     expect(prompt).toContain("Active runes: Faultwright, Proofwright")
   })
 
