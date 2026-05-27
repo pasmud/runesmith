@@ -13,6 +13,7 @@ import {
   buildSealAuditPrompt,
   createRuntime,
   createRunicCovenant,
+  defaultProjectConfigPath,
   defaultRuntimeCapsulePath,
   deriveCovenantControlBrief,
   deriveLoopPulse,
@@ -25,6 +26,7 @@ import {
   deriveScopeSentinel,
   deriveSealAudit,
   prepareRunicMission,
+  repairProjectConfig,
   repairRuntimeCapsule,
   resolveRunicRisk,
   runRuneweave,
@@ -651,6 +653,9 @@ export async function createRunesmithOpenCodePlugin(
 ): Promise<RunesmithPlugin> {
   const host = options.host ?? createNodeRuntimeStoreHost()
   const capsulePath = options.capsulePath ?? defaultRuntimeCapsulePath
+  await repairProjectConfig(host, {
+    path: defaultProjectConfigPath,
+  })
   const fallbackSnapshot = options.snapshot ?? {
     graphs: {},
     ledgers: {},

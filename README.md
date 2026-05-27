@@ -22,7 +22,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - The Runic mission loop is a shared core kernel used by OpenCode, the CLI, and the dashboard, so recovery, decision synthesis, task claiming, and evidence gates cannot drift between surfaces.
 - Idle recovery requeues dependency-ready stale tasks, clears stale ownership, and claims a fresh lease so work can continue without a manual reset.
 - Runtime state is stored in a local capsule so missions survive OpenCode restarts.
-- Direct OpenCode plugin startup repairs the runtime capsule when it is missing or invalid, backing up corrupt state before recreating a usable capsule.
+- Direct OpenCode plugin startup repairs project config and the runtime capsule when either is missing or invalid, backing up corrupt state before recreating usable local OS files.
 - OpenCode compaction carries the mission capsule forward so long sessions do not lose orchestration state.
 - A live Runesmith Control Brief is injected from runtime state so OpenCode sees the active mission, next Covenant stage, and missing proof without user-managed workflow steps.
 - A compact first-user-message bootstrap also carries the current Loop Pulse and active protocol, giving OpenCode a low-bloat fallback when message hooks are more reliable than repeated system prompt injection.
@@ -88,9 +88,9 @@ Proof Runner executes that recipe when OpenCode, the CLI, or the dashboard asks 
 
 Runesmith Ignite sits above setup and mission commands for first use. `runesmith ignite "Ship the feature"` defaults to the direct package-plugin install path, writes or refreshes OpenCode config, creates the runtime capsule, starts or resumes the matching Covenant mission, claims the current task, and runs Runeweave once. The command is intentionally higher level than `up`, `mission start`, and `run`: new users get one useful entrypoint, while operators can still drop to lower-level controls when debugging.
 
-Runesmith Heal is the self-repair path. It preserves valid runtime state, backs up a corrupt `.runesmith/runtime/capsule.json` to `.runesmith/runtime/capsule.json.runesmith.bak`, writes a fresh capsule, restores OpenCode plugin wiring, and reports whether doctor is ready or staged because the host OpenCode CLI is still missing.
+Runesmith Heal is the self-repair path. It preserves valid local state, backs up a corrupt `.runesmith/config.json` or `.runesmith/runtime/capsule.json` to `*.runesmith.bak`, writes fresh files, restores OpenCode plugin wiring, and reports whether doctor is ready or staged because the host OpenCode CLI is still missing.
 
-The direct OpenCode package plugin uses the same runtime-capsule repair primitive on startup. If OpenCode loads Runesmith against a missing or invalid capsule, the plugin repairs the capsule before exposing tools, so the normal chat path can still reach Autopilot instead of failing before the user sees a useful action.
+The direct OpenCode package plugin uses the same config and runtime-capsule repair primitives on startup. If OpenCode loads Runesmith against missing or invalid local OS files, the plugin repairs them before exposing tools, so the normal chat path can still reach Autopilot instead of failing before the user sees a useful action.
 
 Runesmith Next is the default hands-off surface above the Runebook. It reads the active card and takes the smallest safe engine-owned action: run Proof Runner for `Capture proof` and `Repair diagnostic`, apply a supplied decision for `Resolve risk`, recover stale work, claim the next dependency-ready task, or advance through Review and Seal when evidence is already present. This is the Runesmith-owned version of workflow-skill dispatch: the user runs `runesmith next`, clicks `Run next`, or lets OpenCode call `runesmith_next`; the engine chooses the lower-level operation from runtime state.
 
@@ -143,7 +143,7 @@ For OpenCode users, the direct path is a single plugin entry:
 }
 ```
 
-Add it to your global or project `opencode.json`, restart OpenCode, and let OpenCode install the package at startup. The repo root exports the Runesmith OpenCode plugin, runs the package build during git-package preparation, creates `.runesmith/runtime/capsule.json` on first load when it is missing, backs up and repairs an invalid capsule when needed, resumes that capsule on later OpenCode starts, and loads the same Runic Covenant, Control Brief, Loop Pulse, Runebook, `runesmith_os_run`, `runesmith_next`, tool hooks, runtime capsule, and evidence-gated autopilot described above.
+Add it to your global or project `opencode.json`, restart OpenCode, and let OpenCode install the package at startup. The repo root exports the Runesmith OpenCode plugin, runs the package build during git-package preparation, creates `.runesmith/config.json` and `.runesmith/runtime/capsule.json` on first load when they are missing, backs up and repairs invalid local state when needed, resumes that capsule on later OpenCode starts, and loads the same Runic Covenant, Control Brief, Loop Pulse, Runebook, `runesmith_os_run`, `runesmith_next`, tool hooks, runtime capsule, and evidence-gated autopilot described above.
 
 The same root package also ships the `runesmith` CLI binary from `packages/cli/dist/index.js`, so package installs expose one command for bootstrap, status, proof, run, launch, doctor, and risk resolution. The source commands below are the local development equivalents of that packaged binary.
 
@@ -196,7 +196,7 @@ Repair the local OS install:
 bun packages/cli/src/index.ts heal
 ```
 
-`heal` defaults to the direct package-plugin path, recreates missing config and capsule files, backs up and replaces invalid runtime capsules, restores OpenCode plugin wiring, then runs doctor. `ignite` runs the same repair path before preparing a goal, so the first useful command can survive a bad capsule.
+`heal` defaults to the direct package-plugin path, recreates missing config and capsule files, backs up and replaces invalid local state, restores OpenCode plugin wiring, then runs doctor. `ignite` runs the same repair path before preparing a goal, so the first useful command can survive a bad capsule.
 
 Check the operating loop without learning the mission subcommands:
 

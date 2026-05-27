@@ -10,7 +10,7 @@ Add Runesmith to the `plugin` array in your global or project `opencode.json`:
 }
 ```
 
-Restart OpenCode. OpenCode installs package plugins with Bun at startup, then loads the Runesmith plugin entrypoint from this repo. The package plugin creates `.runesmith/runtime/capsule.json` on first load when it is missing, backs up and repairs an invalid capsule when needed, resumes that capsule on later starts, and persists each mission mutation back into the same file.
+Restart OpenCode. OpenCode installs package plugins with Bun at startup, then loads the Runesmith plugin entrypoint from this repo. The package plugin creates `.runesmith/config.json` and `.runesmith/runtime/capsule.json` on first load when they are missing, backs up and repairs invalid local OS files when needed, resumes that capsule on later starts, and persists each mission mutation back into the same file.
 
 ## What Loads
 
@@ -34,6 +34,6 @@ bun packages/cli/src/index.ts risk resolve --summary "Operator accepts the activ
 bun packages/cli/src/index.ts launch -- <opencode args>
 ```
 
-Use `ignite "<goal>"` for the least-ceremony path: it defaults to the direct package plugin, writes OpenCode config, heals missing or invalid local state, creates or resumes the matching Covenant mission, claims the active task, and runs the OS loop once. Use `heal` when the capsule or plugin wiring looks broken; it backs up invalid runtime state before replacing it. Use plain `up` for a local development shim, or `up --mode npm` to initialize Runesmith and write the direct package plugin entry into OpenCode config. Existing projects can also use only the package entry above; Runesmith will bootstrap the default runtime capsule when OpenCode loads the plugin.
+Use `ignite "<goal>"` for the least-ceremony path: it defaults to the direct package plugin, writes OpenCode config, heals missing or invalid local state, creates or resumes the matching Covenant mission, claims the active task, and runs the OS loop once. Use `heal` when config, capsule, or plugin wiring looks broken; it backs up invalid local OS files before replacing them. Use plain `up` for a local development shim, or `up --mode npm` to initialize Runesmith and write the direct package plugin entry into OpenCode config. Existing projects can also use only the package entry above; Runesmith will bootstrap the default config and runtime capsule when OpenCode loads the plugin.
 
 Use `bun packages/cli/src/index.ts doctor` when OpenCode does not load the plugin or the runtime capsule looks invalid.

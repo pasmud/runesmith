@@ -32,7 +32,7 @@ The first production slice includes:
 - Fresh-proof evidence gates that reject passing `test-result` evidence when a newer file-change or diagnostic exists on the task.
 - Human-hold risk gates that reject completion after unresolved `risk` evidence until a later `decision` explicitly clears, accepts, or holds the risk.
 - Direct risk resolution controls in core, OpenCode, CLI, and dashboard surfaces so the user does not need to inspect mission ids or write raw decision evidence.
-- Direct OpenCode package startup repairs missing or invalid runtime capsules with a backup-first repair path, so a corrupt local state file does not prevent the plugin from loading tools.
+- Direct OpenCode package startup repairs missing or invalid project config and runtime capsules with a backup-first repair path, so corrupt local state does not prevent the plugin from loading tools.
 - Engine-owned OpenCode idle orchestration that runs Runeweave automatically, recovers stale work first, prepares the first mission from chat context, runs the active Proof Plan after implementation evidence exists, advances Review and Seal when evidence requirements are satisfied, records a `runeweave.stopped` mission event, holds failed proof as a repair target, and retries after a new repair edit.
 - A shared Runic mission loop kernel in `packages/core` so OpenCode, CLI, and dashboard surfaces use the same recovery, claim, evidence, decision, and completion state machine.
 - A state-aware Runesmith Control Brief that tells OpenCode the active mission, active task, next Runic Covenant stage, required evidence, and missing proof directly from runtime state.
@@ -217,7 +217,7 @@ For `risk` evidence, the ledger opens a human-hold gate. If the latest risk is n
 
 ### Runtime Capsule
 
-The runtime capsule is the default durable state file for a local project. It is a versioned JSON envelope containing graphs, ledgers, leases, and contracts. The direct OpenCode package plugin creates the default capsule on first load when it is missing, backs up and repairs invalid capsules on startup, resumes an existing capsule on later starts, and saves plugin mutations after successful mission, claim, evidence, completion, and recovery operations.
+The runtime capsule is the default durable state file for a local project. It is a versioned JSON envelope containing graphs, ledgers, leases, and contracts. The direct OpenCode package plugin creates the default project config and capsule on first load when they are missing, backs up and repairs invalid config or capsule files on startup, resumes an existing capsule on later starts, and saves plugin mutations after successful mission, claim, evidence, completion, and recovery operations.
 
 Default path:
 

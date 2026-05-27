@@ -88,11 +88,11 @@ describe("runesmith cli", () => {
       stdout: "Created .runesmith/config.json\n",
       stderr: "",
     })
-    expect(host.readText(".runesmith/config.json")).toBe(JSON.stringify({
+    expect(JSON.parse(host.readText(".runesmith/config.json"))).toEqual({
       version: 1,
       runtimeDir: ".runesmith/runtime",
       defaultStaleAfterMs: 120000,
-    }, null, 2))
+    })
   })
 
   test("doctor fails with actionable readiness checks when install files are missing", async () => {

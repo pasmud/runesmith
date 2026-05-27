@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test"
 
 import { createRuntime } from "../src/runtime"
-import { loadRuntimeCapsule, repairRuntimeCapsule, saveRuntimeCapsule, type RuntimeStoreHost } from "../src/runtime-store"
+import {
+  defaultProjectConfigPath,
+  loadProjectConfig,
+  loadRuntimeCapsule,
+  repairProjectConfig,
+  repairRuntimeCapsule,
+  saveRuntimeCapsule,
+  type RuntimeStoreHost,
+} from "../src/runtime-store"
 import type { RuntimeSnapshot } from "../src/runtime"
 
 const fixedNow = () => new Date("2026-05-27T00:00:00.000Z")
@@ -104,5 +112,38 @@ describe("runtime capsule store", () => {
     expect(host.files.get(".runesmith/runtime/capsule.json.runesmith.bak")).toBe("{ broken")
     expect(repaired.value.capsule.runtime.graphs).toEqual({})
     expect(repaired.value.capsule.updatedAt).toBe("2026-05-27T00:00:00.000Z")
+  })
+
+  test("repairs missing and invalid project config files", async () => {
+    const missingHost = createMemoryHost()
+    const created = await repairProjectConfig(missingHost, {
+      path: defaultProjectConfigPath,
+    })
+
+    expect(created.ok).toBe(true)
+    if (!created.ok) throw new Error(created.error.message)
+    expect(created.value.status).toBe("repaired")
+    expect(created.value.config).toEqual({
+      version: 1,
+      runtimeDir: ".runesmith/runtime",
+      defaultStaleAfterMs: 120_000,
+    })
+
+    const invalidHost = createMemoryHost({
+      [defaultProjectConfigPath]: "{bad config",
+    })
+    const repaired = await repairProjectConfig(invalidHost, {
+      path: defaultProjectConfigPath,
+    })
+    const loaded = await loadProjectConfig(invalidHost, defaultProjectConfigPath)
+
+    expect(repaired.ok).toBe(true)
+    if (!repaired.ok) throw new Error(repaired.error.message)
+    expect(repaired.value.status).toBe("repaired")
+    expect(repaired.value.backupPath).toBe(`${defaultProjectConfigPath}.runesmith.bak`)
+    expect(invalidHost.files.get(`${defaultProjectConfigPath}.runesmith.bak`)).toBe("{bad config")
+    expect(loaded.ok).toBe(true)
+    if (!loaded.ok || !loaded.value) throw new Error("expected repaired project config")
+    expect(loaded.value.runtimeDir).toBe(".runesmith/runtime")
   })
 })

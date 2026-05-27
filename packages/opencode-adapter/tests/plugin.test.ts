@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test"
 
 import {
   createRuntime,
+  defaultProjectConfigPath,
   defaultRuntimeCapsulePath,
+  loadProjectConfig,
   loadRuntimeCapsule,
   saveRuntimeCapsule,
   type RuntimeStoreHost,
@@ -249,9 +251,13 @@ describe("opencode adapter", () => {
     })
 
     const initial = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+    const config = await loadProjectConfig(host, defaultProjectConfigPath)
     expect(initial.ok).toBe(true)
+    expect(config.ok).toBe(true)
     if (!initial.ok || !initial.value) throw new Error("expected package plugin to create the runtime capsule")
+    if (!config.ok || !config.value) throw new Error("expected package plugin to create project config")
     expect(initial.value.runtime.graphs).toEqual({})
+    expect(config.value.runtimeDir).toBe(".runesmith/runtime")
 
     await plugin.tool.runesmith_autopilot_prepare.execute({
       goal: "Zero-config package persistence",
@@ -289,6 +295,24 @@ describe("opencode adapter", () => {
         },
       },
     })
+  })
+
+  test("direct OpenCode plugin backs up and repairs an invalid project config on load", async () => {
+    const host = createMemoryRuntimeHost({
+      [defaultProjectConfigPath]: "{not config",
+    })
+
+    await createRunesmithOpenCodePlugin({
+      host,
+      idFactory: ids,
+      now: fixedNow,
+    })
+    const config = await loadProjectConfig(host, defaultProjectConfigPath)
+
+    expect(host.files.get(`${defaultProjectConfigPath}.runesmith.bak`)).toBe("{not config")
+    expect(config.ok).toBe(true)
+    if (!config.ok || !config.value) throw new Error("expected repaired project config")
+    expect(config.value.runtimeDir).toBe(".runesmith/runtime")
   })
 
   test("direct OpenCode plugin resumes the existing runtime capsule", async () => {

@@ -7,6 +7,7 @@ import {
   advanceRunicMissionLoop,
   createCovenantTaskPlan,
   createRuntime,
+  defaultProjectConfigPath,
   defaultRuntimeCapsulePath,
   deriveLoopPulse,
   deriveMissionMap,
@@ -19,11 +20,13 @@ import {
   deriveSealAudit,
   loadRuntimeCapsule,
   prepareRunicMission,
+  repairProjectConfig as repairProjectConfigStore,
   repairRuntimeCapsule as repairRuntimeCapsuleStore,
   resolveRunicRisk,
   runRuneweave,
   runRunebookNext,
   runProofPlan,
+  saveProjectConfig,
   saveRuntimeCapsule,
   type AgentContract,
   type Evidence,
@@ -373,11 +376,7 @@ const cliAtlasContract: AgentContract = {
 const defaultOpenCodePackagePluginEntry = "runesmith@git+https://github.com/pasmud/runesmith.git"
 
 async function writeProjectConfig(host: CliHost): Promise<void> {
-  await host.writeText(".runesmith/config.json", JSON.stringify({
-    version: 1,
-    runtimeDir: ".runesmith/runtime",
-    defaultStaleAfterMs: 120_000,
-  }, null, 2))
+  await saveProjectConfig(host, { path: defaultProjectConfigPath })
 }
 
 async function ensureProjectConfig(host: CliHost): Promise<void> {
@@ -429,10 +428,12 @@ async function runesmithHeal(args: string[], host: CliHost): Promise<CliResult> 
 }
 
 async function repairProjectConfig(host: CliHost): Promise<RepairState> {
-  if (await host.exists(".runesmith/config.json")) return "ok"
+  const repaired = await repairProjectConfigStore(host, {
+    path: defaultProjectConfigPath,
+  })
+  if (!repaired.ok) return "repaired"
 
-  await writeProjectConfig(host)
-  return "repaired"
+  return repaired.value.status
 }
 
 async function repairRuntimeCapsule(host: CliHost): Promise<RepairState> {

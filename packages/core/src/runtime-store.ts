@@ -3,6 +3,13 @@ import { err, ok, type Clock, type Result } from "./types"
 import type { RuntimeSnapshot } from "./runtime"
 
 export const defaultRuntimeCapsulePath = ".runesmith/runtime/capsule.json"
+export const defaultProjectConfigPath = ".runesmith/config.json"
+
+export type ProjectConfig = {
+  version: 1
+  runtimeDir: string
+  defaultStaleAfterMs: number
+}
 
 export type RuntimeCapsule = {
   version: 1
@@ -30,6 +37,91 @@ export type RepairRuntimeCapsuleValue = {
   status: "ok" | "repaired"
   capsule: RuntimeCapsule
   backupPath?: string
+}
+
+export type RepairProjectConfigInput = {
+  path?: string
+  config?: ProjectConfig
+  backupPath?: string
+}
+
+export type RepairProjectConfigValue = {
+  status: "ok" | "repaired"
+  config: ProjectConfig
+  backupPath?: string
+}
+
+export const defaultProjectConfig: ProjectConfig = {
+  version: 1,
+  runtimeDir: ".runesmith/runtime",
+  defaultStaleAfterMs: 120_000,
+}
+
+export async function loadProjectConfig(
+  host: RuntimeStoreHost,
+  path = defaultProjectConfigPath,
+): Promise<Result<ProjectConfig | undefined>> {
+  if (!(await host.exists(path))) {
+    return ok(undefined)
+  }
+
+  const raw = await host.readText(path)
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return err(runtimeError("SNAPSHOT_INVALID", "Project config is not valid JSON", { path }))
+  }
+
+  if (!isProjectConfig(parsed)) {
+    return err(runtimeError("SNAPSHOT_INVALID", "Project config is missing required records", { path }))
+  }
+
+  return ok(parsed)
+}
+
+export async function repairProjectConfig(
+  host: RuntimeStoreHost,
+  input: RepairProjectConfigInput = {},
+): Promise<Result<RepairProjectConfigValue>> {
+  const path = input.path ?? defaultProjectConfigPath
+  const config = input.config ?? defaultProjectConfig
+  const loaded = await loadProjectConfig(host, path)
+  if (loaded.ok && loaded.value) {
+    return ok({
+      status: "ok",
+      config: loaded.value,
+    })
+  }
+
+  let backupPath: string | undefined
+  if (!loaded.ok && await host.exists(path)) {
+    backupPath = input.backupPath ?? `${path}.runesmith.bak`
+    await host.writeText(backupPath, await host.readText(path))
+  }
+
+  await saveProjectConfig(host, { path, config })
+
+  return ok({
+    status: "repaired",
+    config,
+    backupPath,
+  })
+}
+
+export type SaveProjectConfigInput = {
+  path?: string
+  config?: ProjectConfig
+}
+
+export async function saveProjectConfig(
+  host: RuntimeStoreHost,
+  input: SaveProjectConfigInput = {},
+): Promise<ProjectConfig> {
+  const config = input.config ?? defaultProjectConfig
+
+  await host.writeText(input.path ?? defaultProjectConfigPath, `${JSON.stringify(config, null, 2)}\n`)
+  return config
 }
 
 export async function loadRuntimeCapsule(
@@ -109,6 +201,15 @@ function isRuntimeCapsule(value: unknown): value is RuntimeCapsule {
     && isLeaseBook(runtime.leases)
     && isRecord(runtime.contracts)
   )
+}
+
+function isProjectConfig(value: unknown): value is ProjectConfig {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false
+  const config = value as Partial<ProjectConfig>
+
+  return config.version === 1
+    && typeof config.runtimeDir === "string"
+    && typeof config.defaultStaleAfterMs === "number"
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
