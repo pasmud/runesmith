@@ -141,6 +141,90 @@ describe("runesmith agent mesh", () => {
     expect(tasks[`${started.value.rootTaskId}_seal`]?.assignedAgentId).toBe("agent_steward")
     expect(runtime.snapshot().graphs[started.value.missionId]?.mission.status).toBe("complete")
   })
+
+  test("claims independent ready Dispatch Matrix slots across the mesh", () => {
+    const runtime = createRuntime({
+      idFactory: deterministicIds(),
+      now: () => new Date("2026-05-27T00:00:00.000Z"),
+    })
+    for (const contract of createRunesmithAgentContracts()) {
+      runtime.registerContract(contract)
+    }
+    const started = runtime.startMission({
+      goal: "Dispatch independent agent work",
+      taskPlan: [
+        {
+          key: "plan",
+          title: "Plan the dispatch boundary",
+          description: "Approve the independent slices.",
+          requiredCapabilities: ["repository-maintenance", "release"],
+          requiredEvidence: ["decision"],
+        },
+        {
+          key: "ui",
+          title: "Build the orchestration console",
+          description: "Implement the dashboard slice.",
+          requiredCapabilities: ["typescript", "ui"],
+          requiredEvidence: ["file-change", "test-result"],
+          dependsOn: ["plan"],
+        },
+        {
+          key: "release",
+          title: "Prepare install-direct release",
+          description: "Package the direct install path.",
+          requiredCapabilities: ["repository-maintenance", "release"],
+          requiredEvidence: ["decision"],
+          dependsOn: ["plan"],
+        },
+      ],
+    })
+    expect(started.ok).toBe(true)
+    if (!started.ok) return
+    const planClaim = runtime.claimTask({
+      missionId: started.value.missionId,
+      taskId: started.value.rootTaskId,
+      contractId: "agent_steward",
+      holder: "steward",
+      idempotencyKey: "claim-plan",
+      ttlMs: 30_000,
+    })
+    expect(planClaim.ok).toBe(true)
+    const recorded = runtime.addTaskEvidence({
+      missionId: started.value.missionId,
+      evidence: {
+        id: "evidence_plan",
+        taskId: started.value.rootTaskId,
+        type: "decision",
+        summary: "Independent slices approved",
+        payload: { mode: "test" },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    expect(recorded.ok).toBe(true)
+
+    const advanced = advanceRunicMissionLoop(runtime, {
+      contract: defaultRunesmithAgentContract,
+      holder: "mesh-dispatch",
+      idempotencyScope: "dispatch",
+    })
+
+    expect(advanced.ok).toBe(true)
+    const tasks = runtime.snapshot().graphs[started.value.missionId]?.tasks ?? {}
+    expect(tasks[`${started.value.rootTaskId}_ui`]).toMatchObject({
+      status: "running",
+      assignedAgentId: "agent_artificer",
+    })
+    expect(tasks[`${started.value.rootTaskId}_release`]).toMatchObject({
+      status: "running",
+      assignedAgentId: "agent_steward",
+    })
+    const matrix = deriveDispatchMatrix(runtime.snapshot())
+    expect(matrix).toMatchObject({
+      status: "serial",
+      readySlotCount: 0,
+      activeSlotCount: 2,
+    })
+  })
 })
 
 function deterministicIds(): IdFactory {

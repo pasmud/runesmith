@@ -1,6 +1,6 @@
 import { getRequiredEvidenceForTask } from "./contracts.js"
 import { createCovenantDecisionDraft } from "./covenant.js"
-import { selectDispatchAgentForTask } from "./dispatch-matrix.js"
+import { deriveDispatchMatrix, selectDispatchAgentForTask } from "./dispatch-matrix.js"
 import { missingRequiredEvidence } from "./evidence-ledger.js"
 import { runtimeError } from "./errors.js"
 import { deriveLoopPulse } from "./loop-pulse.js"
@@ -121,6 +121,18 @@ export function advanceRunicMissionLoop(
   const contract = snapshot.contracts[contractId] ?? options.contract
 
   if (task.status === "queued") {
+    const claimedSlots = claimReadyDispatchSlots(runtime, options, snapshot, target.missionId)
+    if (!claimedSlots.ok) return claimedSlots
+    const claimedTask = claimedSlots.value.find((claimed) => claimed.id === target.taskId) ?? claimedSlots.value[0]
+    if (claimedTask) {
+      return ok({
+        status: "claimed",
+        missionId: target.missionId,
+        taskId: claimedTask.id,
+        nextTaskStatus: claimedTask.status,
+      })
+    }
+
     const claimed = claimRunicTask(runtime, options, {
       missionId: target.missionId,
       task,
@@ -188,16 +200,10 @@ export function advanceRunicMissionLoop(
   if (!completed.ok) return completed
 
   const nextSnapshot = runtime.snapshot()
-  const nextTarget = selectRunicLoopTask(nextSnapshot, target.missionId)
-  const nextTask = nextTarget ? nextSnapshot.graphs[nextTarget.missionId]?.tasks[nextTarget.taskId] : undefined
-  if (nextTask?.status === "queued") {
-    const claimed = claimRunicTask(runtime, options, {
-      missionId: target.missionId,
-      task: nextTask,
-      contractId: selectRunicTaskContractId(nextSnapshot, nextTask, options.contract.id),
-    })
-    if (!claimed.ok) return claimed
+  const claimedReady = claimReadyDispatchSlots(runtime, options, nextSnapshot, target.missionId)
+  if (!claimedReady.ok) return claimedReady
 
+  if (claimedReady.value.length > 0) {
     return advanceRunicMissionLoop(runtime, options, depth + 1)
   }
 
@@ -418,20 +424,24 @@ function recoverRunicStaleWork(
     const recoveredSnapshot = runtime.snapshot()
     const target = selectRunicLoopTask(recoveredSnapshot, graph.mission.id)
     const task = target ? recoveredSnapshot.graphs[target.missionId]?.tasks[target.taskId] : undefined
-    const claimed = task?.status === "queued"
-      ? claimRunicTask(runtime, options, {
-          missionId: target!.missionId,
-          task,
-          contractId: selectRunicTaskContractId(recoveredSnapshot, task, options.contract.id),
-        })
-      : undefined
-    if (claimed && !claimed.ok) return claimed
+    const claimedReady = claimReadyDispatchSlots(runtime, options, recoveredSnapshot, graph.mission.id)
+    if (!claimedReady.ok) return claimedReady
+    let claimed = claimedReady.value.find((claimedTask) => claimedTask.id === target?.taskId) ?? claimedReady.value[0]
+    if (!claimed && target && task?.status === "queued") {
+      const fallbackClaim = claimRunicTask(runtime, options, {
+        missionId: target.missionId,
+        task,
+        contractId: selectRunicTaskContractId(recoveredSnapshot, task, options.contract.id),
+      })
+      if (!fallbackClaim.ok) return fallbackClaim
+      claimed = fallbackClaim.value
+    }
 
     return ok({
       status: "recovered",
       missionId: graph.mission.id,
-      taskId: claimed?.ok ? claimed.value.id : target?.taskId,
-      nextTaskStatus: claimed?.ok ? claimed.value.status : task?.status,
+      taskId: claimed?.id ?? target?.taskId,
+      nextTaskStatus: claimed?.status ?? task?.status,
     })
   }
 
@@ -442,6 +452,31 @@ function selectRunicTaskContractId(snapshot: RuntimeSnapshot, task: MissionTask,
   if (task.assignedAgentId && snapshot.contracts[task.assignedAgentId]) return task.assignedAgentId
 
   return selectDispatchAgentForTask(snapshot, task.id, fallbackContractId)
+}
+
+function claimReadyDispatchSlots(
+  runtime: RunesmithRuntime,
+  options: AdvanceRunicMissionLoopOptions,
+  snapshot: RuntimeSnapshot,
+  missionId: string,
+): Result<MissionTask[]> {
+  const matrix = deriveDispatchMatrix(snapshot)
+  if (matrix.missionId !== missionId) return ok([])
+
+  const claimedTasks: MissionTask[] = []
+  for (const slot of matrix.slots) {
+    if (slot.lane !== "ready" || !slot.recommendedAgentId) continue
+
+    const claimed = claimRunicTask(runtime, options, {
+      missionId,
+      task: snapshot.graphs[missionId]!.tasks[slot.taskId]!,
+      contractId: slot.recommendedAgentId,
+    })
+    if (!claimed.ok) return claimed
+    claimedTasks.push(claimed.value)
+  }
+
+  return ok(claimedTasks)
 }
 
 function claimRunicTask(

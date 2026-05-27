@@ -41,7 +41,7 @@ The first production slice includes:
 - A Runesmith Protocol Deck that turns Loop Pulse state into engine-selected protocols with objective, procedure, verification, forbidden moves, and tool hints, giving Runesmith its own install-once workflow layer instead of relying on external skill names.
 - A Runesmith Agent Mesh that ships default Atlas, Oracle, Artificer, Scout, and Steward contracts and feeds Dispatch Matrix task-claim routing so Covenant Review and Seal work can move to the right built-in role without user-authored setup.
 - A Runesmith Plan Contract that classifies the active Mission Map as thin, ready, blocked, or idle; it surfaces concrete execution slices, detects missing proof obligations, and inherits evidence requirements from assigned agent contracts for older capsules.
-- A Runesmith Dispatch Matrix that derives serial, parallel, blocked, drained, and idle dispatch state from Mission Map readiness, active leases, evidence requirements, and registered agent contracts, then recommends matching agents for claimable slots and supplies the shared task-claim routing decision.
+- A Runesmith Dispatch Matrix that derives serial, parallel, blocked, drained, and idle dispatch state from Mission Map readiness, active leases, evidence requirements, and registered agent contracts, then recommends matching agents for claimable slots, supplies the shared task-claim routing decision, and lets the loop claim every independent ready slot it can safely route in one pass.
 - A Runesmith Proof Plan that turns missing proof, stale proof, failed diagnostics, and changed-file impact into exact verification commands across OpenCode, CLI, and dashboard surfaces, including impacted tests and lint when a repository exposes them.
 - A Runesmith Proof Runner that executes the active Proof Plan, records passing proof or failing diagnostics, and advances the shared mission loop when proof passes.
 - A Runesmith Redline Proof signal that checks whether focused failing proof or proof-file evidence preceded implementation edits, surfaces missing discipline in OpenCode, CLI, dashboard, Review Lens, and Seal Audit, and keeps the user path install-once instead of workflow-name driven.
@@ -78,7 +78,7 @@ Responsibilities:
 - Protocol Deck derivation from Loop Pulse, Runebook, and Proof Plan.
 - Default Agent Mesh contract construction, cloning, and evidence-aware claim routing through Dispatch Matrix recommendations.
 - Plan Contract derivation from Mission Map, task evidence requirements, and assigned agent contracts.
-- Dispatch Matrix derivation from Mission Map, leases, dependencies, evidence requirements, and agent contracts.
+- Dispatch Matrix derivation from Mission Map, leases, dependencies, evidence requirements, and agent contracts, plus safe multi-slot claim selection for independent ready work.
 - Repair Contract derivation from diagnostic, proof, and file-change evidence.
 - Serialization to and from JSON snapshots.
 

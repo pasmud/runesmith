@@ -17,7 +17,7 @@ Do not ask the user to load skills, name workflows, or manually pick a process. 
 - Mission Memory carries the handoff.
 - Agent Mesh provides the default Atlas, Oracle, Artificer, Scout, and Steward contracts and lets Dispatch Matrix steer queued task claims without user-authored setup.
 - Plan Contract checks whether the engine-owned map is thin, ready, or blocked before broad work starts.
-- Dispatch Matrix selects ready, active, blocked, serial, and parallel dispatch slots from leases, dependencies, and agent contracts.
+- Dispatch Matrix selects ready, active, blocked, serial, and parallel dispatch slots from leases, dependencies, and agent contracts, then lets the shared loop claim every independent ready slot it can safely route.
 - Proof Plan chooses verification commands, including Runescope impacted tests from changed-file evidence when repository files are discoverable.
 - Redline Proof checks whether focused failing proof or proof-file evidence preceded implementation edits when behavior is testable.
 - Repair Contract classifies failed proof repair as awaiting a scoped edit, ready for focused proof, over-broad, proven, or Faultline from runtime evidence.
