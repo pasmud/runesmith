@@ -577,7 +577,7 @@ svg {
 
 .mission-board {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
 }
 
@@ -998,6 +998,28 @@ svg {
 .rune-strip span {
   background: #eef5ff;
   color: #3267ff;
+}
+
+.pulse-diagnostics {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #ffd7db;
+  border-radius: 8px;
+  background: #fff7f8;
+}
+
+.pulse-diagnostics strong {
+  color: var(--blocked);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.pulse-diagnostics span {
+  color: #7d3a42;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .rail-header {

@@ -41,7 +41,7 @@ import {
 } from "./dashboard-model"
 import { loadDashboardRuntimeCapsule, runDashboardRuntimeAction, runtimeCapsuleHasMissions } from "./runtime-capsule-client"
 
-const lanes = ["Plan", "Build", "Verify", "Recover"] as const
+const lanes = ["Plan", "Build", "Verify", "Repair", "Recover"] as const
 
 const appTiles = [
   { label: "Mission Board", owner: "runesmith-core", view: "missions", icon: LayoutDashboard },
@@ -721,6 +721,14 @@ function LoopPulsePanel({ model }: { model: DashboardModel }) {
           <span key={rune.id}>{rune.name}</span>
         ))}
       </div>
+      {pulse.diagnostics.length > 0 ? (
+        <div className="pulse-diagnostics" aria-label="Active diagnostics">
+          <strong>Diagnostics</strong>
+          {pulse.diagnostics.slice(0, 2).map((diagnostic) => (
+            <span key={diagnostic}>{diagnostic}</span>
+          ))}
+        </div>
+      ) : null}
     </section>
   )
 }

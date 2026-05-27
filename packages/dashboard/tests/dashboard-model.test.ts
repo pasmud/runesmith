@@ -304,6 +304,40 @@ describe("dashboard model", () => {
     expect(model.notice).toBe("Loaded runtime capsule from 2026-05-27T00:00:00.000Z.")
   })
 
+  test("places runtime tasks with failed verification into the repair lane", () => {
+    const repairCapsule: RuntimeCapsule = {
+      ...capsule,
+      runtime: {
+        ...capsule.runtime,
+        ledgers: {
+          mission_live: {
+            evidence: {
+              ...capsule.runtime.ledgers.mission_live.evidence,
+              evidence_diagnostic: {
+                id: "evidence_diagnostic",
+                taskId: "task_live",
+                type: "diagnostic",
+                summary: "Dashboard capsule tests failed",
+                payload: { command: "bun test packages/dashboard/tests", exitCode: 1 },
+                createdAt: "2026-05-27T00:06:00.000Z",
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const model = buildDashboardModelFromRuntimeCapsule(repairCapsule)
+
+    expect(model.selectedTask.id).toBe("task_live")
+    expect(model.selectedTask.lane).toBe("Repair")
+    expect(model.selectedTask.evidence).toContain("diagnostic")
+    expect(model.loopPulse.stage.id).toBe("repair")
+    expect(model.loopPulse.nextAction.label).toBe("Repair diagnostic")
+    expect(model.loopPulse.diagnostics).toEqual(["Dashboard capsule tests failed"])
+    expect(model.loopPulse.runes.map((rune) => rune.name)).toContain("Faultwright")
+  })
+
   test("hydrates the dashboard from a runtime capsule action", () => {
     const model = buildDashboardModel()
 

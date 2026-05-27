@@ -22,7 +22,7 @@ export type AgentStatus = "active" | "idle" | "reviewing" | "stalled"
 
 export type OsMode = "guarded" | "autopilot"
 
-export type TaskLane = "Plan" | "Build" | "Verify" | "Recover"
+export type TaskLane = "Plan" | "Build" | "Verify" | "Repair" | "Recover"
 
 export type TaskCard = {
   id: string
@@ -762,7 +762,7 @@ function buildTaskCardsFromGraph(snapshot: RuntimeSnapshot, graph: MissionGraph)
         title: task.title,
         agent: contract?.displayName ?? task.assignedAgentId ?? "Unassigned",
         status: mapTaskStatus(task.status),
-        lane: mapTaskLane(task.status),
+        lane: mapTaskLane(task.status, evidence),
         summary: task.description || graph.mission.goal,
         tools: contract?.allowedTools ?? ["read"],
         evidence: uniqueEvidenceTypes(evidence),
@@ -912,12 +912,39 @@ function mapMissionTone(status: MissionGraph["mission"]["status"]): MissionStatu
   return "running"
 }
 
-function mapTaskLane(status: TaskStatus): TaskLane {
+function mapTaskLane(status: TaskStatus, evidence: Evidence[] = []): TaskLane {
+  if (hasOpenDiagnostic(evidence)) return "Repair"
   if (status === "queued") return "Plan"
   if (status === "complete" || status === "verifying") return "Verify"
   if (status === "stale" || status === "blocked" || status === "failed" || status === "cancelled") return "Recover"
 
   return "Build"
+}
+
+function hasOpenDiagnostic(evidence: Evidence[]): boolean {
+  const hasDiagnostic = evidence.some(isDiagnosticEvidence)
+  if (!hasDiagnostic) return false
+
+  return !evidence.some(isPassingTestResultEvidence)
+}
+
+function isDiagnosticEvidence(evidence: Evidence): boolean {
+  if (evidence.type === "diagnostic") return true
+  if (evidence.type !== "test-result") return false
+
+  return !isPassingTestResultEvidence(evidence)
+}
+
+function isPassingTestResultEvidence(evidence: Evidence): boolean {
+  if (evidence.type !== "test-result") return false
+
+  const exitCode = evidence.payload.exitCode
+  if (typeof exitCode === "number") return exitCode === 0
+
+  const status = evidence.payload.status ?? evidence.payload.outcome ?? evidence.payload.verdict
+  if (typeof status !== "string") return false
+
+  return ["ok", "pass", "passed", "success", "successful"].includes(status.toLowerCase())
 }
 
 function buildMetrics(tasks: TaskCard[]): Record<MissionStatus, number> {
