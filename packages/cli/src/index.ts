@@ -34,15 +34,23 @@ export type CliResult = {
   stderr: string
 }
 
+export type CliCommandResult = {
+  exitCode: number
+  stdout?: string
+  stderr?: string
+}
+
 export type CliHost = {
   exists(path: string): boolean | Promise<boolean>
   findCommand?(command: string): string | undefined | Promise<string | undefined>
   readText(path: string): string | Promise<string>
+  runCommand?(command: string, args: string[]): CliCommandResult | Promise<CliCommandResult>
   writeText(path: string, text: string): void | Promise<void>
 }
 
 export type MemoryHostOptions = {
   commands?: Record<string, string | undefined>
+  runCommand?: (command: string, args: string[]) => CliCommandResult | Promise<CliCommandResult>
 }
 
 export function createMemoryHost(initialFiles: Record<string, string> = {}, options: MemoryHostOptions = {}) {
@@ -62,6 +70,13 @@ export function createMemoryHost(initialFiles: Record<string, string> = {}, opti
       }
 
       return value
+    },
+    runCommand(command: string, args: string[]): CliCommandResult | Promise<CliCommandResult> {
+      return options.runCommand?.(command, args) ?? {
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      }
     },
     writeText(path: string, text: string): void {
       files.set(path, text)
@@ -89,6 +104,16 @@ export function createNodeHost(): CliHost {
     readText(path: string): Promise<string> {
       return readFile(path, "utf8")
     },
+    async runCommand(command: string, args: string[]): Promise<CliCommandResult> {
+      const child = Bun.spawn([command, ...args], {
+        stdin: "inherit",
+        stdout: "inherit",
+        stderr: "inherit",
+      })
+      const exitCode = await child.exited
+
+      return { exitCode }
+    },
     async writeText(path: string, text: string): Promise<void> {
       await mkdir(dirname(path), { recursive: true })
       await writeFile(path, text, "utf8")
@@ -105,6 +130,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
 
   if (command === "up") {
     return runesmithUp(args.slice(1), host)
+  }
+
+  if (command === "launch") {
+    return launchOpenCode(args.slice(1), host)
   }
 
   if (command === "init") {
@@ -175,7 +204,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     ].join("\n"))
   }
 
-  return failure("Usage: runesmith <up|install|init|doctor|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
+  return failure("Usage: runesmith <up|launch|install|init|doctor|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
 }
 
 function success(stdout: string): CliResult {
@@ -272,6 +301,58 @@ async function runesmithUp(args: string[], host: CliHost): Promise<CliResult> {
     "dashboard: bun run dev:dashboard",
     "",
   ].join("\n"))
+}
+
+async function launchOpenCode(args: string[], host: CliHost): Promise<CliResult> {
+  const split = splitLaunchArgs(args)
+  const setup = await runesmithUp(split.setupArgs, host)
+  const openCodeCli = await findOpenCodeCli(host)
+
+  if (!openCodeCli) {
+    return {
+      exitCode: 1,
+      stdout: setup.stdout,
+      stderr: "OpenCode CLI not found. Install OpenCode CLI, then rerun `runesmith launch`.\n",
+    }
+  }
+
+  if (!host.runCommand) {
+    return {
+      exitCode: 1,
+      stdout: setup.stdout,
+      stderr: "This host cannot launch external commands.\n",
+    }
+  }
+
+  const launched = await host.runCommand(openCodeCli, split.openCodeArgs)
+
+  return {
+    exitCode: launched.exitCode,
+    stdout: `${setup.stdout}\nlaunch: ${formatCommandForDisplay(openCodeCli, split.openCodeArgs)}\n${launched.stdout ?? ""}`,
+    stderr: launched.stderr ?? "",
+  }
+}
+
+function splitLaunchArgs(args: string[]): { setupArgs: string[]; openCodeArgs: string[] } {
+  const passthroughIndex = args.indexOf("--")
+  if (passthroughIndex < 0) {
+    return { setupArgs: args, openCodeArgs: [] }
+  }
+
+  return {
+    setupArgs: args.slice(0, passthroughIndex),
+    openCodeArgs: args.slice(passthroughIndex + 1),
+  }
+}
+
+function formatCommandForDisplay(command: string, args: string[]): string {
+  return [command, ...args].map(formatCommandPartForDisplay).join(" ")
+}
+
+function formatCommandPartForDisplay(part: string): string {
+  if (!/[\s"]/.test(part)) return part
+
+  return `"${part.replaceAll("\"", "\\\"")}"`
 }
 
 function extractOutputValue(stdout: string, key: string): string | undefined {

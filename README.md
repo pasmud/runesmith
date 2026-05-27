@@ -105,6 +105,14 @@ bun packages/cli/src/index.ts doctor
 
 `doctor` validates the project config, runtime capsule, OpenCode CLI command, OpenCode plugin shim, and an internal Forge -> Review -> Seal orchestration smoke test. It exits nonzero when install files are missing or invalid, or when `opencode` is not discoverable, and prints the next command to repair the setup.
 
+Launch OpenCode through Runesmith after bootstrap:
+
+```bash
+bun packages/cli/src/index.ts launch -- <opencode args>
+```
+
+`launch` runs the same bootstrap path as `up`, refuses to continue when the `opencode` command is missing, then hands off to OpenCode. Arguments after `--` are passed directly to OpenCode.
+
 Run the dashboard:
 
 ```bash
@@ -139,6 +147,10 @@ Runesmith supports two install paths:
 # the Runesmith OpenCode plugin shim, and creates the runtime capsule used by
 # the plugin and dashboard. It verifies that the opencode command exists.
 bun packages/cli/src/index.ts up
+
+# One-command handoff. This performs the same bootstrap/readiness work and then
+# runs OpenCode, passing everything after `--` to the OpenCode CLI.
+bun packages/cli/src/index.ts launch -- <opencode args>
 
 # Local development install. This writes a generated plugin shim to the
 # OpenCode global plugin directory and points it at this checkout.

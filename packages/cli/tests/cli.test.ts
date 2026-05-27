@@ -400,6 +400,87 @@ describe("runesmith cli", () => {
     })
   })
 
+  test("launch bootstraps Runesmith and runs OpenCode with pass-through args", async () => {
+    const launched: Array<{ command: string; args: string[] }> = []
+    const host = createMemoryHost(
+      {},
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+        runCommand(command, args) {
+          launched.push({ command, args })
+          return {
+            exitCode: 0,
+            stdout: "OpenCode started\n",
+            stderr: "",
+          }
+        },
+      },
+    )
+
+    const result = await runCli([
+      "launch",
+      "--plugin-dir",
+      ".opencode/plugins",
+      "--source",
+      "E:/dev/Oh-my/runesmith/packages/opencode-adapter/src/plugin.ts",
+      "--",
+      "--help",
+    ], host)
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Runesmith OS is ready",
+        "config: .runesmith/config.json",
+        "plugin: .opencode/plugins/runesmith.ts",
+        "runtime: .runesmith/runtime/capsule.json",
+        "opencode: found E:/tools/opencode.exe",
+        "covenant: automatic",
+        "dashboard: bun run dev:dashboard",
+        "",
+        "launch: E:/tools/opencode.exe --help",
+        "OpenCode started",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+    expect(launched).toEqual([
+      {
+        command: "E:/tools/opencode.exe",
+        args: ["--help"],
+      },
+    ])
+  })
+
+  test("launch refuses to run when the OpenCode CLI is missing", async () => {
+    const host = createMemoryHost()
+
+    const result = await runCli([
+      "launch",
+      "--plugin-dir",
+      ".opencode/plugins",
+      "--source",
+      "E:/dev/Oh-my/runesmith/packages/opencode-adapter/src/plugin.ts",
+    ], host)
+
+    expect(result).toEqual({
+      exitCode: 1,
+      stdout: [
+        "Runesmith OS is staged",
+        "config: .runesmith/config.json",
+        "plugin: .opencode/plugins/runesmith.ts",
+        "runtime: .runesmith/runtime/capsule.json",
+        "opencode: missing (install OpenCode CLI, then run `runesmith doctor`)",
+        "covenant: automatic",
+        "dashboard: bun run dev:dashboard",
+        "",
+      ].join("\n"),
+      stderr: "OpenCode CLI not found. Install OpenCode CLI, then rerun `runesmith launch`.\n",
+    })
+  })
+
   test("mission list prints mission summaries from a snapshot", async () => {
     const host = createMemoryHost({
       "snapshot.json": JSON.stringify(snapshot),
