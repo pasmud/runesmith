@@ -81,7 +81,7 @@ Responsibilities:
 - `runesmith doctor`: validate config, runtime capsule, OpenCode plugin wiring, and an internal Forge -> Review -> Seal loop smoke test; exit nonzero with an actionable repair hint when setup is incomplete.
 - Published packages expose built `dist` entrypoints, keep Bun source imports for local agent execution, and use publishable internal dependency ranges instead of workspace-only dependency specifiers.
 - `runesmith mission list`: print active mission summaries from snapshots.
-- `runesmith mission inspect <id>`: print graph, evidence, leases, and recovery state.
+- `runesmith mission inspect <id>`: print graph, Loop Pulse, missing proof, active runes, evidence, leases, and recovery state.
 
 ### `packages/dashboard`
 

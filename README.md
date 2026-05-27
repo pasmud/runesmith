@@ -114,6 +114,8 @@ bun packages/cli/src/index.ts mission list
 bun packages/cli/src/index.ts mission inspect <mission-id>
 ```
 
+`mission inspect` prints the mission status, Loop Pulse next action, required and missing evidence, active runes, task list, evidence ledger entries, and active leases for that mission.
+
 Runesmith stores the default runtime capsule at `.runesmith/runtime/capsule.json`. The CLI still accepts `--snapshot <path>` for explicit exports, but normal usage does not require it.
 
 ## OpenCode

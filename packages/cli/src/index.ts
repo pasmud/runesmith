@@ -3,7 +3,15 @@
 import { dirname } from "node:path"
 import { pathToFileURL } from "node:url"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
-import { defaultRuntimeCapsulePath, loadRuntimeCapsule, saveRuntimeCapsule, type RuntimeSnapshot } from "@runesmith/core"
+import {
+  defaultRuntimeCapsulePath,
+  deriveLoopPulse,
+  loadRuntimeCapsule,
+  saveRuntimeCapsule,
+  type Evidence,
+  type Lease,
+  type RuntimeSnapshot,
+} from "@runesmith/core"
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
 import { runDoctor } from "./doctor"
 import {
@@ -107,16 +115,28 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
       return failure(`Mission not found: ${maybeId}\n`)
     }
 
+    const pulse = deriveLoopPulse(snapshot.value)
     const taskLines = Object.values(graph.tasks).map((task) => {
       return `- ${task.id} ${task.status} ${task.assignedAgentId ?? "unassigned"} ${task.title}`
     })
+    const evidenceLines = formatMissionEvidence(snapshot.value, maybeId)
+    const leaseLines = formatMissionLeases(snapshot.value, maybeId)
 
     return success([
       `Mission ${graph.mission.id}`,
       `Status: ${graph.mission.status}`,
       `Goal: ${graph.mission.goal}`,
+      `Loop Pulse: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
+      `Next reason: ${pulse.nextAction.reason}`,
+      `Required evidence: ${formatList(pulse.requiredEvidence)}`,
+      `Missing evidence: ${formatList(pulse.missingEvidence)}`,
+      `Active runes: ${formatList(pulse.runes.map((rune) => rune.name))}`,
       "Tasks:",
       ...taskLines,
+      "Evidence:",
+      ...evidenceLines,
+      "Leases:",
+      ...leaseLines,
       "",
     ].join("\n"))
   }
@@ -225,6 +245,43 @@ async function readSnapshot(host: CliHost, args: string[]): Promise<SnapshotRead
     ok: true,
     value: JSON.parse(raw) as RuntimeSnapshot,
   }
+}
+
+function formatMissionEvidence(snapshot: RuntimeSnapshot, missionId: string): string[] {
+  const evidence = Object.values(snapshot.ledgers[missionId]?.evidence ?? {})
+    .sort(compareEvidence)
+    .map((entry) => {
+      return `- ${entry.id} ${entry.taskId} ${entry.type} ${entry.summary}`
+    })
+
+  return evidence.length > 0 ? evidence : ["- none"]
+}
+
+function formatMissionLeases(snapshot: RuntimeSnapshot, missionId: string): string[] {
+  const graph = snapshot.graphs[missionId]
+  if (!graph) return ["- none"]
+
+  const taskIds = new Set(Object.keys(graph.tasks))
+  const leases = Object.values(snapshot.leases.leases)
+    .filter((lease) => taskIds.has(lease.targetId))
+    .sort(compareLeases)
+    .map((lease) => {
+      return `- ${lease.id} ${lease.status} ${lease.targetId} ${lease.holder} expires ${lease.expiresAt}`
+    })
+
+  return leases.length > 0 ? leases : ["- none"]
+}
+
+function formatList(values: string[]): string {
+  return values.length > 0 ? values.join(", ") : "none"
+}
+
+function compareEvidence(left: Evidence, right: Evidence): number {
+  return left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
+}
+
+function compareLeases(left: Lease, right: Lease): number {
+  return left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
 }
 
 async function installRunesmith(args: string[], host: CliHost): Promise<CliResult> {
