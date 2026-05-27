@@ -24,6 +24,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - A Runesmith Loop Pulse is injected beside the control brief, giving OpenCode and the dashboard one authoritative next action, execution plan, health signal, priority, blockers, and active runes.
 - Runesmith Mission Memory condenses the current mission, active task, proof state, latest diagnostics, decisions, and continuation handoff so restarts, compaction, CLI checks, and the dashboard all preserve the same next move.
 - Runesmith Proof Plan turns missing proof or failed diagnostics into concrete verification commands, so agents can rerun the failing command, typecheck, test, and build without the user remembering a workflow ritual.
+- Runesmith Proof Runner can execute those Proof Plan commands, capture passing `test-result` evidence or failing `diagnostic` evidence, and advance the mission through the same evidence gate.
 - The dashboard is an operating surface: forge directives, run guarded autopilot, boost agents, toggle policies, and seal evidence snapshots.
 
 ## Packages
@@ -62,6 +63,8 @@ Mission Memory is the durable handoff layer above the pulse. It summarizes wheth
 
 Proof Plan is the command layer above Mission Memory. It detects when the active task is missing passing `test-result` proof or has a failed diagnostic, then emits the next verification recipe: rerun the latest failing command first, then run the repo's typecheck, test, and build scripts when available. OpenCode prompt injection, compaction, CLI status, CLI mission inspect, and the dashboard all read the same plan.
 
+Proof Runner executes that recipe when the user or dashboard asks Runesmith to prove the active task. Passing commands become `test-result` evidence; failed commands become `diagnostic` evidence and stop the run so Repair Gate stays focused on the first failing proof. A passing proof run immediately calls the shared mission loop, so verified work can advance without a manual evidence command.
+
 Runesmith Autopilot is the OpenCode-facing part of that loop. The plugin injects a short bootstrap that tells the coding agent to call `runesmith_autopilot_prepare` when a real coding goal appears. That tool reads the latest user message when no explicit goal is provided, starts or resumes the matching active mission, creates the default Covenant task graph, claims the next ready task through the lease scheduler, and saves the runtime capsule.
 
 If the agent reaches for a mutating or shell tool before explicitly calling `runesmith_autopilot_prepare`, Runesmith uses `tool.execute.before` to infer the latest user goal, start or resume the mission, and claim the first dependency-ready task. Read-only tools are ignored so repo inspection does not create noisy missions.
@@ -82,6 +85,7 @@ The dashboard is intentionally not a static report. It models the working loop a
 - **Runic Covenant**: inspect and advance the built-in autonomous coding loop that ships with the plugin.
 - **Mission Memory**: see the durable handoff, proof state, latest diagnostic, and sealed mission status without reading the transcript.
 - **Proof Plan**: see the exact verification commands Runesmith wants next, including focused diagnostic reruns before broad proof.
+- **Proof Runner**: run the active proof plan from the dashboard and persist the resulting proof or diagnostic evidence.
 - **Agent mesh**: inspect agent capacity, active leases, queues, model policy, and boost an agent.
 - **Policy gates**: toggle evidence, lease, tool-scope, stall-radar, and human-hold guardrails.
 - **Snapshots**: seal replayable mission checkpoints with task, evidence, and readiness counts.
@@ -136,6 +140,14 @@ bun packages/cli/src/index.ts status
 ```
 
 `status` prints the Runesmith install state, OpenCode CLI readiness, Loop Pulse next action, execution plan, active mission and task, missing evidence, diagnostics, active runes, and Proof Plan commands from the runtime capsule. It also stays useful before bootstrap by showing the idle engine state and the next launch/dashboard commands.
+
+Run the active proof plan and let Runesmith write evidence:
+
+```bash
+bun packages/cli/src/index.ts prove
+```
+
+`prove` reads the runtime capsule, runs the active Proof Plan commands, records each passing command as `test-result` evidence, records the first failing command as `diagnostic` evidence, saves the capsule, and advances the shared mission loop when proof passes.
 
 Launch OpenCode through Runesmith after bootstrap:
 

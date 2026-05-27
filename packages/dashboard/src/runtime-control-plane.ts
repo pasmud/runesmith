@@ -2,12 +2,21 @@ import {
   advanceRunicMissionLoop,
   createCovenantTaskPlan,
   createRuntime,
+  deriveLoopPulse,
+  deriveProofPlan,
+  runProofPlan,
   type AgentContract,
   type EvidenceType,
+  type ProofCommandExecution,
+  type ProofPlanCommand,
+  type ProofPlanOptions,
+  type ProofRunCommandResult,
   type RunicMissionLoopStatus,
   type RuntimeOptions,
   type RuntimeSnapshot,
 } from "@runesmith/core"
+import { exec } from "node:child_process"
+import { promisify } from "node:util"
 
 export type DashboardRuntimeAction =
   | {
@@ -16,6 +25,9 @@ export type DashboardRuntimeAction =
     }
   | {
       type: "run-autopilot-cycle"
+    }
+  | {
+      type: "run-proof-plan"
     }
 
 export type DashboardRuntimeActionValue = {
@@ -26,6 +38,8 @@ export type DashboardRuntimeActionValue = {
   nextTaskStatus?: string
   status: "running" | "waiting-for-evidence" | "completed" | "idle" | "recovered"
   missingEvidence?: EvidenceType[]
+  proofStatus?: "idle" | "passed" | "failed"
+  commands?: ProofRunCommandResult[]
   snapshot: RuntimeSnapshot
 }
 
@@ -43,7 +57,10 @@ export type DashboardRuntimeActionResult =
       }
     }
 
-type DashboardRuntimeActionOptions = Pick<RuntimeOptions, "idFactory" | "now">
+type DashboardRuntimeActionOptions = Pick<RuntimeOptions, "idFactory" | "now"> & {
+  proofPlanOptions?: ProofPlanOptions
+  runProofCommand?: (command: ProofPlanCommand) => Promise<ProofCommandExecution> | ProofCommandExecution
+}
 
 const dashboardAtlasContract: AgentContract = {
   id: "agent_atlas",
@@ -62,6 +79,7 @@ const dashboardAtlasContract: AgentContract = {
 }
 
 const dashboardStaleAfterMs = 120_000
+const execAsync = promisify(exec)
 
 export async function applyDashboardRuntimeAction(
   snapshot: RuntimeSnapshot,
@@ -77,6 +95,10 @@ export async function applyDashboardRuntimeAction(
 
   if (action.type === "forge-directive") {
     return forgeDashboardDirective(runtime, action.prompt)
+  }
+
+  if (action.type === "run-proof-plan") {
+    return runDashboardProofPlan(runtime, options)
   }
 
   return runDashboardAutopilotCycle(runtime, options)
@@ -154,8 +176,98 @@ function runDashboardAutopilotCycle(
   }
 }
 
+async function runDashboardProofPlan(
+  runtime: ReturnType<typeof createRuntime>,
+  options: DashboardRuntimeActionOptions,
+): Promise<DashboardRuntimeActionResult> {
+  const before = runtime.snapshot()
+  const proofPlan = deriveProofPlan(before, options.proofPlanOptions)
+  const nextEvidenceId = createDashboardEvidenceIdFactory(before, options.idFactory)
+  const proofRun = await runProofPlan(runtime, proofPlan, {
+    nextEvidenceId,
+    now: options.now,
+    runCommand: options.runProofCommand ?? runDashboardShellCommand,
+  })
+
+  let status: DashboardRuntimeActionValue["status"] =
+    proofRun.status === "idle" ? "idle" : proofRun.status === "failed" ? "waiting-for-evidence" : "running"
+  if (proofRun.status === "passed") {
+    const advanced = advanceRunicMissionLoop(runtime, {
+      contract: dashboardAtlasContract,
+      holder: "runesmith-dashboard",
+      idempotencyScope: "dashboard",
+      ttlMs: 30_000,
+      recoverStale: false,
+      staleAfterMs: dashboardStaleAfterMs,
+      now: options.now,
+    })
+    if (!advanced.ok) return { ok: false, error: advanced.error }
+    status = mapDashboardRunicStatus(advanced.value.status)
+  }
+
+  const snapshot = runtime.snapshot()
+  const pulse = deriveLoopPulse(snapshot)
+
+  return {
+    ok: true,
+    value: {
+      action: "run-proof-plan",
+      missionId: proofRun.missionId,
+      taskId: proofRun.taskId,
+      status,
+      proofStatus: proofRun.status,
+      missingEvidence: pulse.missingEvidence,
+      commands: proofRun.commands,
+      snapshot,
+    },
+  }
+}
+
 function mapDashboardRunicStatus(status: RunicMissionLoopStatus): DashboardRuntimeActionValue["status"] {
   return status === "claimed" ? "running" : status
+}
+
+async function runDashboardShellCommand(command: ProofPlanCommand): Promise<ProofCommandExecution> {
+  try {
+    const result = await execAsync(command.command, {
+      windowsHide: true,
+    })
+
+    return {
+      exitCode: 0,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    }
+  } catch (error) {
+    const failed = error as {
+      code?: unknown
+      stdout?: unknown
+      stderr?: unknown
+    }
+
+    return {
+      exitCode: typeof failed.code === "number" ? failed.code : 1,
+      stdout: typeof failed.stdout === "string" ? failed.stdout : "",
+      stderr: typeof failed.stderr === "string" ? failed.stderr : "",
+    }
+  }
+}
+
+function createDashboardEvidenceIdFactory(
+  snapshot: RuntimeSnapshot,
+  idFactory: RuntimeOptions["idFactory"] | undefined,
+): () => string {
+  const used = new Set(Object.values(snapshot.ledgers).flatMap((ledger) => Object.keys(ledger.evidence)))
+  let index = 0
+
+  return () => {
+    index += 1
+    const base = idFactory?.("evidence") ?? `evidence_dashboard_${index}`
+    const id = used.has(base) ? `${base}_${index}` : base
+    used.add(id)
+
+    return id
+  }
 }
 
 function normalizeDirective(prompt: string): string {

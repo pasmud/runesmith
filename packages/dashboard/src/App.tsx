@@ -128,7 +128,7 @@ export function App() {
   const runRuntimeControl = async (action: DashboardAction) => {
     setControlLoading(true)
     try {
-      if (action.type === "forge-directive" || action.type === "run-autopilot-cycle") {
+      if (action.type === "forge-directive" || action.type === "run-autopilot-cycle" || action.type === "run-proof-plan") {
         const capsule = await runDashboardRuntimeAction(action)
         dispatch(runtimeCapsuleHasMissions(capsule) ? { type: "load-runtime-capsule", capsule } : action)
         return
@@ -164,6 +164,9 @@ export function App() {
             </Button>
             <Button onClick={() => dispatch({ type: "create-snapshot" })} variant="outline">
               <Camera data-icon="inline-start" />Snapshot
+            </Button>
+            <Button disabled={controlLoading} onClick={() => void runRuntimeControl({ type: "run-proof-plan" })} variant="outline">
+              <CheckCircle2 data-icon="inline-start" />{controlLoading ? "Working" : "Run proof"}
             </Button>
             <Button disabled={controlLoading} onClick={() => void runRuntimeControl({ type: "run-autopilot-cycle" })}>
               <Zap data-icon="inline-start" />{controlLoading ? "Working" : "Autopilot cycle"}

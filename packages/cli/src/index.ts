@@ -12,12 +12,15 @@ import {
   deriveMissionMemory,
   deriveProofPlan,
   loadRuntimeCapsule,
+  runProofPlan,
   saveRuntimeCapsule,
   type AgentContract,
   type Evidence,
   type EvidenceType,
   type IdFactory,
   type Lease,
+  type ProofCommandExecution,
+  type ProofRunCommandResult,
   type ProofPlanOptions,
   type RuntimeSnapshot,
 } from "@runesmith/core"
@@ -48,12 +51,14 @@ export type CliHost = {
   findCommand?(command: string): string | undefined | Promise<string | undefined>
   readText(path: string): string | Promise<string>
   runCommand?(command: string, args: string[]): CliCommandResult | Promise<CliCommandResult>
+  runShellCommand?(command: string): CliCommandResult | Promise<CliCommandResult>
   writeText(path: string, text: string): void | Promise<void>
 }
 
 export type MemoryHostOptions = {
   commands?: Record<string, string | undefined>
   runCommand?: (command: string, args: string[]) => CliCommandResult | Promise<CliCommandResult>
+  runShellCommand?: (command: string) => CliCommandResult | Promise<CliCommandResult>
 }
 
 export function createMemoryHost(initialFiles: Record<string, string> = {}, options: MemoryHostOptions = {}) {
@@ -76,6 +81,13 @@ export function createMemoryHost(initialFiles: Record<string, string> = {}, opti
     },
     runCommand(command: string, args: string[]): CliCommandResult | Promise<CliCommandResult> {
       return options.runCommand?.(command, args) ?? {
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      }
+    },
+    runShellCommand(command: string): CliCommandResult | Promise<CliCommandResult> {
+      return options.runShellCommand?.(command) ?? {
         exitCode: 0,
         stdout: "",
         stderr: "",
@@ -117,6 +129,22 @@ export function createNodeHost(): CliHost {
 
       return { exitCode }
     },
+    async runShellCommand(command: string): Promise<CliCommandResult> {
+      const shellCommand = process.platform === "win32"
+        ? ["powershell", "-NoProfile", "-Command", command]
+        : ["sh", "-lc", command]
+      const child = Bun.spawn(shellCommand, {
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ])
+
+      return { exitCode, stdout, stderr }
+    },
     async writeText(path: string, text: string): Promise<void> {
       await mkdir(dirname(path), { recursive: true })
       await writeFile(path, text, "utf8")
@@ -141,6 +169,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
 
   if (command === "launch") {
     return launchOpenCode(args.slice(1), host)
+  }
+
+  if (command === "prove") {
+    return runProofFromCli(host)
   }
 
   if (command === "init") {
@@ -220,7 +252,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     ].join("\n"))
   }
 
-  return failure("Usage: runesmith <up|status|launch|install|init|doctor|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
+  return failure("Usage: runesmith <up|status|launch|prove|install|init|doctor|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
 }
 
 function success(stdout: string): CliResult {
@@ -640,6 +672,67 @@ async function tickMissionFromCli(host: CliHost): Promise<CliResult> {
   ].join("\n"))
 }
 
+async function runProofFromCli(host: CliHost): Promise<CliResult> {
+  if (!host.runShellCommand) {
+    return failure("This host cannot run proof commands.\n")
+  }
+
+  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  if (!capsule.ok) return failure(`${capsule.error.message}\n`)
+  if (!capsule.value) return failure(`Runtime capsule not found: ${defaultRuntimeCapsulePath}\n`)
+
+  const idFactory = createCliIdFactory(capsule.value.runtime)
+  const runtime = createRuntime({
+    snapshot: capsule.value.runtime,
+    idFactory,
+  })
+  runtime.registerContract(cliAtlasContract)
+
+  const proofOptions = await readProofPlanOptions(host)
+  const proofPlan = deriveProofPlan(runtime.snapshot(), proofOptions)
+  const proofRun = await runProofPlan(runtime, proofPlan, {
+    nextEvidenceId: () => idFactory("evidence"),
+    runCommand(command): Promise<ProofCommandExecution> | ProofCommandExecution {
+      return host.runShellCommand!(command.command)
+    },
+  })
+
+  let status: string = proofRun.status
+  if (proofRun.status === "passed") {
+    const advanced = advanceRunicMissionLoop(runtime, {
+      contract: cliAtlasContract,
+      holder: "runesmith-cli",
+      idempotencyScope: "cli",
+      ttlMs: 30_000,
+    })
+    if (!advanced.ok) return failure(`${advanced.error.message}\n`)
+    status = advanced.value.status
+  }
+
+  const snapshot = runtime.snapshot()
+  await saveRuntimeCapsule(host, {
+    path: defaultRuntimeCapsulePath,
+    snapshot,
+  })
+  const pulse = deriveLoopPulse(snapshot)
+
+  return {
+    exitCode: proofRun.status === "failed" ? 1 : 0,
+    stdout: [
+      proofRun.status === "failed" ? "Proof plan failed" : proofRun.status === "idle" ? "Proof plan idle" : "Proof plan executed",
+      `mission: ${proofRun.missionId ?? "none"}`,
+      `task: ${proofRun.taskId ?? "none"}`,
+      ...formatProofRunLines(proofRun.commands),
+      `status: ${status}`,
+      `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
+      ...formatPulseDiagnostics(pulse),
+      `runtime: ${defaultRuntimeCapsulePath}`,
+      "",
+    ].join("\n"),
+    stderr: "",
+  }
+}
+
 type EvidenceArgsResult =
   | {
       ok: true
@@ -772,6 +865,15 @@ function formatProofPlanLines(plan: ReturnType<typeof deriveProofPlan>): string[
   if (plan.commands.length === 0) return ["- none"]
 
   return plan.commands.map((command) => `- ${command.label}: ${command.command}`)
+}
+
+function formatProofRunLines(commands: ProofRunCommandResult[]): string[] {
+  if (commands.length === 0) return ["- none"]
+
+  return commands.map((command) => {
+    const status = command.exitCode === 0 ? "PASS" : "FAIL"
+    return `- ${status} ${command.label}: ${command.command}`
+  })
 }
 
 function formatPulseDiagnostics(pulse: ReturnType<typeof deriveLoopPulse>, label = "diagnostics"): string[] {

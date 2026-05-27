@@ -14,7 +14,7 @@ Restart OpenCode. OpenCode installs package plugins with Bun at startup, then lo
 
 ## What Loads
 
-Runesmith injects the Runic Covenant, live Control Brief, Loop Pulse, Mission Memory handoff, Proof Plan commands, compaction context, automatic mission preparation, automatic evidence capture, recovery, and evidence-gated task advancement. Users do not need to load skills or invoke a workflow by name.
+Runesmith injects the Runic Covenant, live Control Brief, Loop Pulse, Mission Memory handoff, Proof Plan commands, Proof Runner evidence capture, compaction context, automatic mission preparation, automatic evidence capture, recovery, and evidence-gated task advancement. Users do not need to load skills or invoke a workflow by name.
 
 ## Local Development
 
@@ -24,6 +24,7 @@ From a cloned checkout:
 bun install
 bun packages/cli/src/index.ts up
 bun packages/cli/src/index.ts status
+bun packages/cli/src/index.ts prove
 bun packages/cli/src/index.ts launch -- <opencode args>
 ```
 

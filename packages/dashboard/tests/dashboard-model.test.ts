@@ -171,6 +171,20 @@ describe("dashboard model", () => {
     expect(next.timeline.at(0)?.label).toBe("Verification complete")
   })
 
+  test("runs the selected proof plan in local fallback mode", () => {
+    const model = buildDashboardModel()
+
+    const next = reduceDashboardModel(model, { type: "run-proof-plan" })
+
+    expect(next.selectedTask.status).toBe("verified")
+    expect(next.selectedTask.evidence).toContain("test-result")
+    expect(next.notice).toBe("Proof plan passed for Mission runtime kernel.")
+    expect(next.commandLog.at(0)).toMatchObject({
+      label: "Proof plan passed",
+      tone: "verified",
+    })
+  })
+
   test("recovers stale work and updates the board metrics", () => {
     const model = buildDashboardModel()
 

@@ -726,6 +726,135 @@ describe("runesmith cli", () => {
     ])
   })
 
+  test("prove runs the active proof plan and advances the runtime capsule", async () => {
+    const launched: Array<{ command: string }> = []
+    const host = createMemoryHost(
+      {
+        "package.json": JSON.stringify({
+          packageManager: "bun@1.3.13",
+          scripts: {
+            test: "bun test",
+          },
+        }),
+        ".runesmith/runtime/capsule.json": JSON.stringify({
+          version: 1,
+          updatedAt: "2026-05-27T00:00:00.000Z",
+          runtime: snapshot,
+        }),
+      },
+      {
+        runShellCommand(command) {
+          launched.push({ command })
+          return {
+            exitCode: 0,
+            stdout: "tests passed\n",
+            stderr: "",
+          }
+        },
+      },
+    )
+
+    const result = await runCli(["prove"], host)
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Proof plan executed",
+        "mission: mission_alpha",
+        "task: task_alpha",
+        "- PASS Run tests: bun test",
+        "status: completed",
+        "next: Wait for goal [clear/low]",
+        "runtime: .runesmith/runtime/capsule.json",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+    expect(launched).toEqual([{ command: "bun test" }])
+
+    const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
+    const graph = capsule.runtime.graphs.mission_alpha
+    const evidence = Object.values(capsule.runtime.ledgers.mission_alpha.evidence) as any[]
+    expect(graph.mission.status).toBe("complete")
+    expect(graph.tasks.task_alpha.status).toBe("complete")
+    expect(evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task_alpha",
+          type: "test-result",
+          summary: "Run tests passed: bun test",
+          payload: expect.objectContaining({
+            command: "bun test",
+            exitCode: 0,
+            stdout: "tests passed\n",
+          }),
+        }),
+      ]),
+    )
+  })
+
+  test("prove records a diagnostic and stops when the proof command fails", async () => {
+    const launched: Array<{ command: string }> = []
+    const host = createMemoryHost(
+      {
+        ".runesmith/runtime/capsule.json": JSON.stringify({
+          version: 1,
+          updatedAt: "2026-05-27T00:00:00.000Z",
+          runtime: snapshot,
+        }),
+      },
+      {
+        runShellCommand(command) {
+          launched.push({ command })
+          return {
+            exitCode: 1,
+            stdout: "",
+            stderr: "1 fail\n",
+          }
+        },
+      },
+    )
+
+    const result = await runCli(["prove"], host)
+
+    expect(result).toEqual({
+      exitCode: 1,
+      stdout: [
+        "Proof plan failed",
+        "mission: mission_alpha",
+        "task: task_alpha",
+        "- FAIL Run tests: bun test",
+        "status: failed",
+        "next: Repair diagnostic [attention/high]",
+        "diagnostics: Run tests failed: bun test",
+        "runtime: .runesmith/runtime/capsule.json",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+    expect(launched).toEqual([{ command: "bun test" }])
+
+    const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
+    const graph = capsule.runtime.graphs.mission_alpha
+    const evidence = Object.values(capsule.runtime.ledgers.mission_alpha.evidence) as any[]
+    expect(graph.mission.status).toBe("running")
+    expect(graph.tasks.task_alpha.status).toBe("running")
+    expect(evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task_alpha",
+          type: "diagnostic",
+          summary: "Run tests failed: bun test",
+          payload: expect.objectContaining({
+            command: "bun test",
+            exitCode: 1,
+            stderr: "1 fail\n",
+          }),
+        }),
+      ]),
+    )
+  })
+
   test("mission evidence and tick surface repair diagnostics", async () => {
     const host = createMemoryHost()
 

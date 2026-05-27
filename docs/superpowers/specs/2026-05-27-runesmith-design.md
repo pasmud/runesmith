@@ -32,6 +32,7 @@ The first production slice includes:
 - A state-aware Runesmith Control Brief that tells OpenCode the active mission, active task, next Runic Covenant stage, required evidence, and missing proof directly from runtime state.
 - A Runesmith Loop Pulse that derives one authoritative next action, compact execution plan, health signal, priority, blockers, required evidence, and active runes from the runtime capsule.
 - A Runesmith Proof Plan that turns missing proof and failed diagnostics into exact verification commands across OpenCode, CLI, and dashboard surfaces.
+- A Runesmith Proof Runner that executes the active Proof Plan, records passing proof or failing diagnostics, and advances the shared mission loop when proof passes.
 - A default Covenant task plan that expands coding goals into Forge, Review, and Seal tasks with dependency-aware claiming and task-level evidence requirements.
 
 Out of scope for the first slice:
@@ -86,6 +87,7 @@ Responsibilities:
 - `runesmith doctor`: validate config, runtime capsule, host OpenCode CLI availability, OpenCode plugin wiring, and an internal Forge -> Review -> Seal loop smoke test; exit nonzero with an actionable repair hint when setup is incomplete.
 - `runesmith install --mode npm`: write the default git-installable OpenCode package entry, while keeping `--package` available for pinned tags, forks, or future registry releases.
 - `runesmith status`: print the current OS state, OpenCode CLI readiness, Loop Pulse next action, execution plan, active mission and task, missing proof, diagnostics, active runes, and Proof Plan commands without requiring users to learn the lower-level mission commands.
+- `runesmith prove`: execute the active Proof Plan from the runtime capsule, record passing commands as `test-result` evidence, record the first failing command as `diagnostic` evidence, and advance the shared mission loop after passing proof.
 - Published packages expose built `dist` entrypoints, keep Bun source imports for local agent execution, and use publishable internal dependency ranges instead of workspace-only dependency specifiers.
 - `runesmith mission start <goal>`: bootstrap local config if needed, create the default Forge -> Review -> Seal Covenant mission, register Atlas, claim the first task, and persist the runtime capsule for OpenCode/dashboard resumption.
 - `runesmith mission evidence <mission-id> <task-id>` and `runesmith mission tick`: record task proof and advance the persisted capsule through the same evidence gate used by OpenCode, including active repair diagnostics and safe autonomous Review and Seal decisions.
@@ -241,6 +243,8 @@ Mission Memory sits above the pulse as the durable continuation layer. It classi
 
 Proof Plan sits above Mission Memory as the automatic verification recipe. It detects missing `test-result` proof and failed diagnostics, reruns the latest failing command first when available, then asks for the repository's typecheck, test, and build scripts when those scripts exist. The plan is derived from runtime state and package metadata, so users get one install-once orchestration loop instead of a separate checklist they need to remember.
 
+Proof Runner executes the active recipe. It is harness-independent in `packages/core`: callers provide a command runner, evidence ids, and a clock, while the core runner converts command outcomes into task evidence. CLI and dashboard surfaces use that same runner, so a proof run from the terminal or control surface writes the same ledger evidence the OpenCode hook expects.
+
 The default Covenant task plan is:
 
 - Forge: implementation work requiring `file-change` and passing `test-result` evidence.
@@ -323,6 +327,7 @@ Runtime-backed controls:
 - `/api/runtime-capsule` reads the local runtime capsule.
 - `/api/runtime-control` accepts dashboard actions and persists the resulting capsule.
 - Command Forge starts a planned Covenant mission from the dashboard directive, registers the default Atlas contract, claims the first task, and saves the capsule.
+- Run Proof executes the active Proof Plan on the server side, persists `test-result` or `diagnostic` evidence, and advances the mission loop when the run passes.
 - Guarded Autopilot runs an evidence-gated cycle over the persisted mission. It recovers stale work first, holds if proof is missing, completes through the runtime gate once required evidence exists, synthesizes Review and Seal decisions, and claims the next dependency-ready task.
 - The right rail shows the Loop Pulse with health, priority, next action, execution plan, missing evidence, active runes, Mission Memory, and Proof Plan commands from the same runtime capsule used by OpenCode.
 

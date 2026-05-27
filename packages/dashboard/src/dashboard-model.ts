@@ -117,6 +117,7 @@ export type DashboardAction =
   | { type: "recover-stale" }
   | { type: "run-verifier" }
   | { type: "run-autopilot-cycle" }
+  | { type: "run-proof-plan" }
   | { type: "forge-directive"; prompt: string }
   | { type: "advance-covenant-stage" }
   | { type: "load-runtime-capsule"; capsule: RuntimeCapsule }
@@ -554,6 +555,14 @@ export function reduceDashboardModel(model: DashboardModel, action: DashboardAct
         label: "Verifier passed",
         detailPrefix: "OpenCode verifier completed evidence checks for",
         noticePrefix: "Verifier passed for",
+      })
+
+    case "run-proof-plan":
+      return verifySelectedTask(model, {
+        label: "Proof plan passed",
+        commandLabel: "Proof plan passed",
+        detailPrefix: "Runesmith proof plan completed for",
+        noticePrefix: "Proof plan passed for",
       })
 
     case "run-autopilot-cycle":
@@ -1020,6 +1029,7 @@ function verifySelectedTask(
   model: DashboardModel,
   options: {
     label: string
+    commandLabel?: string
     detailPrefix: string
     noticePrefix: string
   },
@@ -1027,7 +1037,7 @@ function verifySelectedTask(
   return mutateSelectedTask(model, {
     timelineLabel: options.label,
     timelineTone: "verified",
-    commandLabel: "Verifier completed",
+    commandLabel: options.commandLabel ?? "Verifier completed",
     notice: (task) => `${options.noticePrefix} ${task.title}.`,
     mutate: (task) => ({
       ...task,
