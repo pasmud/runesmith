@@ -1,11 +1,17 @@
 #!/usr/bin/env bun
 
 import { dirname } from "node:path"
-import { homedir } from "node:os"
 import { pathToFileURL } from "node:url"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { defaultRuntimeCapsulePath, loadRuntimeCapsule, saveRuntimeCapsule, type RuntimeSnapshot } from "@runesmith/core"
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
+import { runDoctor } from "./doctor"
+import {
+  getDefaultOpenCodeConfigPath,
+  getDefaultOpenCodePluginDir,
+  isRunesmithPluginEntry,
+  parseOptions,
+} from "./options"
 
 export type CliResult = {
   exitCode: number
@@ -78,8 +84,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
   }
 
   if (command === "doctor") {
-    const configStatus = await host.exists(".runesmith/config.json") ? "found" : "missing"
-    return success(`Runesmith doctor\nconfig: ${configStatus}\nruntime: ready\ncovenant: armed\n`)
+    return runDoctor(args.slice(1), host)
   }
 
   if (command === "mission" && subcommand === "list") {
@@ -222,14 +227,6 @@ async function readSnapshot(host: CliHost, args: string[]): Promise<SnapshotRead
   }
 }
 
-type ParsedOptions = {
-  config?: string
-  mode?: string
-  package?: string
-  pluginDir?: string
-  source?: string
-}
-
 async function installRunesmith(args: string[], host: CliHost): Promise<CliResult> {
   const options = parseOptions(args)
   const mode = options.mode ?? "local"
@@ -307,56 +304,6 @@ async function installNpmPlugin(
     "covenant: automatic",
     "",
   ].join("\n"))
-}
-
-function parseOptions(args: string[]): ParsedOptions {
-  const options: ParsedOptions = {}
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index]
-    const next = args[index + 1]
-    if (arg === "--mode" && next) {
-      options.mode = next
-      index += 1
-    } else if (arg === "--config" && next) {
-      options.config = next
-      index += 1
-    } else if (arg === "--package" && next) {
-      options.package = next
-      index += 1
-    } else if (arg === "--plugin-dir" && next) {
-      options.pluginDir = next
-      index += 1
-    } else if (arg === "--source" && next) {
-      options.source = next
-      index += 1
-    }
-  }
-
-  return options
-}
-
-function isRunesmithPluginEntry(entry: string): boolean {
-  return entry === "runesmith" || entry.startsWith("runesmith@") || entry === "@runesmith/opencode-adapter"
-}
-
-function getDefaultOpenCodeConfigPath(): string {
-  if (process.platform === "win32") {
-    const appData = process.env.APPDATA ?? `${homedir()}\\AppData\\Roaming`
-    return `${appData}\\opencode\\opencode.json`
-  }
-
-  const configHome = process.env.XDG_CONFIG_HOME ?? `${homedir()}/.config`
-  return `${configHome}/opencode/opencode.json`
-}
-
-function getDefaultOpenCodePluginDir(): string {
-  if (process.platform === "win32") {
-    const appData = process.env.APPDATA ?? `${homedir()}\\AppData\\Roaming`
-    return `${appData}\\opencode\\plugins`
-  }
-
-  const configHome = process.env.XDG_CONFIG_HOME ?? `${homedir()}/.config`
-  return `${configHome}/opencode/plugins`
 }
 
 function resolveRepoPluginSource(): string {

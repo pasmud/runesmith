@@ -93,6 +93,14 @@ bun packages/cli/src/index.ts up
 
 That creates `.runesmith/config.json`, installs the local OpenCode plugin shim, and creates `.runesmith/runtime/capsule.json` if it does not exist.
 
+Verify the installation:
+
+```bash
+bun packages/cli/src/index.ts doctor
+```
+
+`doctor` validates the project config, runtime capsule, OpenCode plugin shim, and an internal Forge -> Review -> Seal orchestration smoke test. It exits nonzero when install files are missing or invalid and prints the next command to repair the setup.
+
 Run the dashboard:
 
 ```bash
@@ -124,12 +132,14 @@ bun packages/cli/src/index.ts install
 
 # Future npm-style install, matching the OpenCode `plugin` array flow.
 bun packages/cli/src/index.ts install --mode npm --package runesmith@latest
+bun packages/cli/src/index.ts doctor --mode npm
 ```
 
 For a project-local install:
 
 ```bash
 bun packages/cli/src/index.ts install --plugin-dir .opencode/plugins
+bun packages/cli/src/index.ts doctor --plugin-dir .opencode/plugins
 ```
 
 OpenCode loads local plugins from `.opencode/plugins/` and `~/.config/opencode/plugins/` automatically. Npm plugins are added to the `plugin` array in `opencode.json`. See `examples/opencode/runesmith-plugin.json` for the npm-style config shape.

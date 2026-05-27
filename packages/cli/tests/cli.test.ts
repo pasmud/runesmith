@@ -52,16 +52,85 @@ describe("runesmith cli", () => {
     }, null, 2))
   })
 
-  test("doctor reports workspace readiness", async () => {
+  test("doctor fails with actionable readiness checks when install files are missing", async () => {
     const host = createMemoryHost({
       ".runesmith/config.json": "{}",
     })
 
-    const result = await runCli(["doctor"], host)
+    const result = await runCli(["doctor", "--plugin-dir", ".opencode/plugins"], host)
+
+    expect(result).toEqual({
+      exitCode: 1,
+      stdout: [
+        "Runesmith doctor",
+        "config: found (.runesmith/config.json)",
+        "runtime capsule: missing (.runesmith/runtime/capsule.json)",
+        "opencode plugin: missing (.opencode/plugins/runesmith.ts)",
+        "loop smoke: passed (mission completed)",
+        "status: incomplete",
+        "next: run `runesmith up` to initialize config, runtime, and OpenCode plugin wiring.",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+  })
+
+  test("doctor reports ready after up installs the runtime and OpenCode shim", async () => {
+    const host = createMemoryHost()
+
+    const up = await runCli([
+      "up",
+      "--plugin-dir",
+      ".opencode/plugins",
+      "--source",
+      "E:/dev/Oh-my/runesmith/packages/opencode-adapter/src/plugin.ts",
+    ], host)
+    expect(up.exitCode).toBe(0)
+
+    const result = await runCli(["doctor", "--plugin-dir", ".opencode/plugins"], host)
 
     expect(result).toEqual({
       exitCode: 0,
-      stdout: "Runesmith doctor\nconfig: found\nruntime: ready\ncovenant: armed\n",
+      stdout: [
+        "Runesmith doctor",
+        "config: found (.runesmith/config.json)",
+        "runtime capsule: valid (.runesmith/runtime/capsule.json)",
+        "opencode plugin: found (.opencode/plugins/runesmith.ts)",
+        "loop smoke: passed (mission completed)",
+        "status: ready",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+  })
+
+  test("doctor validates npm-mode OpenCode plugin config", async () => {
+    const host = createMemoryHost()
+
+    const up = await runCli([
+      "up",
+      "--mode",
+      "npm",
+      "--config",
+      "opencode.jsonc",
+      "--package",
+      "runesmith@0.2.0",
+    ], host)
+    expect(up.exitCode).toBe(0)
+
+    const result = await runCli(["doctor", "--mode", "npm", "--config", "opencode.jsonc"], host)
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Runesmith doctor",
+        "config: found (.runesmith/config.json)",
+        "runtime capsule: valid (.runesmith/runtime/capsule.json)",
+        "opencode plugin: found (opencode.jsonc)",
+        "loop smoke: passed (mission completed)",
+        "status: ready",
+        "",
+      ].join("\n"),
       stderr: "",
     })
   })

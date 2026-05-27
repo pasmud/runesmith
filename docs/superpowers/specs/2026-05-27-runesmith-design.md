@@ -78,7 +78,7 @@ Responsibilities:
 
 - `runesmith up`: one-command bootstrap that writes project config, installs OpenCode, and creates the runtime capsule if needed.
 - `runesmith init`: create project config.
-- `runesmith doctor`: validate Bun, OpenCode package visibility, config, runtime directory, and platform assumptions.
+- `runesmith doctor`: validate config, runtime capsule, OpenCode plugin wiring, and an internal Forge -> Review -> Seal loop smoke test; exit nonzero with an actionable repair hint when setup is incomplete.
 - `runesmith mission list`: print active mission summaries from snapshots.
 - `runesmith mission inspect <id>`: print graph, evidence, leases, and recovery state.
 
