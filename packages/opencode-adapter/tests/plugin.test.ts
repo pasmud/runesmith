@@ -576,7 +576,8 @@ describe("opencode adapter", () => {
     expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.assignedAgentId).toBe("agent_atlas")
     expect(runtime.snapshot().leases.leases.lease_alpha?.holder).toBe("runesmith-autopilot")
     expect(Object.keys(runtime.snapshot().graphs)).toEqual(["mission_alpha"])
-    expect(writes.length).toBeGreaterThanOrEqual(2)
+    expect(writes).toHaveLength(1)
+    expect(JSON.parse(writes[0] ?? "{}").graphs.mission_alpha.tasks.task_alpha.assignedAgentId).toBe("agent_atlas")
   })
 
   test("runs the current Runebook next action through one OpenCode tool", async () => {

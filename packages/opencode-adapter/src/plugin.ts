@@ -11,7 +11,6 @@ import {
   buildRunebookPrompt,
   buildScopeSentinelPrompt,
   buildSealAuditPrompt,
-  createCovenantTaskPlan,
   createRuntime,
   createRunicCovenant,
   defaultRuntimeCapsulePath,
@@ -26,6 +25,7 @@ import {
   deriveScopeSentinel,
   deriveSealAudit,
   loadRuntimeCapsule,
+  prepareRunicMission,
   resolveRunicRisk,
   runRuneweave,
   runRunebookNext,
@@ -701,46 +701,25 @@ async function prepareAutopilotMission(input: PrepareAutopilotMissionInput): Pro
     })
   }
 
-  const existing = findActiveMissionForGoal(input.runtime.snapshot(), goal)
-  let missionId = existing?.mission.id
-  let taskId = missionId
-    ? selectRunicLoopTask(input.runtime.snapshot(), missionId)?.taskId ?? existing?.mission.rootTaskId
-    : undefined
-  let missionCreated = false
-
-  if (!missionId || !taskId) {
-    const started = input.runtime.startMission({
-      goal,
-      taskPlan: createCovenantTaskPlan(goal),
-    })
-    if (!started.ok) return formatError("Autopilot mission start rejected", started.error)
-
-    missionId = started.value.missionId
-    taskId = started.value.rootTaskId
-    missionCreated = true
-    await persistRuntime(input.runtimeStore, input.runtime)
-  }
-
-  const claimed = input.runtime.claimTask({
-    missionId,
-    taskId,
-    contractId: defaultAtlasContract.id,
+  const prepared = prepareRunicMission(input.runtime, {
+    goal,
+    contract: defaultAtlasContract,
     holder: "runesmith-autopilot",
-    idempotencyKey: `autopilot:${missionId}:${taskId}`,
+    idempotencyScope: "autopilot",
     ttlMs: 30_000,
   })
-  if (!claimed.ok) return formatError("Autopilot task claim rejected", claimed.error)
+  if (!prepared.ok) return formatError("Autopilot preparation rejected", prepared.error)
 
   await persistRuntime(input.runtimeStore, input.runtime)
 
   return formatValue("Autopilot mission prepared", {
-    missionId,
-    taskId,
-    leaseId: claimed.value.lease.id,
-    agentId: claimed.value.task.assignedAgentId,
-    goal,
-    replayed: claimed.value.replayed,
-    missionCreated,
+    missionId: prepared.value.missionId,
+    taskId: prepared.value.taskId,
+    leaseId: prepared.value.leaseId,
+    agentId: prepared.value.agentId,
+    goal: prepared.value.goal,
+    replayed: prepared.value.replayed,
+    missionCreated: prepared.value.missionCreated,
   })
 }
 
@@ -1631,16 +1610,6 @@ function buildMissionCapsuleSummary(snapshot: RuntimeSnapshot): string {
     "Preserve this orchestration state across compaction. Continue existing running work before starting duplicate missions.",
     ...missionBlocks,
   ].join("\n")
-}
-
-function findActiveMissionForGoal(snapshot: RuntimeSnapshot, goal: string) {
-  const normalizedGoal = normalizeGoal(goal)
-  if (!normalizedGoal) return undefined
-
-  return Object.values(snapshot.graphs).find((graph) => {
-    if (["complete", "failed", "cancelled"].includes(graph.mission.status)) return false
-    return normalizeGoal(graph.mission.goal) === normalizedGoal
-  })
 }
 
 function extractLatestUserGoal(messages: unknown[] | undefined): string | undefined {

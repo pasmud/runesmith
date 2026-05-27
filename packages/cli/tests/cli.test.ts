@@ -441,6 +441,72 @@ describe("runesmith cli", () => {
     })
   })
 
+  test("ignite installs the package plugin, starts the goal, and runs the OS loop", async () => {
+    const host = createMemoryHost(
+      {},
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+      },
+    )
+
+    const result = await runCli([
+      "ignite",
+      "--config",
+      "opencode.jsonc",
+      "Build direct ignition",
+    ], host)
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("Runesmith Ignite")
+    expect(result.stdout).toContain("setup: ready")
+    expect(result.stdout).toContain("install: package")
+    expect(result.stdout).toContain("opencode config: opencode.jsonc")
+    expect(result.stdout).toContain("mission: mission_cli_1 created")
+    expect(result.stdout).toContain("task: task_cli_1")
+    expect(result.stdout).toContain("run: needs-work")
+    expect(result.stdout).toContain("next: Continue forge [attention/high]")
+    expect(result.stdout).toContain("runtime: .runesmith/runtime/capsule.json")
+    expect(host.readText("opencode.jsonc")).toContain("\"runesmith@git+https://github.com/pasmud/runesmith.git\"")
+
+    const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
+    expect(Object.keys(capsule.runtime.graphs)).toEqual(["mission_cli_1"])
+    expect(capsule.runtime.graphs.mission_cli_1.mission.goal).toBe("Build direct ignition")
+    expect(capsule.runtime.graphs.mission_cli_1.tasks.task_cli_1.status).toBe("running")
+  })
+
+  test("ignite resumes the matching active mission instead of creating duplicates", async () => {
+    const host = createMemoryHost(
+      {},
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+      },
+    )
+
+    const first = await runCli([
+      "ignite",
+      "--config",
+      "opencode.jsonc",
+      "Resume this mission",
+    ], host)
+    const second = await runCli([
+      "ignite",
+      "--config",
+      "opencode.jsonc",
+      "Resume this mission",
+    ], host)
+
+    expect(first.stdout).toContain("mission: mission_cli_1 created")
+    expect(second.stdout).toContain("mission: mission_cli_1 resumed")
+    expect(second.stdout).toContain("task: task_cli_1")
+
+    const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
+    expect(Object.keys(capsule.runtime.graphs)).toEqual(["mission_cli_1"])
+  })
+
   test("status prints the install state and current Loop Pulse", async () => {
     const host = createMemoryHost(
       {

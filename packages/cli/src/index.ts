@@ -18,6 +18,7 @@ import {
   deriveScopeSentinel,
   deriveSealAudit,
   loadRuntimeCapsule,
+  prepareRunicMission,
   resolveRunicRisk,
   runRuneweave,
   runRunebookNext,
@@ -179,6 +180,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     return runesmithUp(args.slice(1), host)
   }
 
+  if (command === "ignite") {
+    return runesmithIgnite(args.slice(1), host)
+  }
+
   if (command === "status") {
     return runesmithStatus(host)
   }
@@ -308,7 +313,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     ].join("\n"))
   }
 
-  return failure("Usage: runesmith <up|status|run|next|launch|prove|install|init|doctor|risk resolve|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
+  return failure("Usage: runesmith <ignite|up|status|run|next|launch|prove|install|init|doctor|risk resolve|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
 }
 
 function success(stdout: string): CliResult {
@@ -462,6 +467,144 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     "launch: runesmith launch -- <opencode args>",
     "",
   ].join("\n"))
+}
+
+type IgniteArgs = {
+  setupArgs: string[]
+  loopArgs: string[]
+  goal?: string
+}
+
+async function runesmithIgnite(args: string[], host: CliHost): Promise<CliResult> {
+  const parsed = parseIgniteArgs(args)
+  const setup = await runesmithUp(parsed.setupArgs, host)
+  if (setup.exitCode !== 0) return setup
+
+  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  if (!capsule.ok) return failure(`${capsule.error.message}\n`)
+  if (!capsule.value) return failure(`Runtime capsule not found: ${defaultRuntimeCapsulePath}\n`)
+
+  const idFactory = createCliIdFactory(capsule.value.runtime)
+  const runtime = createRuntime({
+    snapshot: capsule.value.runtime,
+    idFactory,
+  })
+  runtime.registerContract(cliAtlasContract)
+
+  const goal = parsed.goal?.trim()
+  const ignition = goal
+    ? prepareRunicMission(runtime, {
+        goal,
+        contract: cliAtlasContract,
+        holder: "runesmith-ignite",
+        idempotencyScope: "ignite",
+        ttlMs: 30_000,
+      })
+    : undefined
+  if (ignition && !ignition.ok) return failure(`${ignition.error.message}\n`)
+
+  const proofOptions = await readProofPlanOptions(host)
+  const loopOptions = parseFlagOptions(parsed.loopArgs)
+  const loop = await runRuneweave(runtime, {
+    contract: cliAtlasContract,
+    holder: "runesmith-ignite",
+    idempotencyScope: "ignite-os",
+    ttlMs: 30_000,
+    proofPlanOptions: proofOptions,
+    proofCommandRunner: host.runShellCommand
+      ? (command) => host.runShellCommand!(command.command)
+      : undefined,
+    nextEvidenceId: () => idFactory("evidence"),
+    maxSteps: parseMaxSteps(loopOptions["max-steps"]),
+    risk: {
+      verdict: parseRiskVerdict(loopOptions.verdict),
+      summary: loopOptions.summary,
+      evidenceIdFactory: () => idFactory("evidence"),
+    },
+  })
+  if (!loop.ok) return failure(`${loop.error.message}\n`)
+
+  const snapshot = runtime.snapshot()
+  await saveRuntimeCapsule(host, {
+    path: defaultRuntimeCapsulePath,
+    snapshot,
+  })
+
+  const setupState = setup.stdout.startsWith("Runesmith OS is ready") ? "ready" : "staged"
+  const installMode = extractOutputValue(setup.stdout, "install") ?? "package"
+  const openCodeConfig = extractOutputValue(setup.stdout, "opencode config")
+  const plugin = extractOutputValue(setup.stdout, "plugin")
+  const value = loop.value
+
+  return {
+    exitCode: ["proof-failed", "risk-held", "blocked", "step-limit"].includes(value.status) ? 1 : 0,
+    stdout: [
+      "Runesmith Ignite",
+      `setup: ${setupState}`,
+      `install: ${installMode}`,
+      ...(openCodeConfig ? [`opencode config: ${openCodeConfig}`] : []),
+      `plugin: ${plugin ?? "installed"}`,
+      ignition
+        ? `mission: ${ignition.value.missionId} ${ignition.value.missionCreated ? "created" : "resumed"}`
+        : "mission: current",
+      ignition ? `task: ${ignition.value.taskId}` : `task: ${value.taskId ?? "none"}`,
+      ignition ? `lease: ${ignition.value.leaseId}` : "lease: none",
+      `run: ${value.status}`,
+      `reason: ${value.stopReason}`,
+      `steps: ${value.stepCount}`,
+      ...value.steps.map((step, index) => `${index + 1}. ${step.actionId} -> ${step.status}`),
+      ...formatProofRunLines(value.commands),
+      `next: ${value.finalPulse.nextAction.label} [${value.finalPulse.health}/${value.finalPulse.nextAction.priority}]`,
+      ...formatPulseDiagnostics(value.finalPulse),
+      `runtime: ${defaultRuntimeCapsulePath}`,
+      "dashboard: bun run dev:dashboard",
+      "launch: runesmith launch -- <opencode args>",
+      "",
+    ].join("\n"),
+    stderr: "",
+  }
+}
+
+function parseIgniteArgs(args: string[]): IgniteArgs {
+  const setupArgs: string[] = []
+  const loopArgs: string[] = []
+  const goalParts: string[] = []
+  let hasMode = false
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]
+    const next = args[index + 1]
+    if (!arg) continue
+
+    if (arg === "--goal" && next) {
+      goalParts.push(next)
+      index += 1
+      continue
+    }
+
+    if (["--mode", "--config", "--package", "--plugin-dir", "--source"].includes(arg) && next) {
+      if (arg === "--mode") hasMode = true
+      setupArgs.push(arg, next)
+      index += 1
+      continue
+    }
+
+    if (["--max-steps", "--summary", "--verdict"].includes(arg) && next) {
+      loopArgs.push(arg, next)
+      index += 1
+      continue
+    }
+
+    if (!arg.startsWith("--")) {
+      goalParts.push(arg)
+    }
+  }
+
+  return {
+    setupArgs: hasMode ? setupArgs : ["--mode", "npm", ...setupArgs],
+    loopArgs,
+    goal: goalParts.join(" ").trim().replace(/\s+/g, " ") || undefined,
+  }
 }
 
 function selectInstallState(configFound: boolean, capsuleFound: boolean, openCodeFound: boolean): "ready" | "staged" | "uninitialized" {

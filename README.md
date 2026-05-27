@@ -36,6 +36,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - Runesmith Seal Audit binds proof, scope, review, and the final Sealmark decision into one completion gate, so OpenCode sees whether it may claim done, must run proof, must repair, or must resolve drift before sealing.
 - Runesmith Proof Plan turns missing proof or failed diagnostics into concrete verification commands, so agents can rerun the failing command, typecheck, lint, test, and build without the user remembering a workflow ritual.
 - Runesmith Proof Runner can execute those Proof Plan commands, capture passing `test-result` evidence or failing `diagnostic` evidence, and advance the mission through the same evidence gate.
+- Runesmith Ignite is the least-ceremony terminal entrypoint: one command installs/configures the OpenCode package plugin, prepares or resumes the matching Covenant mission, claims the active task, and runs the OS loop once.
 - Runesmith Next is the hands-off router over the Runebook: one CLI command, one OpenCode tool, and one dashboard button that proves, repairs, resolves a supplied risk decision, recovers, or advances whichever card is active.
 - Runeweave is the OS run loop over Runesmith Next: one command, OpenCode tool, or dashboard button that keeps executing engine-owned Runebook cards until work is sealed or the loop reaches a real stop condition such as implementation work, failed proof, unresolved risk, or a blocker.
 - OpenCode idle events run Runeweave automatically: they can prepare the first mission from chat, recover stale work, prove ready work, advance Review and Seal, and record a `runeweave.stopped` mission event with the concrete stop reason. Failed proof is held as a repair target and will not be retried until a new repair edit is captured.
@@ -82,6 +83,8 @@ Mission Memory is the durable handoff layer above the pulse. It summarizes wheth
 Proof Plan is the command layer above Mission Memory. It detects when the active task is missing passing `test-result` proof, has stale passing proof, or has a failed diagnostic, then emits the next verification recipe: rerun the latest failing command first during repair, rerun the last stale targeted proof command after newer edits, then run the repo's typecheck, lint, test, and build scripts when available. The active Runebook card embeds those commands so OpenCode prompt injection, compaction, CLI status, CLI mission inspect, and the dashboard all read the same proof recipe.
 
 Proof Runner executes that recipe when OpenCode, the CLI, or the dashboard asks Runesmith to prove the active task. Passing commands become `test-result` evidence; failed commands become `diagnostic` evidence and stop the run so Repair Gate stays focused on the first failing proof. A passing proof run immediately calls the shared mission loop, so verified work can advance without a manual evidence command.
+
+Runesmith Ignite sits above setup and mission commands for first use. `runesmith ignite "Ship the feature"` defaults to the direct package-plugin install path, writes or refreshes OpenCode config, creates the runtime capsule, starts or resumes the matching Covenant mission, claims the current task, and runs Runeweave once. The command is intentionally higher level than `up`, `mission start`, and `run`: new users get one useful entrypoint, while operators can still drop to lower-level controls when debugging.
 
 Runesmith Next is the default hands-off surface above the Runebook. It reads the active card and takes the smallest safe engine-owned action: run Proof Runner for `Capture proof` and `Repair diagnostic`, apply a supplied decision for `Resolve risk`, recover stale work, claim the next dependency-ready task, or advance through Review and Seal when evidence is already present. This is the Runesmith-owned version of workflow-skill dispatch: the user runs `runesmith next`, clicks `Run next`, or lets OpenCode call `runesmith_next`; the engine chooses the lower-level operation from runtime state.
 
@@ -164,6 +167,14 @@ bun packages/cli/src/index.ts up --mode npm
 ```
 
 That initializes the same runtime capsule and writes the Runesmith package entry into the OpenCode config in one step. Add `--config <path>` or `--package <entry>` for pinned tags, forks, or project-local OpenCode config files.
+
+For the least ceremony, ignite a goal directly:
+
+```bash
+bun packages/cli/src/index.ts ignite "Build direct CLI orchestration"
+```
+
+`ignite` defaults to the direct package-plugin path, writes the OpenCode config entry, prepares or resumes the matching mission, claims the active task, runs the OS loop, and prints the next honest stop. Pass `--mode local --plugin-dir <dir> --source <plugin.ts>` when developing against a checkout shim.
 
 Verify the installation:
 
@@ -259,6 +270,10 @@ bun packages/cli/src/index.ts up
 # One-command handoff. This performs the same bootstrap/readiness work and then
 # runs OpenCode, passing everything after `--` to the OpenCode CLI.
 bun packages/cli/src/index.ts launch -- <opencode args>
+
+# Least-ceremony direct use. This installs/configures, starts or resumes the
+# matching Covenant mission, and runs the Runesmith OS loop once.
+bun packages/cli/src/index.ts ignite "Build the next feature"
 
 # Local development install. This writes a generated plugin shim to the
 # OpenCode global plugin directory and points it at this checkout.

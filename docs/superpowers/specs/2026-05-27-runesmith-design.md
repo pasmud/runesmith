@@ -94,6 +94,7 @@ Owns local user commands.
 Responsibilities:
 
 - `runesmith up`: one-command bootstrap that writes project config, installs the Runesmith OpenCode plugin wiring, creates the runtime capsule if needed, and reports whether the host `opencode` CLI is available. `up --mode npm` uses the direct package plugin entry while still creating the Runesmith runtime capsule, so users do not need to learn a separate install command before first launch.
+- `runesmith ignite "<goal>"`: least-ceremony first use. It defaults to the direct package-plugin install path, writes or refreshes OpenCode config, creates the runtime capsule, prepares or resumes the matching Covenant mission through the shared ignition primitive, claims the active task, and runs Runeweave until the next honest stop.
 - `runesmith launch -- <opencode args>`: run the same bootstrap/readiness path, refuse to continue when `opencode` is missing, then hand off to the OpenCode CLI with pass-through arguments.
 - `runesmith init`: create project config.
 - `runesmith doctor`: validate config, runtime capsule, host OpenCode CLI availability, OpenCode plugin wiring, and an internal Forge -> Review -> Seal loop smoke test; exit nonzero with an actionable repair hint when setup is incomplete.
@@ -289,6 +290,8 @@ Runesmith Autopilot is the install-once bridge between OpenCode chat and the run
 - Claims the next dependency-ready task with the default Atlas contract and a stable idempotency key.
 - Persists the runtime capsule after mission creation and claim.
 - Returns mission, task, lease, replay, and agent metadata for subsequent evidence and completion calls.
+
+The same preparation semantics live in core as Runesmith Mission Ignition. OpenCode Autopilot and the CLI use that shared primitive so package install, terminal `ignite`, tool hooks, and idle orchestration all create or resume missions with the same goal matching, task selection, lease idempotency, and Covenant task graph.
 
 For zero-touch operation, the adapter also uses `tool.execute.before`. When the first mutating or shell tool is about to run, and no active task exists, Runesmith infers the latest user goal from message context and runs the same prepare path. OpenCode `session.idle` events use that same preparation path when no mission exists and chat context is present, so the orchestration loop can start before the first file or shell action. Read-only tools and Runesmith's own tools are ignored to avoid creating noisy missions.
 
