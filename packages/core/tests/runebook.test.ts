@@ -22,6 +22,38 @@ const atlas: AgentContract = {
 }
 
 describe("runebook", () => {
+  test("derives a proof-first Forge Trace card for implementation work", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Implement proof-first forge",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+
+    const runebook = deriveRunebook(runtime.snapshot())
+    const prompt = buildRunebookPrompt(runtime.snapshot())
+
+    expect(runebook.activeCard).toMatchObject({
+      id: "forge-trace",
+      title: "Forge Trace implementation loop",
+      nextActionId: "continue-forge",
+      autonomy: "auto",
+      requiredEvidence: ["file-change", "test-result"],
+    })
+    expect(runebook.activeCard.steps).toContain("Create or update a focused failing proof before production edits when behavior is testable.")
+    expect(runebook.activeCard.steps).toContain("Apply the smallest scoped implementation change that makes the focused proof pass.")
+    expect(runebook.activeCard.stopConditions).toContain("Do not skip a focused proof path for testable behavior.")
+    expect(prompt).toContain("Create or update a focused failing proof before production edits")
+  })
+
   test("derives a guarded Faultwright repair card with exact proof commands", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

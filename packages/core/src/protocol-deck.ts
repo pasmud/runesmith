@@ -142,10 +142,11 @@ function buildProtocol(input: {
         name: "Forge Trace Protocol",
         mode: "auto",
         trigger: input.trigger,
-        objective: "Make the smallest useful implementation change while leaving evidence the OS can verify.",
+        objective: "Make the smallest useful implementation change through a focused proof-first loop while leaving evidence the OS can verify.",
         procedure: input.runebookSteps,
         verification: commandLines(input.commands),
         forbiddenMoves: [
+          "Do not skip the focused proof-first loop for behavior that can be tested.",
           "Do not broaden the task into unrelated refactors.",
           "Do not mark completion before file-change and proof evidence are fresh.",
         ],

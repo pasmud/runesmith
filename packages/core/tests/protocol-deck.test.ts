@@ -27,6 +27,37 @@ const atlas: AgentContract = {
 }
 
 describe("runic protocol deck", () => {
+  test("selects a proof-first Forge protocol without exposing manual workflow names", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Forge with proof-first protocol",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+
+    const deck = deriveRunicProtocolDeck(runtime.snapshot())
+    const prompt = buildRunicProtocolPrompt(runtime.snapshot())
+
+    expect(deck.active).toMatchObject({
+      id: "forge-trace-protocol",
+      name: "Forge Trace Protocol",
+      mode: "auto",
+    })
+    expect(deck.active.procedure).toContain("Create or update a focused failing proof before production edits when behavior is testable.")
+    expect(deck.active.forbiddenMoves).toContain("Do not skip the focused proof-first loop for behavior that can be tested.")
+    expect(prompt).toContain("Active protocol: Forge Trace Protocol [auto]")
+    expect(prompt).toContain("Create or update a focused failing proof before production edits")
+    expect(prompt).not.toContain("Superpowers")
+  })
+
   test("selects a branded repair protocol from failed proof without user-invoked workflows", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

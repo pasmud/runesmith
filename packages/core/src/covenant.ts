@@ -109,10 +109,10 @@ const covenantStages: CovenantStage[] = [
   {
     id: "forge",
     name: "Forge",
-    purpose: "Do the implementation work directly while keeping changes narrow and recoverable.",
+    purpose: "Do the implementation work through a focused proof-first loop while keeping changes narrow and recoverable.",
     trigger: "A valid lease exists.",
-    behavior: "Edit the repo, run targeted checks, and keep state transitions tied to the mission graph.",
-    gates: ["Changes are scoped", "Files are not reverted unexpectedly", "Runtime state is updated"],
+    behavior: "Create or update focused proof before production edits when behavior is testable. Keep state transitions tied to the mission graph.",
+    gates: ["Focused proof path exists when behavior is testable", "Changes are scoped", "Runtime state is updated"],
     evidence: ["file-change", "command-output"],
   },
   {
@@ -184,8 +184,9 @@ const covenantRunes: Record<CovenantRuneId, CovenantRune> = {
   "forge-trace": {
     id: "forge-trace",
     name: "Forge Trace",
-    reason: "Make narrow changes and leave evidence the runtime can verify.",
+    reason: "Make narrow proof-first changes and leave evidence the runtime can verify.",
     steps: [
+      "Create or update focused proof before production edits when behavior is testable.",
       "Edit only the files needed for the active task.",
       "Prefer targeted checks while the change is still small.",
     ],

@@ -202,16 +202,20 @@ function buildActiveRunebookCard(input: {
         nextActionId: input.nextActionId,
         autonomy: "auto",
         trigger: input.reason,
-        intent: "Make the smallest useful repo change and let the tool hooks capture implementation evidence.",
+        intent: "Make the smallest useful repo change through a focused proof-first loop and let tool hooks capture implementation evidence.",
         steps: [
-          "Inspect the smallest relevant surface.",
-          "Apply a scoped implementation change.",
+          "Inspect the smallest relevant surface and current proof path.",
+          "Create or update a focused failing proof before production edits when behavior is testable.",
+          "Apply the smallest scoped implementation change that makes the focused proof pass.",
           "Let edit and shell hooks capture file-change or command-output evidence.",
         ],
         requiredEvidence: input.missingEvidence,
         commands: input.commands,
         toolHints: ["runesmith_autopilot_tick"],
-        stopConditions: ["Do not claim completion before required evidence is attached."],
+        stopConditions: [
+          "Do not skip a focused proof path for testable behavior.",
+          "Do not claim completion before required evidence is attached.",
+        ],
       })
     case "capture-proof":
       return card({

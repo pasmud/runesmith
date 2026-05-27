@@ -55,6 +55,7 @@ describe("runic covenant", () => {
     expect(prompt).toContain("operate end to end")
     expect(prompt).toContain("required evidence")
     expect(prompt).toContain("recover stale or blocked work")
+    expect(prompt).toContain("Create or update focused proof before production edits when behavior is testable.")
     expect(prompt).not.toContain("Superpowers")
   })
 
