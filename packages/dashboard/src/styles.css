@@ -138,12 +138,17 @@ svg {
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
   min-height: 36px;
   padding: 0 10px;
+  border: 0;
   border-radius: 7px;
+  background: transparent;
   color: var(--muted);
+  cursor: pointer;
   font-size: 14px;
   text-decoration: none;
+  text-align: left;
 }
 
 .nav-item-active,
@@ -191,6 +196,31 @@ svg {
 .inspector-actions {
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.notice-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #c9d7ec;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.notice-strip span {
+  min-width: 0;
+  flex: 1;
+}
+
+.notice-strip strong {
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .eyebrow,
@@ -254,7 +284,7 @@ svg {
 
 .mission-board {
   display: grid;
-  grid-template-columns: repeat(4, minmax(190px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   min-height: 410px;
 }
@@ -276,7 +306,8 @@ svg {
   font-weight: 700;
 }
 
-.rs-card {
+.rs-card,
+.task-card {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -288,6 +319,31 @@ svg {
   background: #f0f5ff;
 }
 
+.task-card {
+  display: block;
+  width: 100%;
+  padding: 0;
+  appearance: none;
+  color: inherit;
+  cursor: pointer;
+  outline: none;
+  text-align: left;
+  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+.task-card:hover {
+  border-color: #a9b8d2;
+  box-shadow: 0 8px 22px rgba(17, 24, 39, 0.07);
+  transform: translateY(-1px);
+}
+
+.nav-item:focus-visible,
+.task-card:focus-visible,
+.rs-button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .rs-card-header {
   display: flex;
   align-items: flex-start;
@@ -297,6 +353,7 @@ svg {
 }
 
 .rs-card-title {
+  display: block;
   margin: 0;
   font-size: 14px;
   line-height: 1.25;
@@ -308,6 +365,7 @@ svg {
 }
 
 .rs-card-description {
+  display: block;
   margin: 0;
   font-size: 12px;
   line-height: 1.45;

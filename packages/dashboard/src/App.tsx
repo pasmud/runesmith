@@ -1,3 +1,4 @@
+import { useReducer } from "react"
 import {
   Activity,
   AlertTriangle,
@@ -18,11 +19,46 @@ import {
 
 import { Badge } from "./components/ui/badge"
 import { Button } from "./components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./components/ui/card"
 import { Separator } from "./components/ui/separator"
-import { buildDashboardModel, type MissionStatus, type TaskCard } from "./dashboard-model"
+import {
+  buildDashboardModel,
+  reduceDashboardModel,
+  type DashboardView,
+  type MissionStatus,
+  type TaskCard,
+} from "./dashboard-model"
 
 const lanes = ["Plan", "Build", "Verify", "Recover"] as const
+
+const navItems = [
+  { view: "missions", label: "Missions", icon: LayoutDashboard },
+  { view: "agents", label: "Agents", icon: Bot },
+  { view: "policies", label: "Policies", icon: ShieldCheck },
+  { view: "snapshots", label: "Snapshots", icon: GitBranch },
+] satisfies Array<{ view: DashboardView; label: string; icon: typeof LayoutDashboard }>
+
+const sectionMeta = {
+  missions: {
+    eyebrow: "OpenCode Mission",
+    title: "Build a durable agentic harness",
+    status: "Mission board online",
+  },
+  agents: {
+    eyebrow: "Agent Control",
+    title: "Coordinate specialist leases",
+    status: "Capacity view armed",
+  },
+  policies: {
+    eyebrow: "Runtime Policy",
+    title: "Tune autonomy gates",
+    status: "Policies enforcing",
+  },
+  snapshots: {
+    eyebrow: "Evidence Ledger",
+    title: "Inspect mission snapshots",
+    status: "Snapshots indexed",
+  },
+} satisfies Record<DashboardView, { eyebrow: string; title: string; status: string }>
 
 const statusIcon = {
   running: Activity,
@@ -32,7 +68,8 @@ const statusIcon = {
 } satisfies Record<MissionStatus, typeof Activity>
 
 export function App() {
-  const model = buildDashboardModel()
+  const [model, dispatch] = useReducer(reduceDashboardModel, undefined, buildDashboardModel)
+  const activeSection = sectionMeta[model.activeView]
 
   return (
     <main className="app-shell">
@@ -48,10 +85,18 @@ export function App() {
         </div>
 
         <nav className="nav-stack" aria-label="Runesmith sections">
-          <a className="nav-item nav-item-active" href="#missions"><LayoutDashboard />Missions</a>
-          <a className="nav-item" href="#agents"><Bot />Agents</a>
-          <a className="nav-item" href="#policies"><ShieldCheck />Policies</a>
-          <a className="nav-item" href="#snapshots"><GitBranch />Snapshots</a>
+          {navItems.map(({ view, label, icon: Icon }) => (
+            <button
+              aria-current={model.activeView === view ? "page" : undefined}
+              className={model.activeView === view ? "nav-item nav-item-active" : "nav-item"}
+              key={view}
+              onClick={() => dispatch({ type: "select-view", view })}
+              type="button"
+            >
+              <Icon />
+              {label}
+            </button>
+          ))}
         </nav>
 
         <Separator />
@@ -67,14 +112,24 @@ export function App() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">OpenCode Mission</p>
-            <h1>Build a durable agentic harness</h1>
+            <p className="eyebrow">{activeSection.eyebrow}</p>
+            <h1>{activeSection.title}</h1>
           </div>
           <div className="topbar-actions">
-            <Button variant="outline"><RefreshCcw data-icon="inline-start" />Recover</Button>
-            <Button><Play data-icon="inline-start" />Run verifier</Button>
+            <Button onClick={() => dispatch({ type: "recover-stale" })} variant="outline">
+              <RefreshCcw data-icon="inline-start" />Recover
+            </Button>
+            <Button onClick={() => dispatch({ type: "run-verifier" })}>
+              <Play data-icon="inline-start" />Run verifier
+            </Button>
           </div>
         </header>
+
+        <section aria-live="polite" className="notice-strip">
+          <Sparkles aria-hidden="true" />
+          <span>{model.notice}</span>
+          <strong>{activeSection.status}</strong>
+        </section>
 
         <section className="metric-grid" aria-label="Mission metrics">
           <Metric label="Running" status="running" value={model.metrics.running} />
@@ -93,7 +148,14 @@ export function App() {
               <div className="lane-stack">
                 {model.tasks
                   .filter((task) => task.lane === lane)
-                  .map((task) => <TaskCardView key={task.id} task={task} selected={task.id === model.selectedTask.id} />)}
+                  .map((task) => (
+                    <TaskCardView
+                      key={task.id}
+                      onSelect={() => dispatch({ type: "select-task", taskId: task.id })}
+                      selected={task.id === model.selectedTask.id}
+                      task={task}
+                    />
+                  ))}
               </div>
             </div>
           ))}
@@ -152,8 +214,12 @@ export function App() {
         </section>
 
         <div className="inspector-actions">
-          <Button variant="outline"><PauseCircle data-icon="inline-start" />Hold</Button>
-          <Button><CheckCircle2 data-icon="inline-start" />Verify</Button>
+          <Button onClick={() => dispatch({ type: "hold-selected" })} variant="outline">
+            <PauseCircle data-icon="inline-start" />Hold
+          </Button>
+          <Button onClick={() => dispatch({ type: "verify-selected" })}>
+            <CheckCircle2 data-icon="inline-start" />Verify
+          </Button>
         </div>
       </aside>
     </main>
@@ -173,25 +239,39 @@ function Metric({ label, status, value }: { label: string; status: MissionStatus
   )
 }
 
-function TaskCardView({ task, selected }: { task: TaskCard; selected: boolean }) {
+function TaskCardView({
+  onSelect,
+  selected,
+  task,
+}: {
+  onSelect: () => void
+  selected: boolean
+  task: TaskCard
+}) {
   const Icon = statusIcon[task.status]
+
   return (
-    <Card className={selected ? "task-card task-card-selected" : "task-card"}>
-      <CardHeader>
-        <div className="task-title-row">
+    <button
+      aria-pressed={selected}
+      className={selected ? "task-card task-card-selected" : "task-card"}
+      onClick={onSelect}
+      type="button"
+    >
+      <span className="rs-card-header">
+        <span className="task-title-row">
           <Icon aria-hidden="true" />
-          <CardTitle>{task.title}</CardTitle>
-        </div>
+          <span className="rs-card-title">{task.title}</span>
+        </span>
         <Badge tone={task.status}>{task.status}</Badge>
-      </CardHeader>
-      <CardContent>
-        <CardDescription>{task.summary}</CardDescription>
-        <div className="task-footer">
+      </span>
+      <span className="rs-card-content">
+        <span className="rs-card-description">{task.summary}</span>
+        <span className="task-footer">
           <span>{task.agent}</span>
           <span>{task.tools.length} tools</span>
-        </div>
-      </CardContent>
-    </Card>
+        </span>
+      </span>
+    </button>
   )
 }
 
