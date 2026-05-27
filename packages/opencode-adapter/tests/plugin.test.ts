@@ -575,6 +575,148 @@ describe("opencode adapter", () => {
     })
   })
 
+  test("runs the active proof plan through an OpenCode tool and advances the mission", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const writes: string[] = []
+    const commands: string[] = []
+    const plugin = createRunesmithPlugin({
+      runtime,
+      proofPlanOptions: false,
+      proofCommandRunner(command) {
+        commands.push(command.command)
+        return {
+          exitCode: 0,
+          stdout: "proof passed",
+          stderr: "",
+        }
+      },
+      runtimeStore: {
+        save(snapshot) {
+          writes.push(JSON.stringify(snapshot))
+        },
+      },
+    })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Run proof inside OpenCode",
+    })
+    await plugin["tool.execute.after"]?.(
+      { tool: "edit" },
+      {
+        args: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+        result: { status: "changed" },
+      },
+    )
+
+    const proof = await plugin.tool.runesmith_proof_run.execute({})
+
+    expect(JSON.parse(proof.output)).toMatchObject({
+      ok: true,
+      value: {
+        status: "completed",
+        proofStatus: "passed",
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        commands: [
+          {
+            command: "bun test",
+            evidenceType: "test-result",
+            exitCode: 0,
+          },
+        ],
+        loopPulse: {
+          nextAction: {
+            id: "wait-for-goal",
+          },
+        },
+      },
+    })
+    expect(commands).toEqual(["bun test"])
+    expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("complete")
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.status).toBe("complete")
+    expect(Object.values(runtime.snapshot().ledgers.mission_alpha.evidence)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task_alpha",
+          type: "test-result",
+          summary: "Run tests passed: bun test",
+          payload: expect.objectContaining({
+            command: "bun test",
+            exitCode: 0,
+            mode: "runesmith-proof-runner",
+          }),
+        }),
+      ]),
+    )
+    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.mission.status).toBe("complete")
+  })
+
+  test("records OpenCode proof run failures as diagnostics and keeps repair active", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({
+      runtime,
+      proofPlanOptions: false,
+      proofCommandRunner(command) {
+        return {
+          exitCode: 1,
+          stdout: "",
+          stderr: `${command.command} failed`,
+        }
+      },
+    })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Hold failed OpenCode proof",
+    })
+    await plugin["tool.execute.after"]?.(
+      { tool: "edit" },
+      {
+        args: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+        result: { status: "changed" },
+      },
+    )
+
+    const proof = await plugin.tool.runesmith_proof_run.execute({})
+
+    expect(JSON.parse(proof.output)).toMatchObject({
+      ok: true,
+      value: {
+        status: "waiting-for-evidence",
+        proofStatus: "failed",
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        commands: [
+          {
+            command: "bun test",
+            evidenceType: "diagnostic",
+            exitCode: 1,
+          },
+        ],
+        loopPulse: {
+          nextAction: {
+            id: "repair-diagnostic",
+          },
+        },
+      },
+    })
+    expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("running")
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.status).toBe("running")
+    expect(Object.values(runtime.snapshot().ledgers.mission_alpha.evidence)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task_alpha",
+          type: "diagnostic",
+          summary: "Run tests failed: bun test",
+          payload: expect.objectContaining({
+            command: "bun test",
+            exitCode: 1,
+            stderr: "bun test failed",
+          }),
+        }),
+      ]),
+    )
+  })
+
   test("autopilot tick completes the active task once captured evidence satisfies the contract", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const writes: string[] = []

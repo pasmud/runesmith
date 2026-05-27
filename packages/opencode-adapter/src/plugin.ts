@@ -14,10 +14,15 @@ import {
   deriveMissionMemory,
   deriveProofPlan,
   loadRuntimeCapsule,
+  runProofPlan,
   saveRuntimeCapsule,
   selectRunicLoopTask,
   type AgentContract,
   type EvidenceType,
+  type IdFactory,
+  type ProofCommandExecution,
+  type ProofCommandRunner,
+  type ProofPlanCommand,
   type ProofPlanOptions,
   type RunicCovenant,
   type RunesmithRuntime,
@@ -25,8 +30,10 @@ import {
   type RuntimeSnapshot,
 } from "@runesmith/core"
 import { dirname } from "node:path"
+import { exec } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { promisify } from "node:util"
 
 export type ToolResponse = {
   title: string
@@ -45,6 +52,7 @@ export type RunesmithPlugin = {
   tool: {
     runesmith_autopilot_prepare: ToolDefinition<AutopilotPrepareArgs>
     runesmith_autopilot_tick: ToolDefinition<AutopilotTickArgs>
+    runesmith_proof_run: ToolDefinition<ProofRunArgs>
     runesmith_covenant_status: ToolDefinition<CovenantStatusArgs>
     runesmith_mission_start: ToolDefinition<MissionStartArgs>
     runesmith_mission_status: ToolDefinition<MissionStatusArgs>
@@ -72,6 +80,7 @@ export type PluginOptions = RuntimeOptions & {
   contracts?: AgentContract[]
   covenant?: RunicCovenant
   proofPlanOptions?: ProofPlanOptions | false
+  proofCommandRunner?: ProofCommandRunner
   runtimeStore?: PluginRuntimeStore
 }
 
@@ -87,6 +96,8 @@ type AutopilotPrepareArgs = {
 }
 
 type AutopilotTickArgs = Record<string, never>
+
+type ProofRunArgs = Record<string, never>
 
 type MissionStartArgs = {
   goal: string
@@ -168,6 +179,7 @@ const defaultAtlasContract: AgentContract = {
 }
 
 const autopilotStaleAfterMs = 120_000
+const execAsync = promisify(exec)
 
 export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlugin {
   const runtime = options.runtime ?? createRuntime(options)
@@ -206,6 +218,21 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             runtime,
             proofPlanOptions,
             runtimeStore: options.runtimeStore,
+          })
+        },
+      },
+      runesmith_proof_run: {
+        description:
+          "Execute the active Runesmith Proof Plan, record proof or diagnostic evidence, and advance the mission when proof passes.",
+        parameters: objectSchema({}),
+        async execute() {
+          return runProofFromOpenCode({
+            runtime,
+            proofPlanOptions,
+            proofCommandRunner: options.proofCommandRunner,
+            runtimeStore: options.runtimeStore,
+            idFactory: options.idFactory,
+            now: options.now,
           })
         },
       },
@@ -655,6 +682,58 @@ async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<T
   })
 }
 
+type RunProofFromOpenCodeInput = {
+  runtime: RunesmithRuntime
+  proofPlanOptions?: ProofPlanOptions
+  proofCommandRunner?: ProofCommandRunner
+  runtimeStore?: PluginRuntimeStore
+  idFactory?: IdFactory
+  now?: () => Date
+}
+
+async function runProofFromOpenCode(input: RunProofFromOpenCodeInput): Promise<ToolResponse> {
+  const snapshot = input.runtime.snapshot()
+  const proofPlan = deriveProofPlan(snapshot, input.proofPlanOptions)
+  const proofRun = await runProofPlan(input.runtime, proofPlan, {
+    nextEvidenceId: createProofEvidenceIdFactory(snapshot, input.idFactory),
+    now: input.now,
+    runCommand: input.proofCommandRunner ?? runShellProofCommand,
+  })
+
+  let status = proofRun.status === "failed" ? "waiting-for-evidence" : proofRun.status
+  if (proofRun.status === "passed") {
+    const advanced = advanceRunicMissionLoop(input.runtime, {
+      contract: defaultAtlasContract,
+      holder: "runesmith-autopilot",
+      idempotencyScope: "proof-run",
+      ttlMs: 30_000,
+      recoverStale: false,
+      staleAfterMs: autopilotStaleAfterMs,
+    })
+    if (!advanced.ok) return formatError("Proof run advance rejected", advanced.error)
+    status = advanced.value.status
+  }
+
+  await persistRuntime(input.runtimeStore, input.runtime)
+  const nextSnapshot = input.runtime.snapshot()
+  const loopPulse = deriveLoopPulse(nextSnapshot)
+  const missionMemory = deriveMissionMemory(nextSnapshot)
+  const nextProofPlan = deriveProofPlan(nextSnapshot, input.proofPlanOptions)
+
+  return formatValue(proofRun.status === "failed" ? "Proof plan failed" : "Proof plan executed", {
+    status,
+    proofStatus: proofRun.status,
+    missionId: proofRun.missionId,
+    taskId: proofRun.taskId,
+    commands: proofRun.commands,
+    missingEvidence: loopPulse.missingEvidence,
+    diagnostics: loopPulse.diagnostics,
+    missionMemory,
+    proofPlan: nextProofPlan,
+    loopPulse,
+  })
+}
+
 function formatAutopilotLoopTitle(status: string): string {
   if (status === "idle") return "Autopilot tick idle"
   if (status === "recovered") return "Autopilot recovered stale work"
@@ -848,7 +927,7 @@ function buildAutopilotPrompt(): string {
     "When the user asks for coding, repo, debugging, UI, or research-to-implementation work, call `runesmith_autopilot_prepare` with the latest user goal or message list before starting edits.",
     "Continue under the returned mission, task, and lease. New autopilot missions are planned as Forge, Review, and Seal tasks. Runesmith records shell, test, file-change, and safe Covenant decision evidence automatically; use `runesmith_task_evidence` for risks, diagnostics, external proof, or decisions the tool hooks cannot infer.",
     "Follow the Active runes in the live Runesmith Control Brief as automatic procedure cards. Do not ask the user to invoke them by name.",
-    "When proof is missing or repair is active, follow the live Runesmith Proof Plan commands before asking for completion.",
+    "When proof is missing or repair is active, call `runesmith_proof_run` to execute the live Runesmith Proof Plan before asking for completion.",
     "When the active task has required evidence, call `runesmith_autopilot_tick` or let session-idle events advance it. The tick may complete the task only after the evidence gate is satisfied, synthesize Review and Seal decisions when safe, then claim the next dependency-ready task.",
     "Do not ask the user to invoke Runesmith, skills, or a workflow by name. Keep the user experience install-once and direct.",
     "Before claiming completion, attach required evidence and use `runesmith_task_complete`; if state looks stale or conflicting, run `runesmith_recover` first.",
@@ -1090,6 +1169,46 @@ async function persistRuntime(
 ): Promise<void> {
   if (runtimeStore) {
     await runtimeStore.save(runtime.snapshot())
+  }
+}
+
+async function runShellProofCommand(command: ProofPlanCommand): Promise<ProofCommandExecution> {
+  try {
+    const result = await execAsync(command.command, {
+      windowsHide: true,
+    })
+
+    return {
+      exitCode: 0,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    }
+  } catch (error) {
+    const failed = error as {
+      code?: unknown
+      stdout?: unknown
+      stderr?: unknown
+    }
+
+    return {
+      exitCode: typeof failed.code === "number" ? failed.code : 1,
+      stdout: typeof failed.stdout === "string" ? failed.stdout : "",
+      stderr: typeof failed.stderr === "string" ? failed.stderr : "",
+    }
+  }
+}
+
+function createProofEvidenceIdFactory(snapshot: RuntimeSnapshot, idFactory: IdFactory | undefined): () => string {
+  const used = new Set(Object.values(snapshot.ledgers).flatMap((ledger) => Object.keys(ledger.evidence)))
+  let index = 0
+
+  return () => {
+    index += 1
+    const base = idFactory?.("evidence") ?? `evidence_proof_${index}`
+    const id = used.has(base) ? `${base}_${index}` : base
+    used.add(id)
+
+    return id
   }
 }
 

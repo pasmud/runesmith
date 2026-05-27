@@ -63,7 +63,7 @@ Mission Memory is the durable handoff layer above the pulse. It summarizes wheth
 
 Proof Plan is the command layer above Mission Memory. It detects when the active task is missing passing `test-result` proof or has a failed diagnostic, then emits the next verification recipe: rerun the latest failing command first, then run the repo's typecheck, test, and build scripts when available. OpenCode prompt injection, compaction, CLI status, CLI mission inspect, and the dashboard all read the same plan.
 
-Proof Runner executes that recipe when the user or dashboard asks Runesmith to prove the active task. Passing commands become `test-result` evidence; failed commands become `diagnostic` evidence and stop the run so Repair Gate stays focused on the first failing proof. A passing proof run immediately calls the shared mission loop, so verified work can advance without a manual evidence command.
+Proof Runner executes that recipe when OpenCode, the CLI, or the dashboard asks Runesmith to prove the active task. Passing commands become `test-result` evidence; failed commands become `diagnostic` evidence and stop the run so Repair Gate stays focused on the first failing proof. A passing proof run immediately calls the shared mission loop, so verified work can advance without a manual evidence command.
 
 Runesmith Autopilot is the OpenCode-facing part of that loop. The plugin injects a short bootstrap that tells the coding agent to call `runesmith_autopilot_prepare` when a real coding goal appears. That tool reads the latest user message when no explicit goal is provided, starts or resumes the matching active mission, creates the default Covenant task graph, claims the next ready task through the lease scheduler, and saves the runtime capsule.
 
@@ -224,5 +224,6 @@ Once installed and OpenCode is restarted, users do not need to invoke a workflow
 - `event`: recovers stale work and advances the active mission on `session.idle` when evidence gates are satisfied.
 - `runesmith_autopilot_prepare`: starts or resumes the active mission from the latest user goal and claims the next ready Covenant task.
 - `runesmith_autopilot_tick`: manually run the same evidence-gated advance loop and return the live Loop Pulse and Proof Plan, including repair diagnostics when verification failed.
+- `runesmith_proof_run`: execute the active Proof Plan inside OpenCode, record proof or diagnostics, and advance the mission when verification passes.
 - `runesmith_covenant_status`: returns the installed Covenant, live Control Brief, Loop Pulse, Proof Plan, and active Runebook runes from the runtime capsule.
 - Mission tools for status, claim, evidence, completion, and recovery.

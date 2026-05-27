@@ -243,7 +243,7 @@ Mission Memory sits above the pulse as the durable continuation layer. It classi
 
 Proof Plan sits above Mission Memory as the automatic verification recipe. It detects missing `test-result` proof and failed diagnostics, reruns the latest failing command first when available, then asks for the repository's typecheck, test, and build scripts when those scripts exist. The plan is derived from runtime state and package metadata, so users get one install-once orchestration loop instead of a separate checklist they need to remember.
 
-Proof Runner executes the active recipe. It is harness-independent in `packages/core`: callers provide a command runner, evidence ids, and a clock, while the core runner converts command outcomes into task evidence. CLI and dashboard surfaces use that same runner, so a proof run from the terminal or control surface writes the same ledger evidence the OpenCode hook expects.
+Proof Runner executes the active recipe. It is harness-independent in `packages/core`: callers provide a command runner, evidence ids, and a clock, while the core runner converts command outcomes into task evidence. OpenCode, CLI, and dashboard surfaces use that same runner, so a proof run from chat, the terminal, or the control surface writes the same ledger evidence.
 
 The default Covenant task plan is:
 
@@ -293,6 +293,7 @@ The first adapter exposes these tools:
 
 - `runesmith_autopilot_prepare`: infer or accept the current goal, start or resume a mission, claim the next dependency-ready task, and persist the capsule.
 - `runesmith_autopilot_tick`: advance the active task through the evidence gate, surface repair diagnostics when verification failed, and complete it when the contract is satisfied.
+- `runesmith_proof_run`: execute the active Proof Plan inside OpenCode, record passing commands as `test-result` evidence, record failing commands as `diagnostic` evidence, and advance the shared mission loop when proof passes.
 - `runesmith_covenant_status`: report the installed autonomous workflow plus the live Control Brief, Loop Pulse, Proof Plan, and active Runebook runes from runtime state.
 - `runesmith_mission_start`: create a mission from a user goal.
 - `runesmith_mission_status`: summarize graph state.
