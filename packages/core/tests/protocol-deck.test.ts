@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import {
   buildRunicProtocolPrompt,
+  createCovenantTaskPlan,
   createRuntime,
   deriveRunicProtocolDeck,
   type AgentContract,
@@ -27,6 +28,38 @@ const atlas: AgentContract = {
 }
 
 describe("runic protocol deck", () => {
+  test("selects a Pathfinder Plan Refinery protocol for thin Covenant maps", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Build install-direct orchestration",
+      taskPlan: createCovenantTaskPlan("Build install-direct orchestration"),
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+
+    const deck = deriveRunicProtocolDeck(runtime.snapshot())
+    const prompt = buildRunicProtocolPrompt(runtime.snapshot())
+
+    expect(deck.active).toMatchObject({
+      id: "pathfinder-plan-refinery-protocol",
+      name: "Pathfinder Plan Refinery Protocol",
+      mode: "auto",
+      toolHints: ["runesmith_plan_refine", "runesmith_next"],
+    })
+    expect(deck.summary).toBe("Refine plan through Pathfinder Plan Refinery Protocol.")
+    expect(deck.active.procedure).toContain("Replace the thin Forge/Review/Seal map with proof-backed runtime, interface, review, and seal slices.")
+    expect(deck.active.forbiddenMoves).toContain("Do not start broad Forge work while the Plan Contract is thin and evidence-free.")
+    expect(prompt).toContain("Active protocol: Pathfinder Plan Refinery Protocol [auto]")
+    expect(prompt).not.toContain("Superpowers")
+  })
+
   test("selects a proof-first Forge protocol without exposing manual workflow names", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

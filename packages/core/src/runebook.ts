@@ -8,6 +8,7 @@ export type RunebookAutonomy = "auto" | "guarded" | "hold"
 
 export type RunebookCardId =
   | "pathfinder-mission-intake"
+  | "pathfinder-plan-refinery"
   | "claim-ward-lease"
   | "forge-trace"
   | "proofwright-proof-gate"
@@ -139,6 +140,28 @@ function buildActiveRunebookCard(input: {
         commands: [],
         toolHints: ["runesmith_autopilot_tick", "runesmith_recover"],
         stopConditions: ["Hold unsafe recovery when dependencies or user input are still required."],
+      })
+    case "refine-plan":
+      return card({
+        id: "pathfinder-plan-refinery",
+        title: "Pathfinder plan refinery",
+        nextActionId: input.nextActionId,
+        autonomy: "auto",
+        trigger: input.reason,
+        intent: "Turn a thin starter map into a concrete execution contract before broad autonomous implementation starts.",
+        steps: [
+          "Read the current Plan Contract and mission goal.",
+          "Replace the thin Forge/Review/Seal map with proof-backed runtime, interface, review, and seal slices.",
+          "Record decision evidence for the refined contract.",
+          "Claim dependency-ready implementation slices through Dispatch Matrix.",
+        ],
+        requiredEvidence: ["decision"],
+        commands: [],
+        toolHints: ["runesmith_plan_refine", "runesmith_next"],
+        stopConditions: [
+          "Do not start broad Forge work while the Plan Contract is thin and evidence-free.",
+          "Do not refine a mission after task evidence has already been recorded.",
+        ],
       })
     case "resolve-blocker":
       return card({

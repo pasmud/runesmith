@@ -325,6 +325,7 @@ async function runRuntimeNextAction(
       commands: next.value.commands,
       riskResolution: next.value.riskResolution,
       faultlineResolution: next.value.faultlineResolution,
+      planRefinement: next.value.planRefinement,
       snapshot: runtime.snapshot(),
     },
   }

@@ -69,7 +69,7 @@ describe("runic mission ignition", () => {
         replayed: true,
         loopPulse: {
           nextAction: {
-            id: "continue-forge",
+            id: "refine-plan",
           },
         },
       },

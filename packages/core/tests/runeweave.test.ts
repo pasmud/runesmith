@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test"
 
-import { createRuntime, runRuneweave, type AgentContract } from "../src/index"
+import {
+  createCovenantTaskPlan,
+  createRunesmithAgentContracts,
+  createRuntime,
+  derivePlanContract,
+  runRuneweave,
+  type AgentContract,
+} from "../src/index"
 
 const fixedNow = () => new Date("2026-05-27T00:00:00.000Z")
 const ids = (prefix: string) => `${prefix}_alpha`
@@ -126,5 +133,50 @@ describe("runeweave OS loop", () => {
 
     expect(result.value.steps.map((step) => step.actionId)).toEqual(["claim-task"])
     expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.status).toBe("running")
+  })
+
+  test("refines thin Covenant missions before stopping at implementation work", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    for (const contract of createRunesmithAgentContracts()) {
+      runtime.registerContract(contract)
+    }
+    runtime.startMission({
+      goal: "Build install-direct orchestration",
+      taskPlan: createCovenantTaskPlan("Build install-direct orchestration"),
+    })
+
+    const result = await runRuneweave(runtime, {
+      contract: atlas,
+      holder: "runesmith-test",
+      idempotencyScope: "test-runeweave",
+      ttlMs: 30_000,
+      proofCommandRunner() {
+        throw new Error("proof should not run while plan refinement is the next action")
+      },
+      nextEvidenceId: () => "evidence_plan",
+      maxSteps: 4,
+      now: fixedNow,
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        status: "needs-work",
+        stopReason: "The active Runebook card requires implementation evidence before Runesmith can continue autonomously.",
+        stepCount: 1,
+        finalActionId: "continue-forge",
+      },
+    })
+    if (!result.ok) return
+
+    expect(result.value.steps.map((step) => step.actionId)).toEqual(["refine-plan"])
+    expect(result.value.steps[0]?.status).toBe("plan-refined")
+    expect(derivePlanContract(runtime.snapshot())).toMatchObject({
+      status: "ready",
+      taskCount: 5,
+      implementationTaskCount: 2,
+    })
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_runtime_forge.status).toBe("running")
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_interface_forge.status).toBe("running")
   })
 })

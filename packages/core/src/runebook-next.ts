@@ -6,6 +6,7 @@ import {
   type RunicMissionLoopStatus,
 } from "./runic-loop.js"
 import { deriveLoopPulse, type LoopPulseActionId } from "./loop-pulse.js"
+import { createRunicPlanRefinementTaskPlan, refineRunicMissionPlan } from "./plan-refinery.js"
 import { deriveProofPlan, type ProofPlan, type ProofPlanOptions } from "./proof-plan.js"
 import { runProofPlan, type ProofCommandRunner, type ProofRunCommandResult, type ProofRunStatus } from "./proof-runner.js"
 import { deriveRunebook, type Runebook, type RunebookCard } from "./runebook.js"
@@ -19,6 +20,7 @@ export type RunebookNextStatus =
   | "proof-passed"
   | "proof-failed"
   | "proof-idle"
+  | "plan-refined"
   | "faultline-resolved"
   | "faultline-held"
   | "risk-resolved"
@@ -81,6 +83,13 @@ export type RunebookNextValue = {
     nextStatus: RunicMissionLoopStatus
     diagnostics: string[]
   }
+  planRefinement?: {
+    evidenceId: string
+    rootTaskId: string
+    taskCount: number
+    implementationTaskCount: number
+    activeSlotCount: number
+  }
   loopPulse: ReturnType<typeof deriveLoopPulse>
   runebook: Runebook
   proofPlan: ProofPlan
@@ -95,6 +104,10 @@ export async function runRunebookNext(
   const beforeRunebook = deriveRunebook(before, { proofPlanOptions: options.proofPlanOptions })
   const actionId = beforePulse.nextAction.id
   const card = beforeRunebook.activeCard
+
+  if (actionId === "refine-plan") {
+    return refinePlanNext(runtime, options, actionId, card)
+  }
 
   if (actionId === "capture-proof" || actionId === "repair-diagnostic") {
     return runProofNext(runtime, options, actionId, card)
@@ -127,6 +140,114 @@ export async function runRunebookNext(
     taskId: advanced.value.taskId,
     nextStatus: advanced.value.status,
     missingEvidence: advanced.value.missingEvidence,
+  }))
+}
+
+function refinePlanNext(
+  runtime: RunesmithRuntime,
+  options: RunebookNextOptions,
+  actionId: LoopPulseActionId,
+  card: RunebookCard,
+): Result<RunebookNextValue> {
+  const snapshot = runtime.snapshot()
+  const pulse = deriveLoopPulse(snapshot)
+  const missionId = pulse.missionId
+  const graph = missionId ? snapshot.graphs[missionId] : undefined
+  if (!missionId || !graph) {
+    return err(runtimeError("MISSION_NOT_FOUND", "No active mission is available for Runebook plan refinement", {
+      actionId,
+    }))
+  }
+
+  const recovered = recoverStaleBeforePlanRefinement(runtime, options, {
+    missionId,
+    card,
+  })
+  if (!recovered.ok) return recovered
+  if (recovered.value) return ok(recovered.value)
+
+  const refined = refineRunicMissionPlan(runtime, {
+    missionId,
+    taskPlan: createRunicPlanRefinementTaskPlan(graph.mission.goal),
+    contract: options.contract,
+    holder: options.holder,
+    idempotencyScope: `${options.idempotencyScope}:plan-refine`,
+    ttlMs: options.ttlMs,
+    evidenceId: options.nextEvidenceId?.(),
+    now: options.now,
+  })
+  if (!refined.ok) return refined
+
+  return ok(buildValue(runtime, options, {
+    status: "plan-refined",
+    actionId,
+    card,
+    missionId: refined.value.missionId,
+    taskId: refined.value.rootTaskId,
+    nextStatus: refined.value.status,
+    missingEvidence: refined.value.loopPulse.missingEvidence,
+    planRefinement: {
+      evidenceId: refined.value.evidenceId,
+      rootTaskId: refined.value.rootTaskId,
+      taskCount: refined.value.taskCount,
+      implementationTaskCount: refined.value.planContract.implementationTaskCount,
+      activeSlotCount: refined.value.dispatchMatrix.activeSlotCount,
+    },
+  }))
+}
+
+function recoverStaleBeforePlanRefinement(
+  runtime: RunesmithRuntime,
+  options: RunebookNextOptions,
+  input: {
+    missionId: string
+    card: RunebookCard
+  },
+): Result<RunebookNextValue | undefined> {
+  if (options.recoverStale === false) return ok(undefined)
+
+  const before = runtime.snapshot().graphs[input.missionId]
+  if (!before) return ok(undefined)
+
+  const recovered = runtime.recover({
+    missionId: input.missionId,
+    staleAfterMs: options.staleAfterMs ?? 120_000,
+    requeueStale: true,
+    now: options.now,
+  })
+  if (!recovered.ok) return recovered
+
+  const changedTaskIds = Object.values(recovered.value.graph.tasks)
+    .filter((task) => {
+      const previous = before.tasks[task.id]
+      return previous && previous.status !== task.status && ["running", "stale"].includes(previous.status)
+    })
+    .map((task) => task.id)
+  const hasRecoveryEvent = recovered.value.graph.events.length > before.events.length
+  if (changedTaskIds.length === 0 && !hasRecoveryEvent) return ok(undefined)
+
+  const snapshot = runtime.snapshot()
+  const recoveryContract = snapshot.contracts[options.contract.id] ?? options.contract
+  const advanced = advanceRunicMissionLoop(runtime, {
+    contract: recoveryContract,
+    holder: options.holder,
+    idempotencyScope: `${options.idempotencyScope}:plan-recover`,
+    ttlMs: options.ttlMs,
+    staleAfterMs: options.staleAfterMs,
+    recoverStale: false,
+    now: options.now,
+  })
+  if (!advanced.ok) return advanced
+
+  const pulse = deriveLoopPulse(runtime.snapshot())
+  return ok(buildValue(runtime, options, {
+    status: "advanced",
+    actionId: "recover-stale",
+    card: input.card,
+    missionId: advanced.value.missionId ?? input.missionId,
+    taskId: advanced.value.taskId ?? pulse.taskId,
+    nextStatus: "recovered",
+    missingEvidence: pulse.missingEvidence,
   }))
 }
 

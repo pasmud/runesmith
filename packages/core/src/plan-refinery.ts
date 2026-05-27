@@ -87,7 +87,12 @@ export function refineRunicMissionPlan(
   const valid = validateRefinementPlan(options.taskPlan)
   if (!valid.ok) return valid
 
-  runtime.registerContract(options.contract)
+  let snapshot = runtime.snapshot()
+  const refinementContract = snapshot.contracts[options.contract.id] ?? options.contract
+  if (!snapshot.contracts[refinementContract.id]) {
+    runtime.registerContract(refinementContract)
+    snapshot = runtime.snapshot()
+  }
 
   const refined = runtime.refineMissionPlan({
     missionId,
@@ -95,7 +100,7 @@ export function refineRunicMissionPlan(
   })
   if (!refined.ok) return refined
 
-  let snapshot = runtime.snapshot()
+  snapshot = runtime.snapshot()
   let rootTask = snapshot.graphs[missionId]?.tasks[refined.value.graph.mission.rootTaskId]
   if (!rootTask) {
     return err(runtimeError("TASK_NOT_FOUND", "Refined mission root task does not exist", {
@@ -108,7 +113,7 @@ export function refineRunicMissionPlan(
     const claimed = runtime.claimTask({
       missionId,
       taskId: rootTask.id,
-      contractId: selectDispatchAgentForTask(snapshot, rootTask.id, options.contract.id),
+      contractId: selectDispatchAgentForTask(snapshot, rootTask.id, refinementContract.id),
       holder: options.holder,
       idempotencyKey: `${options.idempotencyScope}:${missionId}:${rootTask.id}:plan`,
       ttlMs: options.ttlMs,
@@ -142,7 +147,7 @@ export function refineRunicMissionPlan(
   if (!recorded.ok) return recorded
 
   const advanced = advanceRunicMissionLoop(runtime, {
-    contract: options.contract,
+    contract: refinementContract,
     holder: options.holder,
     idempotencyScope: `${options.idempotencyScope}:refined`,
     ttlMs: options.ttlMs,

@@ -626,14 +626,18 @@ describe("runesmith cli", () => {
     expect(result.stdout).toContain("mission: mission_cli_1 created")
     expect(result.stdout).toContain("task: task_cli_1")
     expect(result.stdout).toContain("run: needs-work")
+    expect(result.stdout).toContain("1. refine-plan -> plan-refined")
     expect(result.stdout).toContain("next: Continue forge [attention/high]")
     expect(result.stdout).toContain("runtime: .runesmith/runtime/capsule.json")
     expect(host.readText("opencode.jsonc")).toContain("\"runesmith@git+https://github.com/pasmud/runesmith.git\"")
 
     const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
     expect(Object.keys(capsule.runtime.graphs)).toEqual(["mission_cli_1"])
-    expect(capsule.runtime.graphs.mission_cli_1.mission.goal).toBe("Build direct ignition")
-    expect(capsule.runtime.graphs.mission_cli_1.tasks.task_cli_1.status).toBe("running")
+    const graph = capsule.runtime.graphs.mission_cli_1
+    expect(graph.mission.goal).toBe("Build direct ignition")
+    expect(graph.tasks.task_cli_1.status).toBe("complete")
+    expect(graph.tasks.task_cli_1_runtime_forge.status).toBe("running")
+    expect(graph.tasks.task_cli_1_interface_forge.status).toBe("running")
   })
 
   test("ignite heals an invalid runtime capsule before preparing the mission", async () => {
@@ -689,7 +693,7 @@ describe("runesmith cli", () => {
 
     expect(first.stdout).toContain("mission: mission_cli_1 created")
     expect(second.stdout).toContain("mission: mission_cli_1 resumed")
-    expect(second.stdout).toContain("task: task_cli_1")
+    expect(second.stdout).toContain("run: needs-work")
 
     const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
     expect(Object.keys(capsule.runtime.graphs)).toEqual(["mission_cli_1"])
@@ -720,13 +724,17 @@ describe("runesmith cli", () => {
     expect(result.stdout).toContain("opencode config: opencode.jsonc")
     expect(result.stdout).toContain("mission: mission_cli_1 created")
     expect(result.stdout).toContain("run: needs-work")
+    expect(result.stdout).toContain("1. refine-plan -> plan-refined")
     expect(result.stdout).toContain("next: Continue forge [attention/high]")
     expect(result.stdout).toContain("launch: runesmith go \"<goal>\" -- <opencode args>")
     expect(host.readText("opencode.jsonc")).toContain("\"runesmith@git+https://github.com/pasmud/runesmith.git\"")
 
     const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
-    expect(capsule.runtime.graphs.mission_cli_1.mission.goal).toBe("Build direct orchestration")
-    expect(capsule.runtime.graphs.mission_cli_1.tasks.task_cli_1.status).toBe("running")
+    const graph = capsule.runtime.graphs.mission_cli_1
+    expect(graph.mission.goal).toBe("Build direct orchestration")
+    expect(graph.tasks.task_cli_1.status).toBe("complete")
+    expect(graph.tasks.task_cli_1_runtime_forge.status).toBe("running")
+    expect(graph.tasks.task_cli_1_interface_forge.status).toBe("running")
   })
 
   test("go can prime the mission capsule and then launch OpenCode with pass-through args", async () => {
@@ -1127,7 +1135,7 @@ describe("runesmith cli", () => {
         "task: task_cli_1",
         "lease: lease_cli_1",
         "goal: Build direct CLI orchestration",
-        "next: Continue forge [attention/high]",
+        "next: Refine plan [attention/high]",
         "runtime: .runesmith/runtime/capsule.json",
         "",
       ].join("\n"),

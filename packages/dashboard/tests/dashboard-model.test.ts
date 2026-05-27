@@ -297,6 +297,31 @@ describe("dashboard model", () => {
     expect(next.notice).toBe("Refined Build direct install orchestration into runtime, interface, review, and seal slices.")
   })
 
+  test("runs next action as local plan refinement when the dashboard is offline", () => {
+    const forged = reduceDashboardModel(buildDashboardModel(), {
+      type: "forge-directive",
+      prompt: "Build offline orchestration",
+    })
+
+    const next = reduceDashboardModel(forged, {
+      type: "run-next-action",
+    })
+
+    expect(next.tasks.slice(0, 5).map((task) => task.title)).toEqual([
+      "Plan: Build offline orchestration",
+      "Forge: orchestration runtime",
+      "Forge: operator control surface",
+      "Review: proof and risk gate",
+      "Seal: install and handoff",
+    ])
+    expect(next.selectedTask.title).toBe("Forge: orchestration runtime")
+    expect(next.commandLog.at(0)).toMatchObject({
+      label: "Plan refined",
+      tone: "running",
+    })
+    expect(next.notice).toBe("Refined Build offline orchestration into runtime, interface, review, and seal slices.")
+  })
+
   test("toggles policy gates and records the command", () => {
     const model = buildDashboardModel()
     const policy = model.policies.find((item) => item.id === "policy_tool_scope")!

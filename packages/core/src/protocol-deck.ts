@@ -8,6 +8,7 @@ export type RunicProtocolMode = "auto" | "guarded" | "hold"
 
 export type RunicProtocolId =
   | "pathfinder-intake-protocol"
+  | "pathfinder-plan-refinery-protocol"
   | "claim-ward-lease-protocol"
   | "forge-trace-protocol"
   | "proofwright-proof-protocol"
@@ -135,6 +136,25 @@ function buildProtocol(input: {
         ],
         verification: ["Active task has an assigned agent and active lease."],
         forbiddenMoves: ["Do not edit before the active task has a valid lease."],
+        toolHints: input.runebookToolHints,
+      })
+    case "refine-plan":
+      return protocol({
+        id: "pathfinder-plan-refinery-protocol",
+        name: "Pathfinder Plan Refinery Protocol",
+        mode: "auto",
+        trigger: input.trigger,
+        objective: "Convert a thin starter mission into proof-backed execution slices before broad implementation begins.",
+        procedure: input.runebookSteps,
+        verification: [
+          "Planning decision evidence is recorded on the root task.",
+          "Plan Contract becomes ready with proof-backed implementation slices.",
+          "Dispatch Matrix claims dependency-ready implementation slices.",
+        ],
+        forbiddenMoves: [
+          "Do not start broad Forge work while the Plan Contract is thin and evidence-free.",
+          "Do not refine a mission after task evidence has already been recorded.",
+        ],
         toolHints: input.runebookToolHints,
       })
     case "continue-forge":

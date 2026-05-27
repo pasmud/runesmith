@@ -1468,6 +1468,10 @@ function runNextActionInModel(
     })
   }
 
+  if (model.loopPulse.nextAction.id === "refine-plan" || isLocalDirectiveReadyForRefinement(model)) {
+    return refinePlanInModel(model, { type: "refine-plan" })
+  }
+
   if (model.loopPulse.nextAction.id === "capture-proof" || model.loopPulse.nextAction.id === "repair-diagnostic") {
     return verifySelectedTask(model, {
       label: "Runebook next passed",
@@ -1478,6 +1482,13 @@ function runNextActionInModel(
   }
 
   return runAutopilotCycle(model)
+}
+
+function isLocalDirectiveReadyForRefinement(model: DashboardModel): boolean {
+  return !model.runtimeSnapshot
+    && model.selectedTask.id.startsWith("task_directive_")
+    && model.selectedTask.status === "running"
+    && model.selectedTask.lane === "Plan"
 }
 
 function runOsLoopInModel(

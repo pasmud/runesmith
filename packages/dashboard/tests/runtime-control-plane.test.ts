@@ -295,6 +295,53 @@ describe("dashboard runtime control plane", () => {
     })
   })
 
+  test("runs next action as automatic plan refinement for thin dashboard missions", async () => {
+    const forged = await applyDashboardRuntimeAction(emptySnapshot, {
+      type: "forge-directive",
+      prompt: "Build install-direct orchestration",
+    }, {
+      idFactory: ids,
+      now: fixedNow,
+    })
+    if (!forged.ok) throw new Error("forge failed")
+
+    const result = await applyDashboardRuntimeAction(forged.value.snapshot, {
+      type: "run-next-action",
+    }, {
+      idFactory: ids,
+      now: fixedNow,
+      async runProofCommand() {
+        throw new Error("proof should not run while plan refinement is the next action")
+      },
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        action: "run-next-action",
+        status: "waiting-for-evidence",
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        planRefinement: {
+          evidenceId: "evidence_alpha",
+          rootTaskId: "task_alpha",
+          taskCount: 5,
+          implementationTaskCount: 2,
+          activeSlotCount: 2,
+        },
+      },
+    })
+    if (!result.ok) return
+
+    expect(derivePlanContract(result.value.snapshot)).toMatchObject({
+      status: "ready",
+      taskCount: 5,
+      implementationTaskCount: 2,
+    })
+    expect(result.value.snapshot.graphs.mission_alpha.tasks.task_alpha_runtime_forge.status).toBe("running")
+    expect(result.value.snapshot.graphs.mission_alpha.tasks.task_alpha_interface_forge.status).toBe("running")
+  })
+
   test("runs the current Runebook next action from dashboard control", async () => {
     const forged = await applyDashboardRuntimeAction(emptySnapshot, {
       type: "forge-directive",

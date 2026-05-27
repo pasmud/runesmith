@@ -201,8 +201,8 @@ describe("opencode adapter", () => {
         loopPulse: {
           health: "attention",
           nextAction: {
-            id: "continue-forge",
-            label: "Continue forge",
+            id: "refine-plan",
+            label: "Refine plan",
           },
         },
         reviewLens: {
@@ -243,15 +243,15 @@ describe("opencode adapter", () => {
         },
         runebook: {
           activeCard: {
-            id: "forge-trace",
-            title: "Forge Trace implementation loop",
+            id: "pathfinder-plan-refinery",
+            title: "Pathfinder plan refinery",
             autonomy: "auto",
           },
         },
         protocolDeck: {
           active: {
-            id: "forge-trace-protocol",
-            name: "Forge Trace Protocol",
+            id: "pathfinder-plan-refinery-protocol",
+            name: "Pathfinder Plan Refinery Protocol",
             mode: "auto",
           },
         },
@@ -647,11 +647,11 @@ describe("opencode adapter", () => {
     expect(prompt).toContain("Forge Trace")
     expect(prompt).toContain("Proofwright")
     expect(prompt).toContain("Runesmith Loop Pulse")
-    expect(prompt).toContain("Next action: Continue forge")
+    expect(prompt).toContain("Next action: Refine plan")
     expect(prompt).toContain("Runesmith Runebook")
-    expect(prompt).toContain("Active card: Forge Trace implementation loop [auto]")
+    expect(prompt).toContain("Active card: Pathfinder plan refinery [auto]")
     expect(prompt).toContain("Runesmith Protocol Deck")
-    expect(prompt).toContain("Active protocol: Forge Trace Protocol [auto]")
+    expect(prompt).toContain("Active protocol: Pathfinder Plan Refinery Protocol [auto]")
     expect(prompt).toContain("Runesmith Mission Map")
     expect(prompt).toContain("Next task: task_alpha")
     expect(prompt).toContain("Runesmith Plan Contract")
@@ -1998,8 +1998,15 @@ describe("opencode adapter", () => {
     const snapshot = runtime.snapshot()
     expect(Object.keys(snapshot.graphs)).toEqual(["mission_alpha"])
     expect(snapshot.graphs.mission_alpha.mission.goal).toBe("Build an idle-start orchestration loop")
-    expect(snapshot.graphs.mission_alpha.tasks.task_alpha.status).toBe("running")
-    expect(snapshot.graphs.mission_alpha.tasks.task_alpha.assignedAgentId).toBe("agent_atlas")
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha.status).toBe("complete")
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_runtime_forge).toMatchObject({
+      status: "running",
+      assignedAgentId: "agent_atlas",
+    })
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_interface_forge).toMatchObject({
+      status: "running",
+      assignedAgentId: "agent_artificer",
+    })
     expect(snapshot.graphs.mission_alpha.events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -2019,7 +2026,7 @@ describe("opencode adapter", () => {
       ]),
     )
     expect(snapshot.leases.leases.lease_alpha?.holder).toBe("runesmith-autopilot")
-    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.tasks.task_alpha.status).toBe("running")
+    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.tasks.task_alpha.status).toBe("complete")
     expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -2103,11 +2110,13 @@ describe("opencode adapter", () => {
 
     const snapshot = runtime.snapshot()
     const task = snapshot.graphs.mission_alpha.tasks.task_alpha
-    expect(task.status).toBe("running")
+    expect(task.status).toBe("complete")
     expect(task.assignedAgentId).toBe("agent_atlas")
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_runtime_forge.status).toBe("running")
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_interface_forge.status).toBe("running")
     expect(snapshot.graphs.mission_alpha.events.map((event) => event.type)).toEqual(
       expect.arrayContaining(["task.stale", "task.requeued", "task.transitioned"]),
     )
-    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.tasks.task_alpha.status).toBe("running")
+    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.tasks.task_alpha.status).toBe("complete")
   })
 })

@@ -54,6 +54,21 @@ export function prepareRunicMission(
   }
 
   const claimSnapshot = runtime.snapshot()
+  const existingLease = findActiveTaskLease(claimSnapshot, taskId)
+  const existingTask = claimSnapshot.graphs[missionId]?.tasks[taskId]
+  if (existingTask?.status === "running" && existingLease) {
+    return ok({
+      goal,
+      missionId,
+      taskId,
+      leaseId: existingLease.id,
+      agentId: existingTask.assignedAgentId,
+      missionCreated,
+      replayed: existingLease.idempotencyKey === `${options.idempotencyScope}:${missionId}:${taskId}`,
+      loopPulse: deriveLoopPulse(claimSnapshot),
+    })
+  }
+
   const claimed = runtime.claimTask({
     missionId,
     taskId,
@@ -90,4 +105,12 @@ function normalizeIgnitionGoal(goal: string): string | undefined {
   const normalized = goal.replace(/\s+/g, " ").trim()
 
   return normalized.length > 0 ? normalized : undefined
+}
+
+function findActiveTaskLease(snapshot: RuntimeSnapshot, taskId: string) {
+  return Object.values(snapshot.leases.leases).find((lease) => {
+    return lease.targetId === taskId
+      && lease.purpose === "task.claim"
+      && lease.status === "active"
+  })
 }

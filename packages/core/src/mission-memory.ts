@@ -8,6 +8,7 @@ import type { Evidence, EvidenceType, MissionGraph, MissionTask, TaskStatus } fr
 export type MissionMemoryStatus =
   | "idle"
   | "active"
+  | "needs-plan"
   | "blocked"
   | "needs-proof"
   | "needs-repair"
@@ -234,6 +235,7 @@ function selectMemoryStatus(
   missing: EvidenceType[],
 ): MissionMemoryStatus {
   if (graph.mission.status === "complete") return "sealed"
+  if (pulse.nextAction.id === "refine-plan") return "needs-plan"
   if (pulse.nextAction.id === "recover-stale") return "needs-recovery"
   if (pulse.nextAction.id === "resolve-blocker") return "blocked"
   if (pulse.nextAction.id === "resolve-risk") return "blocked"
@@ -294,6 +296,10 @@ function buildHandoff(input: {
 
   if (input.status === "needs-recovery") {
     return `Recover ${taskId}: ${input.pulse.nextAction.reason}`
+  }
+
+  if (input.status === "needs-plan") {
+    return `Refine plan for ${taskId}: ${input.pulse.nextAction.reason}`
   }
 
   if (input.status === "blocked") {

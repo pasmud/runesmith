@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test"
 
-import { createRuntime, deriveLoopPulse, buildLoopPulsePrompt, type AgentContract } from "../src/index"
+import {
+  createCovenantTaskPlan,
+  createRuntime,
+  deriveLoopPulse,
+  buildLoopPulsePrompt,
+  type AgentContract,
+} from "../src/index"
 
 const fixedNow = () => new Date("2026-05-27T00:00:00.000Z")
 const later = () => new Date("2026-05-27T00:02:00.000Z")
@@ -141,6 +147,50 @@ describe("loop pulse", () => {
       evidence: ["test-result"],
       runes: ["Proofwright"],
     })
+  })
+
+  test("refines a thin Covenant map before broad implementation work starts", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Build install-direct orchestration",
+      taskPlan: createCovenantTaskPlan("Build install-direct orchestration"),
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+
+    const pulse = deriveLoopPulse(runtime.snapshot())
+    const prompt = buildLoopPulsePrompt(runtime.snapshot())
+
+    expect(pulse).toMatchObject({
+      status: "active",
+      health: "attention",
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      nextAction: {
+        id: "refine-plan",
+        label: "Refine plan",
+        priority: "high",
+      },
+    })
+    expect(pulse.executionPlan.map((step) => step.id)).toEqual([
+      "refine-thin-plan",
+      "dispatch-implementation-slices",
+      "review-refined-contract",
+    ])
+    expect(pulse.executionPlan[0]).toMatchObject({
+      status: "active",
+      evidence: ["decision"],
+      runes: ["Pathfinder", "Proofwright"],
+    })
+    expect(prompt).toContain("Next action: Refine plan")
+    expect(prompt).toContain("Plan Contract is thin")
   })
 
   test("prioritizes diagnostic repair when verification failed", () => {

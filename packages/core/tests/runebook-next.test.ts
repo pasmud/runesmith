@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test"
 
-import { createRuntime, runRunebookNext, type AgentContract } from "../src/index"
+import {
+  createCovenantTaskPlan,
+  createRunesmithAgentContracts,
+  createRuntime,
+  deriveDispatchMatrix,
+  derivePlanContract,
+  runRunebookNext,
+  type AgentContract,
+} from "../src/index"
 
 const fixedNow = () => new Date("2026-05-27T00:00:00.000Z")
 const later = () => new Date("2026-05-27T00:04:00.000Z")
@@ -23,6 +31,96 @@ const atlas: AgentContract = {
 }
 
 describe("runebook next action", () => {
+  test("automatically refines a thin Covenant plan before broad Forge work", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    for (const contract of createRunesmithAgentContracts()) {
+      runtime.registerContract(contract)
+    }
+    runtime.startMission({
+      goal: "Build install-direct orchestration",
+      taskPlan: createCovenantTaskPlan("Build install-direct orchestration"),
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+
+    const result = await runRunebookNext(runtime, {
+      contract: atlas,
+      holder: "runesmith-test",
+      idempotencyScope: "test-next",
+      ttlMs: 30_000,
+      nextEvidenceId: () => "evidence_plan",
+      now: fixedNow,
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        status: "plan-refined",
+        actionId: "refine-plan",
+        card: {
+          title: "Pathfinder plan refinery",
+        },
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        nextStatus: "waiting-for-evidence",
+        missingEvidence: ["file-change", "test-result"],
+        planRefinement: {
+          evidenceId: "evidence_plan",
+          rootTaskId: "task_alpha",
+          taskCount: 5,
+          implementationTaskCount: 2,
+          activeSlotCount: 2,
+        },
+        loopPulse: {
+          nextAction: {
+            id: "continue-forge",
+          },
+        },
+      },
+    })
+    if (!result.ok) return
+
+    const snapshot = runtime.snapshot()
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha).toMatchObject({
+      title: "Plan: Build install-direct orchestration",
+      status: "complete",
+      requiredEvidence: ["decision"],
+    })
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_runtime_forge).toMatchObject({
+      title: "Forge: orchestration runtime",
+      status: "running",
+      assignedAgentId: "agent_atlas",
+    })
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_interface_forge).toMatchObject({
+      title: "Forge: operator control surface",
+      status: "running",
+      assignedAgentId: "agent_artificer",
+    })
+    expect(snapshot.ledgers.mission_alpha.evidence.evidence_plan).toMatchObject({
+      taskId: "task_alpha",
+      type: "decision",
+      payload: {
+        mode: "runesmith-plan-refinery",
+        taskCount: 5,
+      },
+    })
+    expect(derivePlanContract(snapshot)).toMatchObject({
+      status: "ready",
+      taskCount: 5,
+      implementationTaskCount: 2,
+    })
+    expect(deriveDispatchMatrix(snapshot)).toMatchObject({
+      activeSlotCount: 2,
+      blockedSlotCount: 2,
+    })
+  })
+
   test("executes the current proof card and advances the mission through the shared loop", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

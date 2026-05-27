@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildRunebookPrompt, createRuntime, deriveRunebook, type AgentContract } from "../src/index"
+import {
+  buildRunebookPrompt,
+  createCovenantTaskPlan,
+  createRuntime,
+  deriveRunebook,
+  type AgentContract,
+} from "../src/index"
 
 const fixedNow = () => new Date("2026-05-27T00:00:00.000Z")
 const ids = (prefix: string) => `${prefix}_alpha`
@@ -22,6 +28,39 @@ const atlas: AgentContract = {
 }
 
 describe("runebook", () => {
+  test("derives an automatic Pathfinder Plan Refinery card for thin Covenant maps", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Build install-direct orchestration",
+      taskPlan: createCovenantTaskPlan("Build install-direct orchestration"),
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+
+    const runebook = deriveRunebook(runtime.snapshot())
+    const prompt = buildRunebookPrompt(runtime.snapshot())
+
+    expect(runebook.activeCard).toMatchObject({
+      id: "pathfinder-plan-refinery",
+      title: "Pathfinder plan refinery",
+      nextActionId: "refine-plan",
+      autonomy: "auto",
+      requiredEvidence: ["decision"],
+      toolHints: ["runesmith_plan_refine", "runesmith_next"],
+    })
+    expect(runebook.activeCard.steps).toContain("Replace the thin Forge/Review/Seal map with proof-backed runtime, interface, review, and seal slices.")
+    expect(runebook.activeCard.stopConditions).toContain("Do not start broad Forge work while the Plan Contract is thin and evidence-free.")
+    expect(prompt).toContain("Active card: Pathfinder plan refinery [auto]")
+    expect(prompt).toContain("Tool hints: runesmith_plan_refine, runesmith_next")
+  })
+
   test("derives a proof-first Forge Trace card for implementation work", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

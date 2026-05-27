@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import {
   buildMissionMemoryPrompt,
+  createCovenantTaskPlan,
   createRuntime,
   deriveMissionMemory,
   type AgentContract,
@@ -102,6 +103,38 @@ describe("mission memory", () => {
     expect(prompt).toContain("Mission: mission_alpha")
     expect(prompt).toContain("Proof: missing test-result")
     expect(prompt).toContain("Latest changes: Changed memory core")
+  })
+
+  test("captures the plan-refinement handoff for thin Covenant maps", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Build install-direct orchestration",
+      taskPlan: createCovenantTaskPlan("Build install-direct orchestration"),
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+
+    const memory = deriveMissionMemory(runtime.snapshot())
+    const prompt = buildMissionMemoryPrompt(runtime.snapshot())
+
+    expect(memory).toMatchObject({
+      status: "needs-plan",
+      missionId: "mission_alpha",
+      nextAction: {
+        id: "refine-plan",
+      },
+      handoff:
+        "Refine plan for task_alpha: Plan Contract is thin; convert Forge/Review/Seal into proof-backed runtime, interface, review, and seal slices before broad implementation.",
+    })
+    expect(prompt).toContain("Status: needs-plan")
+    expect(prompt).toContain("Refine plan for task_alpha")
   })
 
   test("keeps repair focus on the latest diagnostic until proof passes", () => {

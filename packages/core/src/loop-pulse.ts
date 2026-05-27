@@ -5,6 +5,7 @@ import {
   type CovenantStage,
   type RunicCovenant,
 } from "./covenant.js"
+import { derivePlanContract } from "./plan-contract.js"
 import type { RuntimeSnapshot } from "./runtime.js"
 import type { EvidenceType } from "./types.js"
 
@@ -16,6 +17,7 @@ export type LoopPulseActionId =
   | "recover-stale"
   | "resolve-blocker"
   | "resolve-risk"
+  | "refine-plan"
   | "claim-task"
   | "continue-forge"
   | "capture-proof"
@@ -98,7 +100,7 @@ export function deriveLoopPulse(
   }
 
   const blockers = buildBlockers(brief.taskId, brief.taskStatus, brief.missingEvidence, brief.diagnostics, brief.risks)
-  const nextAction = selectNextAction(brief)
+  const nextAction = selectNextAction(brief, snapshot)
 
   return {
     status: "active",
@@ -192,7 +194,10 @@ function buildBlockers(
   return blockers
 }
 
-function selectNextAction(brief: ReturnType<typeof deriveCovenantControlBrief>): LoopPulseAction {
+function selectNextAction(
+  brief: ReturnType<typeof deriveCovenantControlBrief>,
+  snapshot: RuntimeSnapshot,
+): LoopPulseAction {
   if (brief.taskStatus === "stale") {
     return {
       id: "recover-stale",
@@ -217,6 +222,15 @@ function selectNextAction(brief: ReturnType<typeof deriveCovenantControlBrief>):
       label: "Resolve risk",
       priority: "critical",
       reason: "Unresolved risk evidence requires an explicit later decision before completion.",
+    }
+  }
+
+  if (shouldRefineThinPlan(brief, snapshot)) {
+    return {
+      id: "refine-plan",
+      label: "Refine plan",
+      priority: "high",
+      reason: "Plan Contract is thin; convert Forge/Review/Seal into proof-backed runtime, interface, review, and seal slices before broad implementation.",
     }
   }
 
@@ -358,6 +372,35 @@ function buildExecutionPlan(
         instruction: "Attach a decision that explicitly clears, accepts, or holds the risk before completion.",
         evidence: ["decision"],
         runes: selectPlanRunes(brief.runes, ["Mirrorglass", "Sealmark"]),
+      },
+    ]
+  }
+
+  if (nextAction.id === "refine-plan") {
+    return [
+      {
+        id: "refine-thin-plan",
+        label: "Refine thin Plan Contract",
+        status: "active",
+        instruction: "Replace the thin Forge/Review/Seal map with proof-backed runtime, interface, review, and seal slices.",
+        evidence: ["decision"],
+        runes: ["Pathfinder", "Proofwright"],
+      },
+      {
+        id: "dispatch-implementation-slices",
+        label: "Dispatch implementation slices",
+        status: "queued",
+        instruction: "Claim independent runtime and operator-interface Forge slices through Dispatch Matrix.",
+        evidence: ["file-change", "test-result"],
+        runes: ["Claim Ward", "Forge Trace"],
+      },
+      {
+        id: "review-refined-contract",
+        label: "Review refined contract",
+        status: "blocked",
+        instruction: "Review proof, risk, and install handoff after implementation slices attach evidence.",
+        evidence: ["decision"],
+        runes: ["Mirrorglass", "Sealmark"],
       },
     ]
   }
@@ -525,4 +568,19 @@ function selectPlanRunes(runes: CovenantRune[], names: string[]): string[] {
 
 function runeNames(runes: CovenantRune[]): string[] {
   return runes.map((rune) => rune.name)
+}
+
+function shouldRefineThinPlan(
+  brief: ReturnType<typeof deriveCovenantControlBrief>,
+  snapshot: RuntimeSnapshot,
+): boolean {
+  if (!brief.missionId) return false
+  if (missionHasEvidence(snapshot, brief.missionId)) return false
+
+  const contract = derivePlanContract(snapshot)
+  return contract.status === "thin" && contract.missionId === brief.missionId
+}
+
+function missionHasEvidence(snapshot: RuntimeSnapshot, missionId: string): boolean {
+  return Object.keys(snapshot.ledgers[missionId]?.evidence ?? {}).length > 0
 }
