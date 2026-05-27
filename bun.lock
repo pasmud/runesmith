@@ -17,10 +17,10 @@
       "name": "@runesmith/cli",
       "version": "0.1.0",
       "bin": {
-        "runesmith": "./src/index.ts",
+        "runesmith": "./dist/index.js",
       },
       "dependencies": {
-        "@runesmith/core": "workspace:*",
+        "@runesmith/core": "0.1.0",
         "jsonc-parser": "^3.3.1",
       },
     },
@@ -52,14 +52,14 @@
       "name": "@runesmith/opencode-adapter",
       "version": "0.1.0",
       "dependencies": {
-        "@runesmith/core": "workspace:*",
+        "@runesmith/core": "0.1.0",
       },
     },
     "packages/testbench": {
       "name": "@runesmith/testbench",
       "version": "0.1.0",
       "dependencies": {
-        "@runesmith/core": "workspace:*",
+        "@runesmith/core": "0.1.0",
       },
     },
   },
@@ -219,8 +219,6 @@
     "@runesmith/cli": ["@runesmith/cli@workspace:packages/cli"],
 
     "@runesmith/core": ["@runesmith/core@workspace:packages/core"],
-
-    "@runesmith/core": ["@runesmith/core@file:packages/core", {}],
 
     "@runesmith/dashboard": ["@runesmith/dashboard@workspace:packages/dashboard"],
 

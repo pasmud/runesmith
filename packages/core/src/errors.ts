@@ -1,4 +1,4 @@
-import type { RuntimeError, RuntimeErrorCode } from "./types"
+import type { RuntimeError, RuntimeErrorCode } from "./types.js"
 
 export function runtimeError(
   code: RuntimeErrorCode,

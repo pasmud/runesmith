@@ -1,8 +1,8 @@
-import { missingRequiredEvidence } from "./evidence-ledger"
-import { getRequiredEvidenceForTask } from "./contracts"
-import { deriveScopeSentinel, type ScopeSentinel } from "./scope-sentinel"
-import type { RuntimeSnapshot } from "./runtime"
-import type { Evidence, EvidenceType, MissionGraph, MissionTask } from "./types"
+import { missingRequiredEvidence } from "./evidence-ledger.js"
+import { getRequiredEvidenceForTask } from "./contracts.js"
+import { deriveScopeSentinel, type ScopeSentinel } from "./scope-sentinel.js"
+import type { RuntimeSnapshot } from "./runtime.js"
+import type { Evidence, EvidenceType, MissionGraph, MissionTask } from "./types.js"
 
 export type ReviewLensStatus = "idle" | "waiting-for-proof" | "ready" | "blocked" | "approved" | "sealed"
 export type ReviewLensCheckStatus = "passed" | "blocked" | "attention"

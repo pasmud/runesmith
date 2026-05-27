@@ -1,9 +1,9 @@
-import { createCovenantTaskPlan } from "./covenant"
-import { deriveLoopPulse, type LoopPulse } from "./loop-pulse"
-import { selectRunicLoopTask } from "./runic-loop"
-import type { RunesmithRuntime, RuntimeSnapshot } from "./runtime"
-import { runtimeError } from "./errors"
-import { err, ok, type AgentContract, type Result } from "./types"
+import { createCovenantTaskPlan } from "./covenant.js"
+import { deriveLoopPulse, type LoopPulse } from "./loop-pulse.js"
+import { selectRunicLoopTask } from "./runic-loop.js"
+import type { RunesmithRuntime, RuntimeSnapshot } from "./runtime.js"
+import { runtimeError } from "./errors.js"
+import { err, ok, type AgentContract, type Result } from "./types.js"
 
 export type RunicMissionIgnitionOptions = {
   goal: string

@@ -4,9 +4,9 @@ import {
   type CovenantRune,
   type CovenantStage,
   type RunicCovenant,
-} from "./covenant"
-import type { RuntimeSnapshot } from "./runtime"
-import type { EvidenceType } from "./types"
+} from "./covenant.js"
+import type { RuntimeSnapshot } from "./runtime.js"
+import type { EvidenceType } from "./types.js"
 
 export type LoopPulseStatus = "idle" | "active"
 export type LoopPulseHealth = "clear" | "attention" | "critical"

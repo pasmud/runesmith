@@ -1,6 +1,6 @@
-import { runtimeError } from "./errors"
-import { err, ok, type Clock, type Result } from "./types"
-import type { RuntimeSnapshot } from "./runtime"
+import { runtimeError } from "./errors.js"
+import { err, ok, type Clock, type Result } from "./types.js"
+import type { RuntimeSnapshot } from "./runtime.js"
 
 export const defaultRuntimeCapsulePath = ".runesmith/runtime/capsule.json"
 export const defaultProjectConfigPath = ".runesmith/config.json"

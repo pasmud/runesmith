@@ -1,6 +1,6 @@
-import type { ProofPlan, ProofPlanCommand } from "./proof-plan"
-import type { RunesmithRuntime } from "./runtime"
-import type { EvidenceType } from "./types"
+import type { ProofPlan, ProofPlanCommand } from "./proof-plan.js"
+import type { RunesmithRuntime } from "./runtime.js"
+import type { EvidenceType } from "./types.js"
 
 export type ProofCommandExecution = {
   exitCode: number

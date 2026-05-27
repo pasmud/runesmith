@@ -1,5 +1,5 @@
-import { runtimeError } from "./errors"
-import { err, ok, type Clock, type IdFactory, type Lease } from "./types"
+import { runtimeError } from "./errors.js"
+import { err, ok, type Clock, type IdFactory, type Lease } from "./types.js"
 
 export type LeaseBook = {
   leases: Record<string, Lease>

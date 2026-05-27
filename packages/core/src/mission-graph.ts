@@ -1,4 +1,4 @@
-import { runtimeError } from "./errors"
+import { runtimeError } from "./errors.js"
 import {
   err,
   ok,
@@ -9,7 +9,7 @@ import {
   type MissionStatus,
   type MissionTask,
   type TaskStatus,
-} from "./types"
+} from "./types.js"
 
 export type CreateMissionGraphInput = {
   goal: string

@@ -1,4 +1,4 @@
-import type { AgentContract } from "./types"
+import type { AgentContract } from "./types.js"
 
 export type ToolRouteContext = {
   availableTools: string[]

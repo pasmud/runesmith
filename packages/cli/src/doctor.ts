@@ -14,15 +14,15 @@ import {
 } from "@runesmith/core"
 import { parse, type ParseError } from "jsonc-parser"
 
-import type { CliHost, CliResult } from "./index"
-import { findOpenCodeCli, openCodeCommand } from "./opencode-cli"
+import type { CliHost, CliResult } from "./index.js"
+import { findOpenCodeCli, openCodeCommand } from "./opencode-cli.js"
 import {
   getDefaultOpenCodeConfigPath,
   getDefaultOpenCodePluginDir,
   isRunesmithPluginEntry,
   parseOptions,
   type ParsedOptions,
-} from "./options"
+} from "./options.js"
 
 type DoctorCheck = {
   label: string

@@ -1,10 +1,10 @@
-import { deriveLoopPulse, type LoopPulseActionId } from "./loop-pulse"
-import { deriveProofPlan, type ProofPlan } from "./proof-plan"
-import { deriveRunebook, type Runebook } from "./runebook"
-import { runRunebookNext, type RunebookNextOptions, type RunebookNextValue } from "./runebook-next"
-import type { RunesmithRuntime } from "./runtime"
-import { runtimeError } from "./errors"
-import { err, ok, type Result } from "./types"
+import { deriveLoopPulse, type LoopPulseActionId } from "./loop-pulse.js"
+import { deriveProofPlan, type ProofPlan } from "./proof-plan.js"
+import { deriveRunebook, type Runebook } from "./runebook.js"
+import { runRunebookNext, type RunebookNextOptions, type RunebookNextValue } from "./runebook-next.js"
+import type { RunesmithRuntime } from "./runtime.js"
+import { runtimeError } from "./errors.js"
+import { err, ok, type Result } from "./types.js"
 
 export type RuneweaveStatus =
   | "sealed"

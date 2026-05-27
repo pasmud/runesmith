@@ -1,5 +1,5 @@
-import type { RuntimeSnapshot } from "./runtime"
-import type { Evidence, MissionGraph, MissionTask } from "./types"
+import type { RuntimeSnapshot } from "./runtime.js"
+import type { Evidence, MissionGraph, MissionTask } from "./types.js"
 
 export type ScopeSentinelStatus = "idle" | "clear" | "attention" | "blocked"
 export type ScopeSentinelFindingSeverity = "critical" | "warning" | "info"

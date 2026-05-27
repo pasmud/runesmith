@@ -1,8 +1,8 @@
-import { createRunicCovenant, type RunicCovenant } from "./covenant"
-import { deriveLoopPulse, type LoopPulseActionId } from "./loop-pulse"
-import { deriveProofPlan, type ProofPlanCommand, type ProofPlanOptions } from "./proof-plan"
-import type { RuntimeSnapshot } from "./runtime"
-import type { EvidenceType } from "./types"
+import { createRunicCovenant, type RunicCovenant } from "./covenant.js"
+import { deriveLoopPulse, type LoopPulseActionId } from "./loop-pulse.js"
+import { deriveProofPlan, type ProofPlanCommand, type ProofPlanOptions } from "./proof-plan.js"
+import type { RuntimeSnapshot } from "./runtime.js"
+import type { EvidenceType } from "./types.js"
 
 export type RunebookAutonomy = "auto" | "guarded" | "hold"
 

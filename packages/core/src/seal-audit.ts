@@ -1,8 +1,8 @@
-import { deriveProofPlan, type ProofPlan, type ProofPlanOptions } from "./proof-plan"
-import { deriveReviewLens, type ReviewLens } from "./review-lens"
-import { deriveScopeSentinel, type ScopeSentinel } from "./scope-sentinel"
-import type { RuntimeSnapshot } from "./runtime"
-import type { Evidence, MissionGraph, MissionTask } from "./types"
+import { deriveProofPlan, type ProofPlan, type ProofPlanOptions } from "./proof-plan.js"
+import { deriveReviewLens, type ReviewLens } from "./review-lens.js"
+import { deriveScopeSentinel, type ScopeSentinel } from "./scope-sentinel.js"
+import type { RuntimeSnapshot } from "./runtime.js"
+import type { Evidence, MissionGraph, MissionTask } from "./types.js"
 
 export type SealAuditStatus = "idle" | "collecting-proof" | "blocked" | "ready" | "sealed"
 export type SealAuditCheckStatus = "passed" | "attention" | "blocked"

@@ -1,5 +1,5 @@
-import { runtimeError } from "./errors"
-import { err, ok, type Evidence, type EvidenceType } from "./types"
+import { runtimeError } from "./errors.js"
+import { err, ok, type Evidence, type EvidenceType } from "./types.js"
 
 export type EvidenceLedger = {
   evidence: Record<string, Evidence>

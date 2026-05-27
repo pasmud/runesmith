@@ -1,7 +1,7 @@
-import { createRunicCovenant, type RunicCovenant } from "./covenant"
-import { deriveLoopPulse, type LoopPulse } from "./loop-pulse"
-import type { RuntimeSnapshot } from "./runtime"
-import type { Evidence, EvidenceType, MissionGraph, MissionTask } from "./types"
+import { createRunicCovenant, type RunicCovenant } from "./covenant.js"
+import { deriveLoopPulse, type LoopPulse } from "./loop-pulse.js"
+import type { RuntimeSnapshot } from "./runtime.js"
+import type { Evidence, EvidenceType, MissionGraph, MissionTask } from "./types.js"
 
 export type ProofPlanStatus = "idle" | "not-needed" | "needs-proof" | "needs-repair"
 export type ProofPlanCommandKind =

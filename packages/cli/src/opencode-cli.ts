@@ -1,4 +1,4 @@
-import type { CliHost } from "./index"
+import type { CliHost } from "./index.js"
 
 export const openCodeCommand = "opencode"
 

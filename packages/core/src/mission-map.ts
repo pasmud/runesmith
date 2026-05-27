@@ -1,5 +1,5 @@
-import type { RuntimeSnapshot } from "./runtime"
-import type { EvidenceType, MissionEvent, MissionGraph, MissionTask, TaskStatus } from "./types"
+import type { RuntimeSnapshot } from "./runtime.js"
+import type { EvidenceType, MissionEvent, MissionGraph, MissionTask, TaskStatus } from "./types.js"
 
 export type MissionMapStatus = "idle" | "mapped"
 

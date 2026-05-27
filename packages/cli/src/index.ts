@@ -48,14 +48,14 @@ import {
   type RuntimeSnapshot,
 } from "@runesmith/core"
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
-import { runDoctor } from "./doctor"
-import { findOpenCodeCli } from "./opencode-cli"
+import { runDoctor } from "./doctor.js"
+import { findOpenCodeCli } from "./opencode-cli.js"
 import {
   getDefaultOpenCodeConfigPath,
   getDefaultOpenCodePluginDir,
   isRunesmithPluginEntry,
   parseOptions,
-} from "./options"
+} from "./options.js"
 
 const shellOutputCaptureLimit = 64_000
 

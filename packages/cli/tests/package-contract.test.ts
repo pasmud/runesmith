@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { readFileSync } from "node:fs"
-import { join } from "node:path"
+import { readFileSync, readdirSync, statSync } from "node:fs"
+import { join, relative } from "node:path"
 import { fileURLToPath } from "node:url"
 
 type PackageJson = {
@@ -23,6 +23,32 @@ const rootDir = fileURLToPath(new URL("../../../", import.meta.url))
 
 function readPackage(path: string): PackageJson {
   return JSON.parse(readFileSync(join(rootDir, path), "utf8")) as PackageJson
+}
+
+function listTypeScriptSourceFiles(path: string): string[] {
+  const absolutePath = join(rootDir, path)
+  const stat = statSync(absolutePath)
+  if (stat.isFile()) return path.endsWith(".ts") ? [path] : []
+
+  return readdirSync(absolutePath)
+    .flatMap((entry) => listTypeScriptSourceFiles(join(path, entry)))
+}
+
+function findExtensionlessRelativeSpecifiers(path: string): string[] {
+  const source = readFileSync(join(rootDir, path), "utf8")
+  const specifierPattern = /(?:\bfrom\s+|\bimport\s*\(\s*)["'](\.{1,2}\/[^"']+)["']/g
+  const violations: string[] = []
+
+  for (const match of source.matchAll(specifierPattern)) {
+    const specifier = match[1]
+    if (!specifier) continue
+    const bareSpecifier = specifier.split(/[?#]/, 1)[0] ?? specifier
+    if (!/\.[cm]?js$/.test(bareSpecifier)) {
+      violations.push(`${relative(rootDir, join(rootDir, path))}: ${specifier}`)
+    }
+  }
+
+  return violations
 }
 
 describe("package publish contracts", () => {
@@ -120,5 +146,17 @@ describe("package publish contracts", () => {
 
       expect(pkg.dependencies?.["@runesmith/core"]).toBe(pkg.version)
     }
+  })
+
+  test("publishable source uses Node-resolvable relative ESM specifiers", () => {
+    const violations = [
+      "packages/core/src",
+      "packages/cli/src",
+      "packages/opencode-adapter/src",
+      "packages/testbench/src",
+    ].flatMap((path) => listTypeScriptSourceFiles(path))
+      .flatMap(findExtensionlessRelativeSpecifiers)
+
+    expect(violations).toEqual([])
   })
 })

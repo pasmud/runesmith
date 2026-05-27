@@ -1,9 +1,9 @@
-import { createRunicCovenant, type RunicCovenant } from "./covenant"
-import { getRequiredEvidenceForTask } from "./contracts"
-import { missingRequiredEvidence } from "./evidence-ledger"
-import { deriveLoopPulse, type LoopPulse, type LoopPulseAction, type LoopPulsePlanStep } from "./loop-pulse"
-import type { RuntimeSnapshot } from "./runtime"
-import type { Evidence, EvidenceType, MissionGraph, MissionTask, TaskStatus } from "./types"
+import { createRunicCovenant, type RunicCovenant } from "./covenant.js"
+import { getRequiredEvidenceForTask } from "./contracts.js"
+import { missingRequiredEvidence } from "./evidence-ledger.js"
+import { deriveLoopPulse, type LoopPulse, type LoopPulseAction, type LoopPulsePlanStep } from "./loop-pulse.js"
+import type { RuntimeSnapshot } from "./runtime.js"
+import type { Evidence, EvidenceType, MissionGraph, MissionTask, TaskStatus } from "./types.js"
 
 export type MissionMemoryStatus =
   | "idle"

@@ -1,12 +1,12 @@
-import { getRequiredEvidenceForTask } from "./contracts"
-import { createCovenantDecisionDraft } from "./covenant"
-import { missingRequiredEvidence } from "./evidence-ledger"
-import { runtimeError } from "./errors"
-import { deriveLoopPulse } from "./loop-pulse"
-import { taskDependenciesComplete } from "./mission-graph"
-import { deriveReviewLens, summarizeReviewLens } from "./review-lens"
-import { deriveSealAudit, summarizeSealAudit } from "./seal-audit"
-import type { RunesmithRuntime, RuntimeSnapshot } from "./runtime"
+import { getRequiredEvidenceForTask } from "./contracts.js"
+import { createCovenantDecisionDraft } from "./covenant.js"
+import { missingRequiredEvidence } from "./evidence-ledger.js"
+import { runtimeError } from "./errors.js"
+import { deriveLoopPulse } from "./loop-pulse.js"
+import { taskDependenciesComplete } from "./mission-graph.js"
+import { deriveReviewLens, summarizeReviewLens } from "./review-lens.js"
+import { deriveSealAudit, summarizeSealAudit } from "./seal-audit.js"
+import type { RunesmithRuntime, RuntimeSnapshot } from "./runtime.js"
 import {
   err,
   ok,
@@ -15,7 +15,7 @@ import {
   type EvidenceType,
   type MissionTask,
   type Result,
-} from "./types"
+} from "./types.js"
 
 export type RunicMissionLoopStatus =
   | "idle"

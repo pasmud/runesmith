@@ -1,8 +1,8 @@
-import { createEvidenceLedger, evidenceForTask, missingRequiredEvidence } from "./evidence-ledger"
-import { getRequiredEvidenceForTask } from "./contracts"
-import { taskDependenciesComplete, type MissionTaskPlanItem } from "./mission-graph"
-import type { RuntimeSnapshot } from "./runtime"
-import type { Evidence, EvidenceType, MissionGraph, MissionTask } from "./types"
+import { createEvidenceLedger, evidenceForTask, missingRequiredEvidence } from "./evidence-ledger.js"
+import { getRequiredEvidenceForTask } from "./contracts.js"
+import { taskDependenciesComplete, type MissionTaskPlanItem } from "./mission-graph.js"
+import type { RuntimeSnapshot } from "./runtime.js"
+import type { Evidence, EvidenceType, MissionGraph, MissionTask } from "./types.js"
 
 export type CovenantStageId =
   | "frame"

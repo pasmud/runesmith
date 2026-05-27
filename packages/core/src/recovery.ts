@@ -1,5 +1,5 @@
-import { taskDependenciesComplete } from "./mission-graph"
-import type { Clock, MissionGraph, MissionTask } from "./types"
+import { taskDependenciesComplete } from "./mission-graph.js"
+import type { Clock, MissionGraph, MissionTask } from "./types.js"
 
 type RecoveryEventType = "task.stale" | "task.requeued"
 

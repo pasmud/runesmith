@@ -4,7 +4,14 @@ import { dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { resolve } from "node:path"
 import { defineConfig, type Plugin } from "vite"
-import type { RuntimeCapsule, RuntimeSnapshot, RuntimeStoreHost } from "@runesmith/core"
+import {
+  loadRuntimeCapsule as loadCoreRuntimeCapsule,
+  saveRuntimeCapsule as saveCoreRuntimeCapsule,
+  type Clock,
+  type RuntimeCapsule,
+  type RuntimeSnapshot,
+  type RuntimeStoreHost,
+} from "@runesmith/core"
 import type { DashboardRuntimeAction } from "./src/runtime-control-plane"
 import type * as RuntimeControlPlane from "./src/runtime-control-plane"
 
@@ -44,7 +51,7 @@ function runtimeCapsuleApi(): Plugin {
           const action = JSON.parse(await readRequestBody(request)) as DashboardRuntimeAction
           const host = createNodeRuntimeStoreHost()
           const path = await resolveRuntimeCapsulePath(host)
-          const capsule = await loadRuntimeCapsule(host, path)
+          const capsule = await loadCoreRuntimeCapsule(host, path)
           if (!capsule.ok) {
             sendJson(response, 400, {
               ok: false,
@@ -60,7 +67,7 @@ function runtimeCapsuleApi(): Plugin {
             return
           }
 
-          const saved = await saveRuntimeCapsule(host, path, result.value.snapshot)
+          const saved = await saveDashboardRuntimeCapsule(host, path, result.value.snapshot)
 
           sendJson(response, 200, {
             ok: true,
@@ -168,87 +175,17 @@ function isProjectConfig(value: unknown): value is ProjectConfig {
     && typeof config.defaultStaleAfterMs === "number"
 }
 
-async function loadRuntimeCapsule(
-  host: RuntimeStoreHost,
-  path: string,
-): Promise<
-  | {
-      ok: true
-      value: RuntimeCapsule | undefined
-    }
-  | {
-      ok: false
-      error: {
-        code: "SNAPSHOT_INVALID"
-        message: string
-        details: Record<string, unknown>
-      }
-    }
-> {
-  if (!(await host.exists(path))) {
-    return { ok: true, value: undefined }
-  }
-
-  try {
-    const parsed = JSON.parse(await host.readText(path)) as RuntimeCapsule
-    if (!isRuntimeCapsule(parsed)) {
-      return {
-        ok: false,
-        error: {
-          code: "SNAPSHOT_INVALID",
-          message: "Runtime capsule is missing required snapshot records",
-          details: { path },
-        },
-      }
-    }
-
-    return { ok: true, value: parsed }
-  } catch {
-    return {
-      ok: false,
-      error: {
-        code: "SNAPSHOT_INVALID",
-        message: "Runtime capsule is not valid JSON",
-        details: { path },
-      },
-    }
-  }
-}
-
-async function saveRuntimeCapsule(
+export async function saveDashboardRuntimeCapsule(
   host: RuntimeStoreHost,
   path: string,
   snapshot: RuntimeSnapshot,
+  options: { now?: Clock } = {},
 ): Promise<RuntimeCapsule> {
-  const capsule: RuntimeCapsule = {
-    version: 1,
-    updatedAt: new Date().toISOString(),
-    runtime: snapshot,
-  }
-
-  await host.writeText(path, `${JSON.stringify(capsule, null, 2)}\n`)
-  return capsule
-}
-
-function isRuntimeCapsule(value: unknown): value is RuntimeCapsule {
-  if (!value || typeof value !== "object") return false
-  const capsule = value as Partial<RuntimeCapsule>
-  const runtime = capsule.runtime
-
-  return (
-    capsule.version === 1
-    && typeof capsule.updatedAt === "string"
-    && isRecord(runtime)
-    && isRecord(runtime.graphs)
-    && isRecord(runtime.ledgers)
-    && isRecord(runtime.contracts)
-    && isRecord(runtime.leases)
-    && isRecord((runtime.leases as { leases?: unknown }).leases)
-  )
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+  return saveCoreRuntimeCapsule(host, {
+    path,
+    snapshot,
+    now: options.now,
+  })
 }
 
 function createNodeRuntimeStoreHost(): RuntimeStoreHost {

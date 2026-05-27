@@ -1,8 +1,8 @@
-import { getRequiredEvidenceForTask, validateAgentForTask } from "./contracts"
-import { addEvidence, assertRequiredEvidence, createEvidenceLedger, sameEvidence, type EvidenceLedger } from "./evidence-ledger"
-import { acquireLease, createLeaseBook, type LeaseBook } from "./lease-scheduler"
-import { createMissionGraph, taskDependenciesComplete, transitionTask, type MissionTaskPlanItem } from "./mission-graph"
-import { recoverStaleTasks } from "./recovery"
+import { getRequiredEvidenceForTask, validateAgentForTask } from "./contracts.js"
+import { addEvidence, assertRequiredEvidence, createEvidenceLedger, sameEvidence, type EvidenceLedger } from "./evidence-ledger.js"
+import { acquireLease, createLeaseBook, type LeaseBook } from "./lease-scheduler.js"
+import { createMissionGraph, taskDependenciesComplete, transitionTask, type MissionTaskPlanItem } from "./mission-graph.js"
+import { recoverStaleTasks } from "./recovery.js"
 import {
   err,
   ok,
@@ -15,8 +15,8 @@ import {
   type MissionGraph,
   type MissionTask,
   type Result,
-} from "./types"
-import { runtimeError } from "./errors"
+} from "./types.js"
+import { runtimeError } from "./errors.js"
 
 export type RuntimeOptions = {
   idFactory?: IdFactory

@@ -1,5 +1,5 @@
-import { runtimeError } from "./errors"
-import { err, ok, type AgentContract, type EvidenceType, type MissionTask } from "./types"
+import { runtimeError } from "./errors.js"
+import { err, ok, type AgentContract, type EvidenceType, type MissionTask } from "./types.js"
 
 export function validateAgentForTask(contract: AgentContract, task: MissionTask) {
   const missingCapabilities = task.requiredCapabilities.filter((capability) => {
