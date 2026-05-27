@@ -3,12 +3,14 @@ import {
   buildCovenantControlBrief,
   buildCovenantPrompt,
   buildLoopPulsePrompt,
+  buildMissionMemoryPrompt,
   createCovenantTaskPlan,
   createRuntime,
   createRunicCovenant,
   defaultRuntimeCapsulePath,
   deriveCovenantControlBrief,
   deriveLoopPulse,
+  deriveMissionMemory,
   loadRuntimeCapsule,
   saveRuntimeCapsule,
   selectRunicLoopTask,
@@ -207,6 +209,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           const snapshot = runtime.snapshot()
           const controlBrief = deriveCovenantControlBrief(snapshot, covenant)
           const loopPulse = deriveLoopPulse(snapshot, covenant)
+          const missionMemory = deriveMissionMemory(snapshot, covenant)
 
           return formatValue("Runic Covenant active", {
             name: covenant.name,
@@ -236,6 +239,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
               directives: controlBrief.directives,
             },
             loopPulse,
+            missionMemory,
             activeRunes: controlBrief.runes,
           })
         },
@@ -397,21 +401,27 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       chat: {
         system: {
           transform(_input, systemPrompt) {
+            const snapshot = runtime.snapshot()
             return upsertPromptSection(
               upsertPromptSection(
-                appendPromptSections(systemPrompt, [covenantPrompt, autopilotPrompt]),
-                buildCovenantControlBrief(runtime.snapshot(), covenant),
+                upsertPromptSection(
+                  appendPromptSections(systemPrompt, [covenantPrompt, autopilotPrompt]),
+                  buildCovenantControlBrief(snapshot, covenant),
+                ),
+                buildLoopPulsePrompt(snapshot, covenant),
               ),
-              buildLoopPulsePrompt(runtime.snapshot(), covenant),
+              buildMissionMemoryPrompt(snapshot, covenant),
             )
           },
         },
       },
     },
     "experimental.chat.system.transform"(_input, output) {
+      const snapshot = runtime.snapshot()
       appendSystemSections(output, [covenantPrompt, autopilotPrompt])
-      upsertSystemSection(output, buildCovenantControlBrief(runtime.snapshot(), covenant))
-      upsertSystemSection(output, buildLoopPulsePrompt(runtime.snapshot(), covenant))
+      upsertSystemSection(output, buildCovenantControlBrief(snapshot, covenant))
+      upsertSystemSection(output, buildLoopPulsePrompt(snapshot, covenant))
+      upsertSystemSection(output, buildMissionMemoryPrompt(snapshot, covenant))
     },
     "experimental.session.compacting"(_input, output) {
       appendCompactionContext(output, runtime.snapshot())
@@ -612,6 +622,7 @@ async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<T
 
   await persistRuntime(input.runtimeStore, input.runtime)
   const loopPulse = deriveLoopPulse(input.runtime.snapshot())
+  const missionMemory = deriveMissionMemory(input.runtime.snapshot())
 
   return formatValue(formatAutopilotLoopTitle(advanced.value.status), {
     status: advanced.value.status,
@@ -621,6 +632,7 @@ async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<T
     missionStatus: advanced.value.missionStatus,
     missingEvidence: advanced.value.missingEvidence,
     diagnostics: loopPulse.diagnostics,
+    missionMemory,
     loopPulse,
   })
 }
@@ -900,6 +912,7 @@ function appendCompactionContext(output: OpenCodeCompactionOutput, snapshot: Run
   }
   upsertTextListSection(context, buildCovenantControlBrief(snapshot))
   upsertTextListSection(context, buildLoopPulsePrompt(snapshot))
+  upsertTextListSection(context, buildMissionMemoryPrompt(snapshot))
   output.context = context
 }
 

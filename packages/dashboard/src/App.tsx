@@ -636,6 +636,7 @@ function RightRail({ dispatch, model }: { dispatch: DashboardDispatch; model: Da
   return (
     <aside className="right-rail">
       <LoopPulsePanel model={model} />
+      <MissionMemoryPanel model={model} />
 
       <section className="notifications">
         <header className="rail-header">
@@ -691,6 +692,40 @@ function RightRail({ dispatch, model }: { dispatch: DashboardDispatch; model: Da
         </div>
       </section>
     </aside>
+  )
+}
+
+function MissionMemoryPanel({ model }: { model: DashboardModel }) {
+  const memory = model.missionMemory
+  const tone: MissionStatus =
+    memory.status === "blocked" || memory.status === "needs-repair" || memory.status === "needs-recovery"
+      ? "blocked"
+      : memory.status === "needs-proof"
+        ? "stale"
+        : "verified"
+
+  return (
+    <section className="mission-memory-panel" aria-label="Runesmith mission memory">
+      <div className="inspector-header">
+        <p className="eyebrow">Mission Memory</p>
+        <Badge tone={tone}>{memory.status}</Badge>
+      </div>
+      <div className="memory-handoff">
+        <span className={`tile-icon tile-icon-${tone}`}><Sparkles aria-hidden="true" /></span>
+        <div>
+          <h2>{memory.activeTask?.title ?? memory.goal ?? "Awaiting mission"}</h2>
+          <p>{memory.handoff}</p>
+        </div>
+      </div>
+      <div className="memory-facts">
+        <span>{memory.openTasks} open</span>
+        <span>{memory.completedTasks} done</span>
+        <span>{memory.proof.status}</span>
+      </div>
+      <div className="memory-evidence" aria-label="Mission memory proof">
+        <strong>{memory.latestDiagnostics[0] ?? memory.latestChanges[0] ?? memory.proof.passing[0] ?? "No proof captured yet"}</strong>
+      </div>
+    </section>
   )
 }
 

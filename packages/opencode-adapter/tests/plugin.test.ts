@@ -188,6 +188,7 @@ describe("opencode adapter", () => {
 
     expect(systemOutput.system.join("\n")).toContain("Runic Covenant")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Autopilot")
+    expect(systemOutput.system.join("\n")).toContain("Runesmith Mission Memory")
 
     await plugin.tool.runesmith_mission_start.execute({
       goal: "Carry state through compaction",
@@ -199,6 +200,8 @@ describe("opencode adapter", () => {
     expect(compactOutput.context.join("\n")).toContain("mission_alpha")
     expect(compactOutput.context.join("\n")).toContain("Carry state through compaction")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Control Brief")
+    expect(compactOutput.context.join("\n")).toContain("Runesmith Mission Memory")
+    expect(compactOutput.context.join("\n")).toContain("Handoff:")
   })
 
   test("injects a live Covenant control brief for the active mission", async () => {
@@ -487,6 +490,12 @@ describe("opencode adapter", () => {
         taskId: "task_alpha",
         missingEvidence: ["test-result"],
         diagnostics: ["bash ran bun test packages/opencode-adapter/tests/plugin.test.ts"],
+        missionMemory: {
+          status: "needs-repair",
+          latestDiagnostics: ["bash ran bun test packages/opencode-adapter/tests/plugin.test.ts"],
+          handoff:
+            "Repair task_alpha: bash ran bun test packages/opencode-adapter/tests/plugin.test.ts. Rerun proof after the smallest fix.",
+        },
         loopPulse: {
           nextAction: {
             id: "repair-diagnostic",

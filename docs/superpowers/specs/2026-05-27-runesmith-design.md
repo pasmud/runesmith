@@ -236,6 +236,8 @@ The Control Brief also includes Runesmith-native Runebook runes. A rune is a sma
 
 The Loop Pulse sits beside the Control Brief. It converts the live runtime state into one next action such as `Wait for goal`, `Continue forge`, `Capture proof`, `Repair diagnostic`, `Recover stale work`, `Review change`, or `Seal mission`. It also derives an execution plan from that action, with active, queued, and blocked steps, required evidence, and the runes that should guide each step. OpenCode prompt injection, compaction context, CLI status, and the dashboard should all show this same pulse so the OS has one source of truth for what the agentic loop should do next.
 
+Mission Memory sits above the pulse as the durable continuation layer. It classifies the mission as idle, active, blocked, needs-proof, needs-repair, needs-recovery, or sealed; summarizes active task, open and completed task counts, latest change evidence, passing proof, diagnostics, and decisions; and produces one handoff sentence that can survive OpenCode restart, compaction, CLI inspection, or dashboard reload. This is how Runesmith internalizes the useful continuity discipline of workflow systems without asking users to install or invoke a separate process.
+
 The default Covenant task plan is:
 
 - Forge: implementation work requiring `file-change` and passing `test-result` evidence.
@@ -265,7 +267,7 @@ Before an idle or explicit autopilot tick checks proof, it runs the recovery pol
 
 The compaction hook appends a mission capsule summary containing active missions, tasks, leases, and evidence counts. This gives continuation sessions enough orchestration state to recover or keep working before starting a new loop.
 
-The same compaction path appends the live Runesmith Control Brief, so resumed sessions keep the next stage and proof obligations without requiring the user to install or invoke an external workflow.
+The same compaction path appends the live Runesmith Control Brief, Loop Pulse, and Mission Memory, so resumed sessions keep the next stage, proof obligations, and handoff without requiring the user to install or invoke an external workflow.
 
 ### Recovery Policies
 

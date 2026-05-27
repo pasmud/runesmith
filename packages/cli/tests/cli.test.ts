@@ -428,6 +428,7 @@ describe("runesmith cli", () => {
         "opencode: found E:/tools/opencode.exe",
         "next: Capture proof [attention/high]",
         "plan: Run targeted verification -> Advance evidence gate",
+        "handoff: Capture proof for task_alpha: record test-result evidence before completion.",
         "mission: mission_alpha running Build Runesmith",
         "task: task_alpha running Mission root",
         "missing evidence: test-result",
@@ -455,6 +456,7 @@ describe("runesmith cli", () => {
         "opencode: missing",
         "next: Wait for goal [clear/low]",
         "plan: Wait for user goal",
+        "handoff: No active mission is waiting. Start a mission from the next coding goal.",
         "mission: none",
         "task: none",
         "missing evidence: none",
@@ -785,6 +787,8 @@ describe("runesmith cli", () => {
     })
     expect(inspect.stdout).toContain("Diagnostics: CLI tests failed")
     expect(inspect.stdout).toContain("Active runes: Faultwright, Proofwright")
+    expect(inspect.stdout).toContain("Mission memory:")
+    expect(inspect.stdout).toContain("Handoff: Repair task_cli_1: CLI tests failed. Rerun proof after the smallest fix.")
   })
 
   test("mission inspect prints graph details from a snapshot", async () => {
@@ -802,6 +806,9 @@ describe("runesmith cli", () => {
         "Goal: Build Runesmith",
         "Loop Pulse: Capture proof [attention/high]",
         "Next reason: The active task cannot complete until missing verification evidence is captured.",
+        "Mission memory:",
+        "Handoff: Capture proof for task_alpha: record test-result evidence before completion.",
+        "Proof: missing test-result",
         "Required evidence: file-change, test-result",
         "Missing evidence: test-result",
         "Active runes: Proofwright",
@@ -836,6 +843,9 @@ describe("runesmith cli", () => {
         "Goal: Build Runesmith",
         "Loop Pulse: Capture proof [attention/high]",
         "Next reason: The active task cannot complete until missing verification evidence is captured.",
+        "Mission memory:",
+        "Handoff: Capture proof for task_alpha: record test-result evidence before completion.",
+        "Proof: missing test-result",
         "Required evidence: file-change, test-result",
         "Missing evidence: test-result",
         "Active runes: Proofwright",

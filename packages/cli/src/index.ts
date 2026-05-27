@@ -9,6 +9,7 @@ import {
   createRuntime,
   defaultRuntimeCapsulePath,
   deriveLoopPulse,
+  deriveMissionMemory,
   loadRuntimeCapsule,
   saveRuntimeCapsule,
   type AgentContract,
@@ -183,6 +184,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     }
 
     const pulse = deriveLoopPulse(snapshot.value)
+    const memory = deriveMissionMemory(snapshot.value)
     const taskLines = Object.values(graph.tasks).map((task) => {
       return `- ${task.id} ${task.status} ${task.assignedAgentId ?? "unassigned"} ${task.title}`
     })
@@ -195,6 +197,9 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
       `Goal: ${graph.mission.goal}`,
       `Loop Pulse: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
       `Next reason: ${pulse.nextAction.reason}`,
+      "Mission memory:",
+      `Handoff: ${memory.handoff}`,
+      `Proof: ${formatMissionMemoryProof(memory)}`,
       `Required evidence: ${formatList(pulse.requiredEvidence)}`,
       `Missing evidence: ${formatList(pulse.missingEvidence)}`,
       ...formatPulseDiagnostics(pulse, "Diagnostics"),
@@ -320,6 +325,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
   const snapshot = capsule.value?.runtime ?? emptySnapshot
   const openCodeCli = await findOpenCodeCli(host)
   const pulse = deriveLoopPulse(snapshot)
+  const memory = deriveMissionMemory(snapshot)
   const mission = pulse.missionId ? snapshot.graphs[pulse.missionId]?.mission : undefined
   const task = mission && pulse.taskId ? snapshot.graphs[mission.id]?.tasks[pulse.taskId] : undefined
   const state = selectInstallState(Boolean(configFound), Boolean(capsule.value), Boolean(openCodeCli))
@@ -331,6 +337,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     `opencode: ${openCodeCli ? `found ${openCodeCli}` : "missing"}`,
     `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
     `plan: ${formatExecutionPlan(pulse.executionPlan)}`,
+    `handoff: ${memory.handoff}`,
     `mission: ${mission ? `${mission.id} ${mission.status} ${mission.goal}` : "none"}`,
     `task: ${task ? `${task.id} ${task.status} ${task.title}` : "none"}`,
     `missing evidence: ${formatList(pulse.missingEvidence)}`,
@@ -740,6 +747,12 @@ function formatList(values: string[]): string {
 
 function formatExecutionPlan(plan: ReturnType<typeof deriveLoopPulse>["executionPlan"]): string {
   return plan.length > 0 ? plan.map((step) => step.label).join(" -> ") : "none"
+}
+
+function formatMissionMemoryProof(memory: ReturnType<typeof deriveMissionMemory>): string {
+  if (memory.proof.status === "missing") return `missing ${formatList(memory.proof.missing)}`
+
+  return memory.proof.status
 }
 
 function formatPulseDiagnostics(pulse: ReturnType<typeof deriveLoopPulse>, label = "diagnostics"): string[] {

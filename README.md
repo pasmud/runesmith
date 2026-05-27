@@ -22,6 +22,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - OpenCode compaction carries the mission capsule forward so long sessions do not lose orchestration state.
 - A live Runesmith Control Brief is injected from runtime state so OpenCode sees the active mission, next Covenant stage, and missing proof without user-managed workflow steps.
 - A Runesmith Loop Pulse is injected beside the control brief, giving OpenCode and the dashboard one authoritative next action, execution plan, health signal, priority, blockers, and active runes.
+- Runesmith Mission Memory condenses the current mission, active task, proof state, latest diagnostics, decisions, and continuation handoff so restarts, compaction, CLI checks, and the dashboard all preserve the same next move.
 - The dashboard is an operating surface: forge directives, run guarded autopilot, boost agents, toggle policies, and seal evidence snapshots.
 
 ## Packages
@@ -56,6 +57,8 @@ The Control Brief also carries active Runebook runes. These are Runesmith-native
 
 The Loop Pulse is the runtime's heartbeat for agentic work. It derives the next OS action from the same mission capsule, including `Wait for goal`, `Continue forge`, `Capture proof`, `Repair diagnostic`, `Recover stale work`, `Review change`, and `Seal mission`. It also expands that action into a small execution plan with active, queued, and blocked steps, required evidence, and active runes. This keeps OpenCode prompts, compaction context, CLI status, and dashboard status aligned around one loop decision instead of separate prompt-side heuristics.
 
+Mission Memory is the durable handoff layer above the pulse. It summarizes whether the mission is idle, active, blocked, waiting for proof, focused on repair, recovering, or sealed; carries latest file-change, diagnostic, test-result, and decision evidence; and writes a single continuation sentence for the agent and operator. This is the Runesmith-owned version of workflow continuity: the user does not install a separate skill pack or remember process steps, because the engine derives the handoff from runtime state.
+
 Runesmith Autopilot is the OpenCode-facing part of that loop. The plugin injects a short bootstrap that tells the coding agent to call `runesmith_autopilot_prepare` when a real coding goal appears. That tool reads the latest user message when no explicit goal is provided, starts or resumes the matching active mission, creates the default Covenant task graph, claims the next ready task through the lease scheduler, and saves the runtime capsule.
 
 If the agent reaches for a mutating or shell tool before explicitly calling `runesmith_autopilot_prepare`, Runesmith uses `tool.execute.before` to infer the latest user goal, start or resume the mission, and claim the first dependency-ready task. Read-only tools are ignored so repo inspection does not create noisy missions.
@@ -74,6 +77,7 @@ The dashboard is intentionally not a static report. It models the working loop a
 - **Command forge**: turn a new directive into a tracked mission task.
 - **Autopilot cycle**: recover stale work first, then verify running work under policy.
 - **Runic Covenant**: inspect and advance the built-in autonomous coding loop that ships with the plugin.
+- **Mission Memory**: see the durable handoff, proof state, latest diagnostic, and sealed mission status without reading the transcript.
 - **Agent mesh**: inspect agent capacity, active leases, queues, model policy, and boost an agent.
 - **Policy gates**: toggle evidence, lease, tool-scope, stall-radar, and human-hold guardrails.
 - **Snapshots**: seal replayable mission checkpoints with task, evidence, and readiness counts.

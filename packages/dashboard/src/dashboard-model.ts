@@ -1,5 +1,6 @@
 import {
   createRunicCovenant,
+  deriveMissionMemory,
   deriveLoopPulse,
   getNextCovenantStage,
   type AgentContract,
@@ -8,6 +9,7 @@ import {
   type Evidence,
   type EvidenceType,
   type LoopPulse,
+  type MissionMemory,
   type MissionGraph,
   type RuntimeCapsule,
   type RuntimeSnapshot,
@@ -89,6 +91,7 @@ export type DashboardModel = {
   commandLog: CommandLogItem[]
   covenantStages: CovenantStage[]
   loopPulse: LoopPulse
+  missionMemory: MissionMemory
   metrics: Record<MissionStatus, number>
   mode: OsMode
   notice: string
@@ -476,10 +479,10 @@ export function buildDashboardModelFromRuntimeSnapshot(
       tone: "verified",
     }),
     covenantStages,
-    loopPulse: deriveLoopPulse(snapshot),
     mode: "guarded",
     notice: `Loaded runtime capsule from ${options.updatedAt ?? "local disk"}.`,
     policies: buildPoliciesFromSnapshot(snapshot, evidenceCount),
+    runtimeSnapshot: snapshot,
     selectedAgentId: agents[0]?.id ?? seededAgents[0]!.id,
     selectedTaskId: tasks[0]!.id,
     snapshots,
@@ -610,10 +613,10 @@ function deriveDashboardModel(input: {
   agents: AgentNode[]
   commandLog: CommandLogItem[]
   covenantStages: CovenantStage[]
-  loopPulse?: LoopPulse
   mode: OsMode
   notice: string
   policies: PolicyGate[]
+  runtimeSnapshot?: RuntimeSnapshot
   selectedAgentId: string
   selectedTaskId: string
   snapshots: SnapshotRecord[]
@@ -625,13 +628,19 @@ function deriveDashboardModel(input: {
   const activeCovenantStage =
     input.covenantStages.find((stage) => stage.id === input.activeCovenantStageId) ?? input.covenantStages[0]!
   const metrics = buildMetrics(input.tasks)
-  const loopPulse = input.loopPulse ?? buildSeededLoopPulse(input.tasks, activeCovenantStage)
+  const loopPulse = input.runtimeSnapshot
+    ? deriveLoopPulse(input.runtimeSnapshot)
+    : buildSeededLoopPulse(input.tasks, activeCovenantStage)
+  const missionMemory = input.runtimeSnapshot
+    ? deriveMissionMemory(input.runtimeSnapshot)
+    : buildSeededMissionMemory(input.tasks)
 
   return {
     ...input,
     activeCovenantStage,
     activeCovenantStageId: activeCovenantStage.id,
     loopPulse,
+    missionMemory,
     metrics,
     operationalScore: buildOperationalScore(input.tasks, metrics, input.policies),
     selectedAgent,
@@ -646,6 +655,23 @@ function buildSeededLoopPulse(tasks: TaskCard[], activeStage: CovenantStage): Lo
     return deriveLoopPulse(emptyRuntimeSnapshot())
   }
 
+  const pulse = deriveLoopPulse(buildSeededRuntimeSnapshot(tasks))
+
+  return {
+    ...pulse,
+    stage: pulse.status === "idle" ? activeStage : pulse.stage,
+  }
+}
+
+function buildSeededMissionMemory(tasks: TaskCard[]): MissionMemory {
+  if (tasks.length === 0) {
+    return deriveMissionMemory(emptyRuntimeSnapshot())
+  }
+
+  return deriveMissionMemory(buildSeededRuntimeSnapshot(tasks))
+}
+
+function buildSeededRuntimeSnapshot(tasks: TaskCard[]): RuntimeSnapshot {
   const missionId = "mission_dashboard_seed"
   const now = "2026-05-27T00:00:00.000Z"
   const evidenceEntries = tasks.flatMap((task) => {
@@ -663,7 +689,8 @@ function buildSeededLoopPulse(tasks: TaskCard[], activeStage: CovenantStage): Lo
         }] as const
       })
   })
-  const snapshot: RuntimeSnapshot = {
+
+  return {
     graphs: {
       [missionId]: {
         mission: {
@@ -701,12 +728,6 @@ function buildSeededLoopPulse(tasks: TaskCard[], activeStage: CovenantStage): Lo
     },
     leases: { leases: {} },
     contracts: {},
-  }
-  const pulse = deriveLoopPulse(snapshot)
-
-  return {
-    ...pulse,
-    stage: pulse.status === "idle" ? activeStage : pulse.stage,
   }
 }
 

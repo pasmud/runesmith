@@ -209,6 +209,11 @@ describe("dashboard model", () => {
     expect(next.timeline.at(0)?.label).toBe("Autopilot recovered")
     expect(next.commandLog.at(0)?.label).toBe("Recovered stale lease")
     expect(next.operationalScore).toBeGreaterThan(model.operationalScore)
+    expect(next.loopPulse.nextAction.id).toBe("resolve-blocker")
+    expect(next.missionMemory.status).toBe("blocked")
+    expect(next.missionMemory.handoff).toBe(
+      "Resolve blocker for task_publish_repo: The active task is blocked and needs explicit evidence, recovery, or user input.",
+    )
   })
 
   test("forges a mission directive into a selected plan task", () => {
@@ -305,6 +310,10 @@ describe("dashboard model", () => {
       "Advance evidence gate",
     ])
     expect(model.loopPulse.runes.map((rune) => rune.name)).toContain("Proofwright")
+    expect(model.missionMemory.status).toBe("needs-proof")
+    expect(model.missionMemory.handoff).toBe(
+      "Capture proof for task_live: record test-result evidence before completion.",
+    )
     expect(model.notice).toBe("Loaded runtime capsule from 2026-05-27T00:00:00.000Z.")
   })
 
@@ -345,6 +354,10 @@ describe("dashboard model", () => {
       "rerun-failing-command",
     ])
     expect(model.loopPulse.runes.map((rune) => rune.name)).toContain("Faultwright")
+    expect(model.missionMemory.status).toBe("needs-repair")
+    expect(model.missionMemory.handoff).toBe(
+      "Repair task_live: Dashboard capsule tests failed. Rerun proof after the smallest fix.",
+    )
   })
 
   test("hydrates the dashboard from a runtime capsule action", () => {
