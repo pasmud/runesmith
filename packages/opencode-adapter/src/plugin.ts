@@ -1,7 +1,10 @@
 import {
+  buildCovenantPrompt,
   createRuntime,
+  createRunicCovenant,
   type AgentContract,
   type EvidenceType,
+  type RunicCovenant,
   type RunesmithRuntime,
   type RuntimeOptions,
 } from "@runesmith/core"
@@ -21,6 +24,7 @@ export type ToolDefinition<TArgs extends Record<string, unknown>> = {
 export type RunesmithPlugin = {
   name: "runesmith"
   tool: {
+    runesmith_covenant_status: ToolDefinition<CovenantStatusArgs>
     runesmith_mission_start: ToolDefinition<MissionStartArgs>
     runesmith_mission_status: ToolDefinition<MissionStatusArgs>
     runesmith_task_claim: ToolDefinition<TaskClaimArgs>
@@ -28,12 +32,22 @@ export type RunesmithPlugin = {
     runesmith_task_complete: ToolDefinition<TaskCompleteArgs>
     runesmith_recover: ToolDefinition<RecoverArgs>
   }
+  experimental: {
+    chat: {
+      system: {
+        transform(input: unknown, systemPrompt: string): Promise<string> | string
+      }
+    }
+  }
 }
 
 export type PluginOptions = RuntimeOptions & {
   runtime?: RunesmithRuntime
   contracts?: AgentContract[]
+  covenant?: RunicCovenant
 }
+
+type CovenantStatusArgs = Record<string, never>
 
 type MissionStartArgs = {
   goal: string
@@ -91,6 +105,8 @@ const defaultAtlasContract: AgentContract = {
 
 export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlugin {
   const runtime = options.runtime ?? createRuntime(options)
+  const covenant = options.covenant ?? createRunicCovenant()
+  const covenantPrompt = buildCovenantPrompt(covenant)
   for (const contract of options.contracts ?? [defaultAtlasContract]) {
     runtime.registerContract(contract)
   }
@@ -98,6 +114,24 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
   return {
     name: "runesmith",
     tool: {
+      runesmith_covenant_status: {
+        description: "Return the active Runic Covenant autonomous workflow installed by Runesmith.",
+        parameters: objectSchema({}),
+        execute() {
+          return formatValue("Runic Covenant active", {
+            name: covenant.name,
+            version: covenant.version,
+            installMode: covenant.installMode,
+            stageCount: covenant.stages.length,
+            stages: covenant.stages.map((stage) => ({
+              id: stage.id,
+              name: stage.name,
+              gates: stage.gates,
+              evidence: stage.evidence,
+            })),
+          })
+        },
+      },
       runesmith_mission_start: {
         description: "Create a durable Runesmith mission graph from a user goal.",
         parameters: objectSchema({
@@ -239,6 +273,19 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
               .filter((task) => task.status === "stale")
               .map((task) => task.id),
           })
+        },
+      },
+    },
+    experimental: {
+      chat: {
+        system: {
+          transform(_input, systemPrompt) {
+            if (systemPrompt.includes("## Runic Covenant")) {
+              return systemPrompt
+            }
+
+            return `${systemPrompt.trimEnd()}\n\n${covenantPrompt}`
+          },
         },
       },
     },

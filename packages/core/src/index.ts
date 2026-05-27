@@ -1,4 +1,5 @@
 export * from "./contracts"
+export * from "./covenant"
 export * from "./errors"
 export * from "./evidence-ledger"
 export * from "./lease-scheduler"

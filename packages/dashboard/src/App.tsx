@@ -44,6 +44,7 @@ const lanes = ["Plan", "Build", "Verify", "Recover"] as const
 const appTiles = [
   { label: "Mission Board", owner: "runesmith-core", view: "missions", icon: LayoutDashboard },
   { label: "Agent Mesh", owner: "runesmith-runtime", view: "agents", icon: Bot },
+  { label: "Runic Covenant", owner: "runesmith-os", view: "covenant", icon: Sparkles },
   { label: "Policy Gates", owner: "runesmith-guard", view: "policies", icon: ShieldCheck },
   { label: "Evidence Ledger", owner: "runesmith-ledger", view: "snapshots", icon: GitBranch },
 ] satisfies Array<{ label: string; owner: string; view: DashboardView; icon: typeof LayoutDashboard }>
@@ -51,6 +52,7 @@ const appTiles = [
 const navItems = [
   { view: "missions", label: "Home", icon: Home },
   { view: "agents", label: "Agents", icon: Bot },
+  { view: "covenant", label: "Covenant", icon: Sparkles },
   { view: "policies", label: "Policies", icon: ShieldCheck },
   { view: "snapshots", label: "Snapshots", icon: GitBranch },
 ] satisfies Array<{ view: DashboardView; label: string; icon: typeof Home }>
@@ -65,6 +67,11 @@ const sectionMeta = {
     title: "Agent mesh",
     subtitle: "Coordinate leases, model policy, and specialist capacity.",
     status: "Capacity routing armed",
+  },
+  covenant: {
+    title: "Runic Covenant",
+    subtitle: "Autonomous operating loop installed into OpenCode by default.",
+    status: "Covenant armed",
   },
   policies: {
     title: "Policy gates",
@@ -232,6 +239,10 @@ function ActiveView({ dispatch, model }: { dispatch: DashboardDispatch; model: D
     return <PoliciesView dispatch={dispatch} policies={model.policies} />
   }
 
+  if (model.activeView === "covenant") {
+    return <CovenantView dispatch={dispatch} model={model} />
+  }
+
   if (model.activeView === "snapshots") {
     return <SnapshotsView dispatch={dispatch} snapshots={model.snapshots} />
   }
@@ -257,7 +268,7 @@ function HomeView({ dispatch, model }: { dispatch: DashboardDispatch; model: Das
 
       <section className="home-grid">
         <div className="panel-card">
-          <SectionHeader action="View all 4" title="Top apps" />
+        <SectionHeader action="View all 5" title="Top apps" />
           <div className="app-list">
             {appTiles.map(({ icon: Icon, label, owner, view }) => (
               <button className="app-row" key={label} onClick={() => dispatch({ type: "select-view", view })} type="button">
@@ -469,6 +480,57 @@ function PoliciesView({ dispatch, policies }: { dispatch: DashboardDispatch; pol
             </div>
             <div className="capacity-track">
               <span style={{ width: `${policy.coverage}%` }} />
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function CovenantView({ dispatch, model }: { dispatch: DashboardDispatch; model: DashboardModel }) {
+  const activeIndex = model.covenantStages.findIndex((stage) => stage.id === model.activeCovenantStage.id)
+
+  return (
+    <section className="view-stack" aria-label="Runic Covenant">
+      <ViewHero
+        score={Math.round(((activeIndex + 1) / model.covenantStages.length) * 100)}
+        status={`Stage ${activeIndex + 1} of ${model.covenantStages.length}`}
+        title="Install once, then let Runesmith run the work loop"
+      />
+
+      <section className="covenant-command">
+        <div>
+          <span className="tile-icon"><Sparkles aria-hidden="true" /></span>
+          <div>
+            <p className="eyebrow">Active Stage</p>
+            <h2>{model.activeCovenantStage.name}</h2>
+            <p>{model.activeCovenantStage.purpose}</p>
+          </div>
+        </div>
+        <Button onClick={() => dispatch({ type: "advance-covenant-stage" })}>
+          <Zap data-icon="inline-start" />Advance loop
+        </Button>
+      </section>
+
+      <div className="covenant-grid">
+        {model.covenantStages.map((stage, index) => (
+          <article
+            className={stage.id === model.activeCovenantStage.id ? "covenant-card covenant-card-active" : "covenant-card"}
+            key={stage.id}
+          >
+            <div className="covenant-stage-header">
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              <Badge tone={stage.id === model.activeCovenantStage.id ? "running" : "verified"}>
+                {stage.id === model.activeCovenantStage.id ? "active" : "armed"}
+              </Badge>
+            </div>
+            <strong>{stage.name}</strong>
+            <p>{stage.behavior}</p>
+            <div className="covenant-chips">
+              {stage.gates.slice(0, 2).map((gate) => (
+                <span key={gate}>{gate}</span>
+              ))}
             </div>
           </article>
         ))}

@@ -20,6 +20,7 @@ The first production slice includes:
 - A CLI package with `init`, `doctor`, and mission inspection commands.
 - A dashboard package using shadcn/ui conventions and an OpenClaw OS-inspired layout for mission visibility.
 - A testbench package with deterministic simulations for duplicate prompt leases, stale tasks, missing capabilities, and evidence verification.
+- A native Runic Covenant workflow layer that installs automatically with the OpenCode plugin and drives frame, map, claim, forge, prove, review, seal, and recovery behavior without manual workflow invocation.
 
 Out of scope for the first slice:
 
@@ -172,6 +173,23 @@ A task cannot move to `complete` unless its contract-required evidence exists. T
 
 The tool router selects the smallest useful tool set for a task from the agent contract and mission context. The first slice uses deterministic routing only. Model-assisted ranking is excluded from the first release.
 
+### Runic Covenant
+
+Runic Covenant is the Runesmith-owned agentic workflow doctrine. It is not an external workflow dependency and should not require users to invoke separate skills by name. The OpenCode adapter injects it into the session automatically.
+
+Stages:
+
+- Mission Frame: understand the user goal and repo context.
+- Mission Map: turn the goal into an ordered mission graph.
+- Lease Claim: claim work with a contract, idempotency key, and minimal tool scope.
+- Forge: make scoped implementation changes.
+- Proof Gate: attach required evidence before completion.
+- Mirror Review: inspect diff and behavior for gaps.
+- Seal: capture a replayable checkpoint.
+- Recovery Sweep: recover stale or blocked work before drift.
+
+Every stage carries gates and evidence signals. The covenant is a workflow policy layer; the runtime remains the source of truth for mission state, leases, and evidence.
+
 ### Recovery Policies
 
 Recovery policies are pure functions that inspect graph state and events.
@@ -187,6 +205,7 @@ Initial policies:
 
 The first adapter exposes these tools:
 
+- `runesmith_covenant_status`: report the active autonomous workflow stages installed by Runesmith.
 - `runesmith_mission_start`: create a mission from a user goal.
 - `runesmith_mission_status`: summarize graph state.
 - `runesmith_task_claim`: claim a task with an agent contract.

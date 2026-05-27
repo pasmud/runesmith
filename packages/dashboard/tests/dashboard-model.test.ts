@@ -67,11 +67,11 @@ describe("dashboard model", () => {
 
     const next = reduceDashboardModel(model, {
       type: "select-view",
-      view: "agents",
+      view: "covenant",
     })
 
-    expect(next.activeView).toBe("agents")
-    expect(next.notice).toBe("Showing agent capacity and leases.")
+    expect(next.activeView).toBe("covenant")
+    expect(next.notice).toBe("Showing Runic Covenant autonomous workflow.")
   })
 
   test("runs an autopilot cycle that recovers stale work before verification", () => {
@@ -146,5 +146,16 @@ describe("dashboard model", () => {
 
     expect(next.commandLog).toHaveLength(0)
     expect(next.notice).toBe("Marked command notifications read.")
+  })
+
+  test("advances the covenant loop and records the next autonomous stage", () => {
+    const model = buildDashboardModel()
+
+    const next = reduceDashboardModel(model, { type: "advance-covenant-stage" })
+
+    expect(next.activeView).toBe("covenant")
+    expect(next.activeCovenantStage.id).toBe("map")
+    expect(next.commandLog.at(0)?.label).toBe("Covenant advanced")
+    expect(next.notice).toBe("Runic Covenant advanced to Mission Map.")
   })
 })

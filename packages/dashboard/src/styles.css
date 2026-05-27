@@ -391,6 +391,8 @@ svg {
 .jobs-panel,
 .view-hero,
 .agent-card,
+.covenant-card,
+.covenant-command,
 .policy-card,
 .snapshot-row,
 .task-panel {
@@ -687,15 +689,103 @@ svg {
 }
 
 .agent-grid,
-.policy-grid {
+.policy-grid,
+.covenant-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 14px;
 }
 
 .agent-card,
+.covenant-card,
 .policy-card {
   padding: 14px;
+}
+
+.covenant-command {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px;
+}
+
+.covenant-command > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.covenant-command h2,
+.covenant-command p {
+  margin: 0;
+}
+
+.covenant-command h2 {
+  margin-top: 4px;
+  font-size: 16px;
+}
+
+.covenant-command p:not(.eyebrow) {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.covenant-card {
+  min-width: 0;
+}
+
+.covenant-card-active {
+  border-color: color-mix(in srgb, var(--running) 48%, var(--line));
+  background: #fbfdff;
+}
+
+.covenant-stage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.covenant-stage-header > span {
+  color: var(--soft);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.covenant-card > strong {
+  display: block;
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.covenant-card p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.covenant-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.covenant-chips span {
+  max-width: 100%;
+  padding: 4px 7px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: #f4f7fb;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-select {
@@ -1213,9 +1303,15 @@ svg {
 
   .app-list,
   .agent-grid,
+  .covenant-grid,
   .policy-grid,
   .agent-facts,
   .snapshot-row {
     grid-template-columns: 1fr;
+  }
+
+  .covenant-command {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

@@ -83,4 +83,26 @@ describe("opencode adapter", () => {
       },
     })
   })
+
+  test("exposes the Runic Covenant and injects it into OpenCode once", async () => {
+    const plugin = createRunesmithPlugin()
+
+    const status = await plugin.tool.runesmith_covenant_status.execute({})
+    expect(JSON.parse(status.output)).toMatchObject({
+      ok: true,
+      value: {
+        name: "Runic Covenant",
+        installMode: "automatic",
+        stageCount: 8,
+      },
+    })
+
+    const transform = plugin.experimental.chat.system.transform
+    const first = await transform({}, "Base system prompt")
+    const second = await transform({}, first)
+
+    expect(first).toContain("Base system prompt")
+    expect(first).toContain("Runic Covenant")
+    expect(second.match(/Runic Covenant/g)).toHaveLength(1)
+  })
 })

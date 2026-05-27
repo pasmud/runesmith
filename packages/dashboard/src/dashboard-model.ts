@@ -1,6 +1,13 @@
+import {
+  createRunicCovenant,
+  getNextCovenantStage,
+  type CovenantStage,
+  type CovenantStageId,
+} from "@runesmith/core"
+
 export type MissionStatus = "running" | "verified" | "stale" | "blocked"
 
-export type DashboardView = "missions" | "agents" | "policies" | "snapshots"
+export type DashboardView = "missions" | "agents" | "covenant" | "policies" | "snapshots"
 
 export type AgentStatus = "active" | "idle" | "reviewing" | "stalled"
 
@@ -66,9 +73,12 @@ export type TimelineItem = {
 export type CommandLogItem = TimelineItem
 
 export type DashboardModel = {
+  activeCovenantStage: CovenantStage
+  activeCovenantStageId: CovenantStageId
   activeView: DashboardView
   agents: AgentNode[]
   commandLog: CommandLogItem[]
+  covenantStages: CovenantStage[]
   metrics: Record<MissionStatus, number>
   mode: OsMode
   notice: string
@@ -92,6 +102,7 @@ export type DashboardAction =
   | { type: "run-verifier" }
   | { type: "run-autopilot-cycle" }
   | { type: "forge-directive"; prompt: string }
+  | { type: "advance-covenant-stage" }
   | { type: "toggle-policy"; policyId: string }
   | { type: "create-snapshot" }
   | { type: "select-agent"; agentId: string }
@@ -101,6 +112,7 @@ export type DashboardAction =
 const viewNotice = {
   missions: "Showing mission lanes and task evidence.",
   agents: "Showing agent capacity and leases.",
+  covenant: "Showing Runic Covenant autonomous workflow.",
   policies: "Showing runtime policy gates.",
   snapshots: "Showing evidence snapshots and checkpoints.",
 } satisfies Record<DashboardView, string>
@@ -368,11 +380,14 @@ const seededCommandLog = [
 export function buildDashboardModel(): DashboardModel {
   const tasks = cloneTasks(seededTasks)
   const agents = cloneAgents(seededAgents)
+  const covenantStages = cloneCovenantStages(createRunicCovenant().stages)
 
   return deriveDashboardModel({
+    activeCovenantStageId: "frame",
     activeView: "missions",
     agents,
     commandLog: cloneTimeline(seededCommandLog),
+    covenantStages,
     mode: "guarded",
     notice: "Mission control is live.",
     policies: clonePolicies(seededPolicies),
@@ -452,6 +467,9 @@ export function reduceDashboardModel(model: DashboardModel, action: DashboardAct
     case "forge-directive":
       return forgeDirective(model, action.prompt)
 
+    case "advance-covenant-stage":
+      return advanceCovenantStage(model)
+
     case "toggle-policy":
       return togglePolicy(model, action.policyId)
 
@@ -489,9 +507,11 @@ export function reduceDashboardModel(model: DashboardModel, action: DashboardAct
 }
 
 function deriveDashboardModel(input: {
+  activeCovenantStageId: CovenantStageId
   activeView: DashboardView
   agents: AgentNode[]
   commandLog: CommandLogItem[]
+  covenantStages: CovenantStage[]
   mode: OsMode
   notice: string
   policies: PolicyGate[]
@@ -503,10 +523,14 @@ function deriveDashboardModel(input: {
 }): DashboardModel {
   const selectedTask = input.tasks.find((task) => task.id === input.selectedTaskId) ?? input.tasks[0]!
   const selectedAgent = input.agents.find((agent) => agent.id === input.selectedAgentId) ?? input.agents[0]!
+  const activeCovenantStage =
+    input.covenantStages.find((stage) => stage.id === input.activeCovenantStageId) ?? input.covenantStages[0]!
   const metrics = buildMetrics(input.tasks)
 
   return {
     ...input,
+    activeCovenantStage,
+    activeCovenantStageId: activeCovenantStage.id,
     metrics,
     operationalScore: buildOperationalScore(input.tasks, metrics, input.policies),
     selectedAgent,
@@ -514,6 +538,46 @@ function deriveDashboardModel(input: {
     selectedTask,
     selectedTaskId: selectedTask.id,
   }
+}
+
+function advanceCovenantStage(model: DashboardModel): DashboardModel {
+  const nextStage = getNextCovenantStage(
+    {
+      id: "runic-covenant",
+      name: "Runic Covenant",
+      version: 1,
+      installMode: "automatic",
+      thesis: "",
+      operatingRules: [],
+      stages: model.covenantStages,
+    },
+    model.activeCovenantStageId,
+  )
+
+  if (!nextStage) {
+    return deriveDashboardModel({
+      ...model,
+      activeView: "covenant",
+      notice: "Runic Covenant could not find the next stage.",
+    })
+  }
+
+  return deriveDashboardModel({
+    ...model,
+    activeCovenantStageId: nextStage.id,
+    activeView: "covenant",
+    commandLog: prependTimeline(model.commandLog, {
+      label: "Covenant advanced",
+      detail: `${model.activeCovenantStage.name} advanced to ${nextStage.name}.`,
+      tone: "running",
+    }),
+    timeline: prependTimeline(model.timeline, {
+      label: "Covenant advanced",
+      detail: `${nextStage.name} armed with ${nextStage.gates.length} gates and ${nextStage.evidence.length} evidence signals.`,
+      tone: "running",
+    }),
+    notice: `Runic Covenant advanced to ${nextStage.name}.`,
+  })
 }
 
 function buildMetrics(tasks: TaskCard[]): Record<MissionStatus, number> {
@@ -928,4 +992,12 @@ function cloneSnapshots(snapshots: SnapshotRecord[]): SnapshotRecord[] {
 
 function cloneTimeline(timeline: TimelineItem[]): TimelineItem[] {
   return timeline.map((item) => ({ ...item }))
+}
+
+function cloneCovenantStages(stages: CovenantStage[]): CovenantStage[] {
+  return stages.map((stage) => ({
+    ...stage,
+    gates: [...stage.gates],
+    evidence: [...stage.evidence],
+  }))
 }

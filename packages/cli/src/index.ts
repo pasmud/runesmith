@@ -79,7 +79,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
 
   if (command === "doctor") {
     const configStatus = await host.exists(".runesmith/config.json") ? "found" : "missing"
-    return success(`Runesmith doctor\nconfig: ${configStatus}\nruntime: ready\n`)
+    return success(`Runesmith doctor\nconfig: ${configStatus}\nruntime: ready\ncovenant: armed\n`)
   }
 
   if (command === "mission" && subcommand === "list") {
@@ -200,6 +200,7 @@ async function installRunesmith(args: string[], host: CliHost): Promise<CliResul
     "Installed Runesmith local plugin",
     `plugin: ${pluginPath}`,
     `source: ${sourceUrl}`,
+    "covenant: automatic",
     "",
   ].join("\n"))
 }
@@ -243,6 +244,7 @@ async function installNpmPlugin(
     `config: ${input.configPath}`,
     `plugin: ${input.pluginEntry}`,
     `backup: ${existed ? backupPath : "none"}`,
+    "covenant: automatic",
     "",
   ].join("\n"))
 }

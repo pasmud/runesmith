@@ -61,7 +61,7 @@ describe("runesmith cli", () => {
 
     expect(result).toEqual({
       exitCode: 0,
-      stdout: "Runesmith doctor\nconfig: found\nruntime: ready\n",
+      stdout: "Runesmith doctor\nconfig: found\nruntime: ready\ncovenant: armed\n",
       stderr: "",
     })
   })
@@ -83,6 +83,7 @@ describe("runesmith cli", () => {
         "Installed Runesmith local plugin",
         "plugin: .opencode/plugins/runesmith.ts",
         "source: file:///E:/dev/Oh-my/runesmith/packages/opencode-adapter/src/plugin.ts",
+        "covenant: automatic",
         "",
       ].join("\n"),
       stderr: "",
@@ -116,6 +117,7 @@ describe("runesmith cli", () => {
         "config: opencode.jsonc",
         "plugin: runesmith@0.2.0",
         "backup: opencode.jsonc.runesmith.bak",
+        "covenant: automatic",
         "",
       ].join("\n"),
       stderr: "",
