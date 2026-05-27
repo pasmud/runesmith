@@ -31,6 +31,7 @@ The first production slice includes:
 - A shared Runic mission loop kernel in `packages/core` so OpenCode, CLI, and dashboard surfaces use the same recovery, claim, evidence, decision, and completion state machine.
 - A state-aware Runesmith Control Brief that tells OpenCode the active mission, active task, next Runic Covenant stage, required evidence, and missing proof directly from runtime state.
 - A Runesmith Loop Pulse that derives one authoritative next action, compact execution plan, health signal, priority, blockers, required evidence, and active runes from the runtime capsule.
+- A Runesmith Proof Plan that turns missing proof and failed diagnostics into exact verification commands across OpenCode, CLI, and dashboard surfaces.
 - A default Covenant task plan that expands coding goals into Forge, Review, and Seal tasks with dependency-aware claiming and task-level evidence requirements.
 
 Out of scope for the first slice:
@@ -84,12 +85,12 @@ Responsibilities:
 - `runesmith init`: create project config.
 - `runesmith doctor`: validate config, runtime capsule, host OpenCode CLI availability, OpenCode plugin wiring, and an internal Forge -> Review -> Seal loop smoke test; exit nonzero with an actionable repair hint when setup is incomplete.
 - `runesmith install --mode npm`: write the default git-installable OpenCode package entry, while keeping `--package` available for pinned tags, forks, or future registry releases.
-- `runesmith status`: print the current OS state, OpenCode CLI readiness, Loop Pulse next action, execution plan, active mission and task, missing proof, diagnostics, and active runes without requiring users to learn the lower-level mission commands.
+- `runesmith status`: print the current OS state, OpenCode CLI readiness, Loop Pulse next action, execution plan, active mission and task, missing proof, diagnostics, active runes, and Proof Plan commands without requiring users to learn the lower-level mission commands.
 - Published packages expose built `dist` entrypoints, keep Bun source imports for local agent execution, and use publishable internal dependency ranges instead of workspace-only dependency specifiers.
 - `runesmith mission start <goal>`: bootstrap local config if needed, create the default Forge -> Review -> Seal Covenant mission, register Atlas, claim the first task, and persist the runtime capsule for OpenCode/dashboard resumption.
 - `runesmith mission evidence <mission-id> <task-id>` and `runesmith mission tick`: record task proof and advance the persisted capsule through the same evidence gate used by OpenCode, including active repair diagnostics and safe autonomous Review and Seal decisions.
 - `runesmith mission list`: print active mission summaries from snapshots.
-- `runesmith mission inspect <id>`: print graph, Loop Pulse, missing proof, active diagnostics, active runes, evidence, leases, and recovery state.
+- `runesmith mission inspect <id>`: print graph, Loop Pulse, Proof Plan, missing proof, active diagnostics, active runes, evidence, leases, and recovery state.
 
 ### `packages/dashboard`
 
@@ -238,6 +239,8 @@ The Loop Pulse sits beside the Control Brief. It converts the live runtime state
 
 Mission Memory sits above the pulse as the durable continuation layer. It classifies the mission as idle, active, blocked, needs-proof, needs-repair, needs-recovery, or sealed; summarizes active task, open and completed task counts, latest change evidence, passing proof, diagnostics, and decisions; and produces one handoff sentence that can survive OpenCode restart, compaction, CLI inspection, or dashboard reload. This is how Runesmith internalizes the useful continuity discipline of workflow systems without asking users to install or invoke a separate process.
 
+Proof Plan sits above Mission Memory as the automatic verification recipe. It detects missing `test-result` proof and failed diagnostics, reruns the latest failing command first when available, then asks for the repository's typecheck, test, and build scripts when those scripts exist. The plan is derived from runtime state and package metadata, so users get one install-once orchestration loop instead of a separate checklist they need to remember.
+
 The default Covenant task plan is:
 
 - Forge: implementation work requiring `file-change` and passing `test-result` evidence.
@@ -267,7 +270,7 @@ Before an idle or explicit autopilot tick checks proof, it runs the recovery pol
 
 The compaction hook appends a mission capsule summary containing active missions, tasks, leases, and evidence counts. This gives continuation sessions enough orchestration state to recover or keep working before starting a new loop.
 
-The same compaction path appends the live Runesmith Control Brief, Loop Pulse, and Mission Memory, so resumed sessions keep the next stage, proof obligations, and handoff without requiring the user to install or invoke an external workflow.
+The same compaction path appends the live Runesmith Control Brief, Loop Pulse, Mission Memory, and Proof Plan, so resumed sessions keep the next stage, proof obligations, exact verification commands, and handoff without requiring the user to install or invoke an external workflow.
 
 ### Recovery Policies
 
@@ -286,7 +289,7 @@ The first adapter exposes these tools:
 
 - `runesmith_autopilot_prepare`: infer or accept the current goal, start or resume a mission, claim the next dependency-ready task, and persist the capsule.
 - `runesmith_autopilot_tick`: advance the active task through the evidence gate, surface repair diagnostics when verification failed, and complete it when the contract is satisfied.
-- `runesmith_covenant_status`: report the installed autonomous workflow plus the live Control Brief, Loop Pulse, and active Runebook runes from runtime state.
+- `runesmith_covenant_status`: report the installed autonomous workflow plus the live Control Brief, Loop Pulse, Proof Plan, and active Runebook runes from runtime state.
 - `runesmith_mission_start`: create a mission from a user goal.
 - `runesmith_mission_status`: summarize graph state.
 - `runesmith_task_claim`: claim a task with an agent contract.
@@ -299,7 +302,7 @@ The adapter must not complete tasks directly. It delegates all state transitions
 The adapter also exposes documented OpenCode hooks:
 
 - `experimental.chat.system.transform`: injects the Runic Covenant and Runesmith Autopilot bootstrap.
-- `experimental.session.compacting`: appends the current mission capsule summary to compaction context.
+- `experimental.session.compacting`: appends the current mission capsule summary, live Control Brief, Loop Pulse, Mission Memory, and Proof Plan to compaction context.
 - `tool.execute.before`: starts or resumes orchestration before mutating/shell tools run when no active task exists.
 - `tool.execute.after`: records useful command, test, and file-change evidence against the active Runesmith task, then runs the evidence-gated advance loop.
 - `event`: runs the autopilot tick on `session.idle` events.
@@ -321,7 +324,7 @@ Runtime-backed controls:
 - `/api/runtime-control` accepts dashboard actions and persists the resulting capsule.
 - Command Forge starts a planned Covenant mission from the dashboard directive, registers the default Atlas contract, claims the first task, and saves the capsule.
 - Guarded Autopilot runs an evidence-gated cycle over the persisted mission. It recovers stale work first, holds if proof is missing, completes through the runtime gate once required evidence exists, synthesizes Review and Seal decisions, and claims the next dependency-ready task.
-- The right rail shows the Loop Pulse with health, priority, next action, execution plan, missing evidence, and active runes from the same runtime capsule used by OpenCode.
+- The right rail shows the Loop Pulse with health, priority, next action, execution plan, missing evidence, active runes, Mission Memory, and Proof Plan commands from the same runtime capsule used by OpenCode.
 
 Visual rules:
 

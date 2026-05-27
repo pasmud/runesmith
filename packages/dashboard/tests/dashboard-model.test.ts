@@ -314,6 +314,8 @@ describe("dashboard model", () => {
     expect(model.missionMemory.handoff).toBe(
       "Capture proof for task_live: record test-result evidence before completion.",
     )
+    expect(model.proofPlan.status).toBe("needs-proof")
+    expect(model.proofPlan.commands.map((command) => command.command)).toEqual(["bun test"])
     expect(model.notice).toBe("Loaded runtime capsule from 2026-05-27T00:00:00.000Z.")
   })
 
@@ -358,6 +360,10 @@ describe("dashboard model", () => {
     expect(model.missionMemory.handoff).toBe(
       "Repair task_live: Dashboard capsule tests failed. Rerun proof after the smallest fix.",
     )
+    expect(model.proofPlan.commands.map((command) => command.command)).toEqual([
+      "bun test packages/dashboard/tests",
+      "bun test",
+    ])
   })
 
   test("hydrates the dashboard from a runtime capsule action", () => {

@@ -10,6 +10,7 @@ import {
   defaultRuntimeCapsulePath,
   deriveLoopPulse,
   deriveMissionMemory,
+  deriveProofPlan,
   loadRuntimeCapsule,
   saveRuntimeCapsule,
   type AgentContract,
@@ -17,6 +18,7 @@ import {
   type EvidenceType,
   type IdFactory,
   type Lease,
+  type ProofPlanOptions,
   type RuntimeSnapshot,
 } from "@runesmith/core"
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
@@ -183,8 +185,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
       return failure(`Mission not found: ${maybeId}\n`)
     }
 
+    const proofOptions = await readProofPlanOptions(host)
     const pulse = deriveLoopPulse(snapshot.value)
     const memory = deriveMissionMemory(snapshot.value)
+    const proofPlan = deriveProofPlan(snapshot.value, proofOptions)
     const taskLines = Object.values(graph.tasks).map((task) => {
       return `- ${task.id} ${task.status} ${task.assignedAgentId ?? "unassigned"} ${task.title}`
     })
@@ -200,6 +204,8 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
       "Mission memory:",
       `Handoff: ${memory.handoff}`,
       `Proof: ${formatMissionMemoryProof(memory)}`,
+      "Proof plan:",
+      ...formatProofPlanLines(proofPlan),
       `Required evidence: ${formatList(pulse.requiredEvidence)}`,
       `Missing evidence: ${formatList(pulse.missingEvidence)}`,
       ...formatPulseDiagnostics(pulse, "Diagnostics"),
@@ -324,8 +330,10 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
 
   const snapshot = capsule.value?.runtime ?? emptySnapshot
   const openCodeCli = await findOpenCodeCli(host)
+  const proofOptions = await readProofPlanOptions(host)
   const pulse = deriveLoopPulse(snapshot)
   const memory = deriveMissionMemory(snapshot)
+  const proofPlan = deriveProofPlan(snapshot, proofOptions)
   const mission = pulse.missionId ? snapshot.graphs[pulse.missionId]?.mission : undefined
   const task = mission && pulse.taskId ? snapshot.graphs[mission.id]?.tasks[pulse.taskId] : undefined
   const state = selectInstallState(Boolean(configFound), Boolean(capsule.value), Boolean(openCodeCli))
@@ -338,6 +346,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
     `plan: ${formatExecutionPlan(pulse.executionPlan)}`,
     `handoff: ${memory.handoff}`,
+    `proof plan: ${formatProofPlanCommands(proofPlan)}`,
     `mission: ${mission ? `${mission.id} ${mission.status} ${mission.goal}` : "none"}`,
     `task: ${task ? `${task.id} ${task.status} ${task.title}` : "none"}`,
     `missing evidence: ${formatList(pulse.missingEvidence)}`,
@@ -755,8 +764,42 @@ function formatMissionMemoryProof(memory: ReturnType<typeof deriveMissionMemory>
   return memory.proof.status
 }
 
+function formatProofPlanCommands(plan: ReturnType<typeof deriveProofPlan>): string {
+  return plan.commands.length > 0 ? plan.commands.map((command) => command.command).join(" -> ") : "none"
+}
+
+function formatProofPlanLines(plan: ReturnType<typeof deriveProofPlan>): string[] {
+  if (plan.commands.length === 0) return ["- none"]
+
+  return plan.commands.map((command) => `- ${command.label}: ${command.command}`)
+}
+
 function formatPulseDiagnostics(pulse: ReturnType<typeof deriveLoopPulse>, label = "diagnostics"): string[] {
   return pulse.diagnostics.length > 0 ? [`${label}: ${formatList(pulse.diagnostics)}`] : []
+}
+
+async function readProofPlanOptions(host: CliHost): Promise<ProofPlanOptions> {
+  if (!(await host.exists("package.json"))) return {}
+
+  try {
+    const manifest = JSON.parse(await host.readText("package.json")) as {
+      packageManager?: unknown
+      scripts?: unknown
+    }
+
+    return {
+      packageManager: typeof manifest.packageManager === "string" ? manifest.packageManager : undefined,
+      scripts: isStringRecord(manifest.scripts) ? manifest.scripts : undefined,
+    }
+  } catch {
+    return {}
+  }
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false
+
+  return Object.values(value).every((entry) => typeof entry === "string")
 }
 
 function compareEvidence(left: Evidence, right: Evidence): number {

@@ -2,6 +2,7 @@ import {
   createRunicCovenant,
   deriveMissionMemory,
   deriveLoopPulse,
+  deriveProofPlan,
   getNextCovenantStage,
   type AgentContract,
   type CovenantStage,
@@ -11,6 +12,7 @@ import {
   type LoopPulse,
   type MissionMemory,
   type MissionGraph,
+  type ProofPlan,
   type RuntimeCapsule,
   type RuntimeSnapshot,
   type TaskStatus,
@@ -92,6 +94,7 @@ export type DashboardModel = {
   covenantStages: CovenantStage[]
   loopPulse: LoopPulse
   missionMemory: MissionMemory
+  proofPlan: ProofPlan
   metrics: Record<MissionStatus, number>
   mode: OsMode
   notice: string
@@ -634,6 +637,9 @@ function deriveDashboardModel(input: {
   const missionMemory = input.runtimeSnapshot
     ? deriveMissionMemory(input.runtimeSnapshot)
     : buildSeededMissionMemory(input.tasks)
+  const proofPlan = input.runtimeSnapshot
+    ? deriveProofPlan(input.runtimeSnapshot)
+    : buildSeededProofPlan(input.tasks)
 
   return {
     ...input,
@@ -641,6 +647,7 @@ function deriveDashboardModel(input: {
     activeCovenantStageId: activeCovenantStage.id,
     loopPulse,
     missionMemory,
+    proofPlan,
     metrics,
     operationalScore: buildOperationalScore(input.tasks, metrics, input.policies),
     selectedAgent,
@@ -669,6 +676,14 @@ function buildSeededMissionMemory(tasks: TaskCard[]): MissionMemory {
   }
 
   return deriveMissionMemory(buildSeededRuntimeSnapshot(tasks))
+}
+
+function buildSeededProofPlan(tasks: TaskCard[]): ProofPlan {
+  if (tasks.length === 0) {
+    return deriveProofPlan(emptyRuntimeSnapshot())
+  }
+
+  return deriveProofPlan(buildSeededRuntimeSnapshot(tasks))
 }
 
 function buildSeededRuntimeSnapshot(tasks: TaskCard[]): RuntimeSnapshot {

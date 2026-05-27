@@ -697,6 +697,7 @@ function RightRail({ dispatch, model }: { dispatch: DashboardDispatch; model: Da
 
 function MissionMemoryPanel({ model }: { model: DashboardModel }) {
   const memory = model.missionMemory
+  const proofCommands = model.proofPlan.commands.slice(0, 3)
   const tone: MissionStatus =
     memory.status === "blocked" || memory.status === "needs-repair" || memory.status === "needs-recovery"
       ? "blocked"
@@ -725,6 +726,16 @@ function MissionMemoryPanel({ model }: { model: DashboardModel }) {
       <div className="memory-evidence" aria-label="Mission memory proof">
         <strong>{memory.latestDiagnostics[0] ?? memory.latestChanges[0] ?? memory.proof.passing[0] ?? "No proof captured yet"}</strong>
       </div>
+      {proofCommands.length > 0 ? (
+        <div className="memory-proof-plan" aria-label="Proof plan commands">
+          {proofCommands.map((command) => (
+            <span key={command.id}>
+              <small>{command.label}</small>
+              <strong>{command.command}</strong>
+            </span>
+          ))}
+        </div>
+      ) : null}
     </section>
   )
 }

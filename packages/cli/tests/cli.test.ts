@@ -429,6 +429,7 @@ describe("runesmith cli", () => {
         "next: Capture proof [attention/high]",
         "plan: Run targeted verification -> Advance evidence gate",
         "handoff: Capture proof for task_alpha: record test-result evidence before completion.",
+        "proof plan: bun test",
         "mission: mission_alpha running Build Runesmith",
         "task: task_alpha running Mission root",
         "missing evidence: test-result",
@@ -457,6 +458,7 @@ describe("runesmith cli", () => {
         "next: Wait for goal [clear/low]",
         "plan: Wait for user goal",
         "handoff: No active mission is waiting. Start a mission from the next coding goal.",
+        "proof plan: none",
         "mission: none",
         "task: none",
         "missing evidence: none",
@@ -789,6 +791,8 @@ describe("runesmith cli", () => {
     expect(inspect.stdout).toContain("Active runes: Faultwright, Proofwright")
     expect(inspect.stdout).toContain("Mission memory:")
     expect(inspect.stdout).toContain("Handoff: Repair task_cli_1: CLI tests failed. Rerun proof after the smallest fix.")
+    expect(inspect.stdout).toContain("Proof plan:")
+    expect(inspect.stdout).toContain("- Rerun failing command: bun test packages/cli/tests")
   })
 
   test("mission inspect prints graph details from a snapshot", async () => {
@@ -809,6 +813,8 @@ describe("runesmith cli", () => {
         "Mission memory:",
         "Handoff: Capture proof for task_alpha: record test-result evidence before completion.",
         "Proof: missing test-result",
+        "Proof plan:",
+        "- Run tests: bun test",
         "Required evidence: file-change, test-result",
         "Missing evidence: test-result",
         "Active runes: Proofwright",
@@ -846,6 +852,8 @@ describe("runesmith cli", () => {
         "Mission memory:",
         "Handoff: Capture proof for task_alpha: record test-result evidence before completion.",
         "Proof: missing test-result",
+        "Proof plan:",
+        "- Run tests: bun test",
         "Required evidence: file-change, test-result",
         "Missing evidence: test-result",
         "Active runes: Proofwright",

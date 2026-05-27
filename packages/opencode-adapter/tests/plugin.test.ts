@@ -189,6 +189,7 @@ describe("opencode adapter", () => {
     expect(systemOutput.system.join("\n")).toContain("Runic Covenant")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Autopilot")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Mission Memory")
+    expect(systemOutput.system.join("\n")).toContain("Runesmith Proof Plan")
 
     await plugin.tool.runesmith_mission_start.execute({
       goal: "Carry state through compaction",
@@ -201,7 +202,40 @@ describe("opencode adapter", () => {
     expect(compactOutput.context.join("\n")).toContain("Carry state through compaction")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Control Brief")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Mission Memory")
+    expect(compactOutput.context.join("\n")).toContain("Runesmith Proof Plan")
     expect(compactOutput.context.join("\n")).toContain("Handoff:")
+  })
+
+  test("injects repository proof commands into OpenCode prompts and tool status", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({
+      runtime,
+      proofPlanOptions: {
+        packageManager: "bun@1.3.13",
+        scripts: {
+          typecheck: "tsc --noEmit",
+          test: "bun test",
+          build: "bun run build:packages",
+        },
+      },
+    })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Wire repo proof commands",
+    })
+
+    const systemOutput = { system: ["Base system prompt"] }
+    await plugin["experimental.chat.system.transform"]?.({}, systemOutput)
+    const status = await plugin.tool.runesmith_covenant_status.execute({})
+    const parsed = JSON.parse(status.output)
+
+    expect(systemOutput.system.join("\n")).toContain("Run typecheck: bun run typecheck")
+    expect(systemOutput.system.join("\n")).toContain("Run build: bun run build")
+    expect(parsed.value.proofPlan.commands.map((command: any) => command.command)).toEqual([
+      "bun run typecheck",
+      "bun test",
+      "bun run build",
+    ])
   })
 
   test("injects a live Covenant control brief for the active mission", async () => {
@@ -444,7 +478,7 @@ describe("opencode adapter", () => {
 
   test("does not seal the active task when captured tests fail", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
-    const plugin = createRunesmithPlugin({ runtime })
+    const plugin = createRunesmithPlugin({ runtime, proofPlanOptions: false })
 
     await plugin.tool.runesmith_autopilot_prepare.execute({
       goal: "Hold after failing proof",
@@ -495,6 +529,19 @@ describe("opencode adapter", () => {
           latestDiagnostics: ["bash ran bun test packages/opencode-adapter/tests/plugin.test.ts"],
           handoff:
             "Repair task_alpha: bash ran bun test packages/opencode-adapter/tests/plugin.test.ts. Rerun proof after the smallest fix.",
+        },
+        proofPlan: {
+          status: "needs-repair",
+          commands: [
+            {
+              command: "bun test packages/opencode-adapter/tests/plugin.test.ts",
+              kind: "rerun-diagnostic",
+            },
+            {
+              command: "bun test",
+              kind: "test",
+            },
+          ],
         },
         loopPulse: {
           nextAction: {

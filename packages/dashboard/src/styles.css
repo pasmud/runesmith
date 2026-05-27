@@ -1022,6 +1022,42 @@ svg {
   white-space: nowrap;
 }
 
+.memory-proof-plan {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.memory-proof-plan span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #e7edf5;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.memory-proof-plan small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.memory-proof-plan strong {
+  color: var(--text);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .pulse-action {
   display: flex;
   align-items: flex-start;

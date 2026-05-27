@@ -4,6 +4,7 @@ import {
   buildCovenantPrompt,
   buildLoopPulsePrompt,
   buildMissionMemoryPrompt,
+  buildProofPlanPrompt,
   createCovenantTaskPlan,
   createRuntime,
   createRunicCovenant,
@@ -11,17 +12,20 @@ import {
   deriveCovenantControlBrief,
   deriveLoopPulse,
   deriveMissionMemory,
+  deriveProofPlan,
   loadRuntimeCapsule,
   saveRuntimeCapsule,
   selectRunicLoopTask,
   type AgentContract,
   type EvidenceType,
+  type ProofPlanOptions,
   type RunicCovenant,
   type RunesmithRuntime,
   type RuntimeOptions,
   type RuntimeSnapshot,
 } from "@runesmith/core"
 import { dirname } from "node:path"
+import { readFileSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 
 export type ToolResponse = {
@@ -67,6 +71,7 @@ export type PluginOptions = RuntimeOptions & {
   runtime?: RunesmithRuntime
   contracts?: AgentContract[]
   covenant?: RunicCovenant
+  proofPlanOptions?: ProofPlanOptions | false
   runtimeStore?: PluginRuntimeStore
 }
 
@@ -167,6 +172,7 @@ const autopilotStaleAfterMs = 120_000
 export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlugin {
   const runtime = options.runtime ?? createRuntime(options)
   const covenant = options.covenant ?? createRunicCovenant()
+  const proofPlanOptions = resolveProofPlanOptions(options.proofPlanOptions)
   const covenantPrompt = buildCovenantPrompt(covenant)
   const autopilotPrompt = buildAutopilotPrompt()
   for (const contract of options.contracts ?? [defaultAtlasContract]) {
@@ -198,6 +204,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
         async execute() {
           return advanceAutopilotLoop({
             runtime,
+            proofPlanOptions,
             runtimeStore: options.runtimeStore,
           })
         },
@@ -210,6 +217,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           const controlBrief = deriveCovenantControlBrief(snapshot, covenant)
           const loopPulse = deriveLoopPulse(snapshot, covenant)
           const missionMemory = deriveMissionMemory(snapshot, covenant)
+          const proofPlan = deriveProofPlan(snapshot, proofPlanOptions)
 
           return formatValue("Runic Covenant active", {
             name: covenant.name,
@@ -240,6 +248,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             },
             loopPulse,
             missionMemory,
+            proofPlan,
             activeRunes: controlBrief.runes,
           })
         },
@@ -405,12 +414,15 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             return upsertPromptSection(
               upsertPromptSection(
                 upsertPromptSection(
-                  appendPromptSections(systemPrompt, [covenantPrompt, autopilotPrompt]),
-                  buildCovenantControlBrief(snapshot, covenant),
+                  upsertPromptSection(
+                    appendPromptSections(systemPrompt, [covenantPrompt, autopilotPrompt]),
+                    buildCovenantControlBrief(snapshot, covenant),
+                  ),
+                  buildLoopPulsePrompt(snapshot, covenant),
                 ),
-                buildLoopPulsePrompt(snapshot, covenant),
-              ),
               buildMissionMemoryPrompt(snapshot, covenant),
+            ),
+              buildProofPlanPrompt(snapshot, proofPlanOptions, covenant),
             )
           },
         },
@@ -422,9 +434,10 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       upsertSystemSection(output, buildCovenantControlBrief(snapshot, covenant))
       upsertSystemSection(output, buildLoopPulsePrompt(snapshot, covenant))
       upsertSystemSection(output, buildMissionMemoryPrompt(snapshot, covenant))
+      upsertSystemSection(output, buildProofPlanPrompt(snapshot, proofPlanOptions, covenant))
     },
     "experimental.session.compacting"(_input, output) {
-      appendCompactionContext(output, runtime.snapshot())
+      appendCompactionContext(output, runtime.snapshot(), proofPlanOptions)
     },
     async "tool.execute.before"(input, output) {
       await prepareBeforeToolExecution({
@@ -443,6 +456,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       })
       await advanceAutopilotLoop({
         runtime,
+        proofPlanOptions,
         runtimeStore: options.runtimeStore,
         recoverStale: false,
       })
@@ -452,6 +466,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
 
       await advanceAutopilotLoop({
         runtime,
+        proofPlanOptions,
         runtimeStore: options.runtimeStore,
       })
     },
@@ -605,6 +620,7 @@ async function recordToolExecutionEvidence(input: RecordToolExecutionEvidenceInp
 
 type AdvanceAutopilotLoopInput = {
   runtime: RunesmithRuntime
+  proofPlanOptions?: ProofPlanOptions
   runtimeStore?: PluginRuntimeStore
   recoverStale?: boolean
 }
@@ -623,6 +639,7 @@ async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<T
   await persistRuntime(input.runtimeStore, input.runtime)
   const loopPulse = deriveLoopPulse(input.runtime.snapshot())
   const missionMemory = deriveMissionMemory(input.runtime.snapshot())
+  const proofPlan = deriveProofPlan(input.runtime.snapshot(), input.proofPlanOptions)
 
   return formatValue(formatAutopilotLoopTitle(advanced.value.status), {
     status: advanced.value.status,
@@ -633,6 +650,7 @@ async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<T
     missingEvidence: advanced.value.missingEvidence,
     diagnostics: loopPulse.diagnostics,
     missionMemory,
+    proofPlan,
     loopPulse,
   })
 }
@@ -830,6 +848,7 @@ function buildAutopilotPrompt(): string {
     "When the user asks for coding, repo, debugging, UI, or research-to-implementation work, call `runesmith_autopilot_prepare` with the latest user goal or message list before starting edits.",
     "Continue under the returned mission, task, and lease. New autopilot missions are planned as Forge, Review, and Seal tasks. Runesmith records shell, test, file-change, and safe Covenant decision evidence automatically; use `runesmith_task_evidence` for risks, diagnostics, external proof, or decisions the tool hooks cannot infer.",
     "Follow the Active runes in the live Runesmith Control Brief as automatic procedure cards. Do not ask the user to invoke them by name.",
+    "When proof is missing or repair is active, follow the live Runesmith Proof Plan commands before asking for completion.",
     "When the active task has required evidence, call `runesmith_autopilot_tick` or let session-idle events advance it. The tick may complete the task only after the evidence gate is satisfied, synthesize Review and Seal decisions when safe, then claim the next dependency-ready task.",
     "Do not ask the user to invoke Runesmith, skills, or a workflow by name. Keep the user experience install-once and direct.",
     "Before claiming completion, attach required evidence and use `runesmith_task_complete`; if state looks stale or conflicting, run `runesmith_recover` first.",
@@ -904,7 +923,11 @@ function upsertPromptSection(text: string, section: string): string {
   return [before, section, after].filter((part) => part.length > 0).join("\n\n")
 }
 
-function appendCompactionContext(output: OpenCodeCompactionOutput, snapshot: RuntimeSnapshot): void {
+function appendCompactionContext(
+  output: OpenCodeCompactionOutput,
+  snapshot: RuntimeSnapshot,
+  proofPlanOptions: ProofPlanOptions = {},
+): void {
   const context = output.context ?? []
   const summary = buildMissionCapsuleSummary(snapshot)
   if (!context.join("\n").includes("## Runesmith Mission Capsule")) {
@@ -913,6 +936,7 @@ function appendCompactionContext(output: OpenCodeCompactionOutput, snapshot: Run
   upsertTextListSection(context, buildCovenantControlBrief(snapshot))
   upsertTextListSection(context, buildLoopPulsePrompt(snapshot))
   upsertTextListSection(context, buildMissionMemoryPrompt(snapshot))
+  upsertTextListSection(context, buildProofPlanPrompt(snapshot, proofPlanOptions))
   output.context = context
 }
 
@@ -1067,6 +1091,35 @@ async function persistRuntime(
   if (runtimeStore) {
     await runtimeStore.save(runtime.snapshot())
   }
+}
+
+function resolveProofPlanOptions(options: PluginOptions["proofPlanOptions"]): ProofPlanOptions {
+  if (options === false) return {}
+  if (options) return options
+
+  return readPackageProofPlanOptions()
+}
+
+function readPackageProofPlanOptions(): ProofPlanOptions {
+  try {
+    const manifest = JSON.parse(readFileSync("package.json", "utf8")) as {
+      packageManager?: unknown
+      scripts?: unknown
+    }
+
+    return {
+      packageManager: typeof manifest.packageManager === "string" ? manifest.packageManager : undefined,
+      scripts: isStringRecord(manifest.scripts) ? manifest.scripts : undefined,
+    }
+  } catch {
+    return {}
+  }
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false
+
+  return Object.values(value).every((entry) => typeof entry === "string")
 }
 
 function createNodeRuntimeStoreHost() {
