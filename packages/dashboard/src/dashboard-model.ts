@@ -4,6 +4,7 @@ import {
   deriveMissionMemory,
   deriveLoopPulse,
   deriveProofPlan,
+  deriveRedlineProof,
   deriveReviewLens,
   deriveRunicProtocolDeck,
   deriveRunebook,
@@ -20,6 +21,7 @@ import {
   type MissionGraph,
   type MissionMap,
   type ProofPlan,
+  type RedlineProof,
   type ReviewLens,
   type RunicProtocolDeck,
   type Runebook,
@@ -110,6 +112,7 @@ export type DashboardModel = {
   missionMemory: MissionMemory
   proofPlan: ProofPlan
   protocolDeck: RunicProtocolDeck
+  redlineProof: RedlineProof
   reviewLens: ReviewLens
   runebook: Runebook
   scopeSentinel: ScopeSentinel
@@ -693,6 +696,9 @@ function deriveDashboardModel(input: {
   const scopeSentinel = input.runtimeSnapshot
     ? deriveScopeSentinel(input.runtimeSnapshot)
     : buildSeededScopeSentinel(input.tasks)
+  const redlineProof = input.runtimeSnapshot
+    ? deriveRedlineProof(input.runtimeSnapshot)
+    : buildSeededRedlineProof(input.tasks)
   const sealAudit = input.runtimeSnapshot
     ? deriveSealAudit(input.runtimeSnapshot)
     : buildSeededSealAudit(input.tasks)
@@ -712,6 +718,7 @@ function deriveDashboardModel(input: {
     missionMemory,
     proofPlan,
     protocolDeck,
+    redlineProof,
     reviewLens,
     runebook,
     scopeSentinel,
@@ -747,6 +754,14 @@ function buildSeededScopeSentinel(tasks: TaskCard[]): ScopeSentinel {
   }
 
   return deriveScopeSentinel(buildSeededRuntimeSnapshot(tasks))
+}
+
+function buildSeededRedlineProof(tasks: TaskCard[]): RedlineProof {
+  if (tasks.length === 0) {
+    return deriveRedlineProof(emptyRuntimeSnapshot())
+  }
+
+  return deriveRedlineProof(buildSeededRuntimeSnapshot(tasks))
 }
 
 function buildSeededSealAudit(tasks: TaskCard[]): SealAudit {

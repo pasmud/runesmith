@@ -1,5 +1,6 @@
 import { missingRequiredEvidence } from "./evidence-ledger.js"
 import { getRequiredEvidenceForTask } from "./contracts.js"
+import { deriveRedlineProof, type RedlineProof } from "./redline-proof.js"
 import { deriveScopeSentinel, type ScopeSentinel } from "./scope-sentinel.js"
 import type { RuntimeSnapshot } from "./runtime.js"
 import type { Evidence, EvidenceType, MissionGraph, MissionTask } from "./types.js"
@@ -9,7 +10,7 @@ export type ReviewLensCheckStatus = "passed" | "blocked" | "attention"
 export type ReviewLensFindingSeverity = "critical" | "warning" | "info"
 
 export type ReviewLensCheck = {
-  id: "diff-scope" | "proof-freshness" | "risk-resolution" | "review-decision"
+  id: "diff-scope" | "proof-freshness" | "redline-proof" | "risk-resolution" | "review-decision"
   label: string
   status: ReviewLensCheckStatus
   detail: string
@@ -70,11 +71,13 @@ export function deriveReviewLens(snapshot: RuntimeSnapshot): ReviewLens {
   })
   const unresolvedRisks = collectUnresolvedRiskSummaries(taskEvidence)
   const reviewDecision = reviewEvidence.find((entry) => entry.type === "decision")
+  const redlineProof = deriveRedlineProof(snapshot)
   const status = selectReviewStatus(graph, missingEvidence, unresolvedRisks, reviewDecision, scopeSentinel)
-  const findings = buildFindings(implementationTask, missingEvidence, unresolvedRisks, taskEvidence, scopeSentinel)
+  const findings = buildFindings(implementationTask, missingEvidence, unresolvedRisks, taskEvidence, scopeSentinel, redlineProof)
   const checklist = buildChecklist({
     implementationTask,
     missingEvidence,
+    redlineProof,
     unresolvedRisks,
     reviewDecision,
     scopeSentinel,
@@ -175,6 +178,7 @@ function selectReviewStatus(
 function buildChecklist(input: {
   implementationTask: MissionTask
   missingEvidence: EvidenceType[]
+  redlineProof: RedlineProof
   unresolvedRisks: string[]
   reviewDecision: Evidence | undefined
   scopeSentinel: ScopeSentinel
@@ -184,6 +188,7 @@ function buildChecklist(input: {
   const hasFileChange = input.taskEvidence.some((entry) => entry.type === "file-change")
   const proofBlocked = input.missingEvidence.includes("test-result")
   const risksBlocked = input.unresolvedRisks.length > 0
+  const redlineStatus: ReviewLensCheckStatus = input.redlineProof.status === "missing" ? "attention" : "passed"
   const scopeFinding = input.scopeSentinel.findings.find((finding) => finding.severity === "critical")
     ?? input.scopeSentinel.findings[0]
   const diffScopeStatus: ReviewLensCheckStatus = input.scopeSentinel.status === "blocked"
@@ -213,6 +218,12 @@ function buildChecklist(input: {
         : `${input.implementationTask.id} has fresh passing proof.`,
     },
     {
+      id: "redline-proof",
+      label: "Redline Proof",
+      status: redlineStatus,
+      detail: input.redlineProof.summary,
+    },
+    {
       id: "risk-resolution",
       label: "Risk resolution",
       status: risksBlocked ? "blocked" : "passed",
@@ -239,6 +250,7 @@ function buildFindings(
   unresolvedRisks: string[],
   taskEvidence: Evidence[],
   scopeSentinel: ScopeSentinel,
+  redlineProof: RedlineProof,
 ): ReviewLensFinding[] {
   const findings: ReviewLensFinding[] = []
 
@@ -261,6 +273,13 @@ function buildFindings(
     findings.push({
       severity: finding.severity,
       summary: finding.summary,
+    })
+  }
+
+  if (redlineProof.status === "missing") {
+    findings.push({
+      severity: "warning",
+      summary: redlineProof.summary,
     })
   }
 

@@ -84,11 +84,16 @@ describe("review lens", () => {
           severity: "warning",
           summary: "Missing test-result evidence for task_alpha.",
         },
+        {
+          severity: "warning",
+          summary: "Redline Proof missing for task_alpha: implementation changed before focused failing proof was captured.",
+        },
       ],
     })
     expect(lens.checklist.map((item) => [item.id, item.status])).toEqual([
       ["diff-scope", "passed"],
       ["proof-freshness", "blocked"],
+      ["redline-proof", "attention"],
       ["risk-resolution", "passed"],
       ["review-decision", "blocked"],
     ])
@@ -128,7 +133,12 @@ describe("review lens", () => {
       implementationTaskId: "task_alpha",
       reviewTaskId: "task_alpha_review",
       nextAction: "Approve review or record a risk before seal.",
-      findings: [],
+      findings: [
+        {
+          severity: "warning",
+          summary: "Redline Proof missing for task_alpha: implementation changed before focused failing proof was captured.",
+        },
+      ],
     })
     expect(prompt).toContain("## Runesmith Review Lens")
     expect(prompt).toContain("Status: ready")
@@ -136,6 +146,156 @@ describe("review lens", () => {
     expect(prompt).toContain("diff-scope: passed")
     expect(prompt).toContain("proof-freshness: passed")
     expect(prompt).toContain("Lead with findings before approval")
+  })
+
+  test("surfaces missing Redline Proof when implementation changes precede focused failing proof", () => {
+    const runtime = createPlannedRuntime()
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed OpenCode adapter implementation",
+        payload: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "OpenCode adapter tests passed",
+        payload: { command: "bun test packages/opencode-adapter/tests/plugin.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+
+    const lens = deriveReviewLens(runtime.snapshot())
+    const prompt = buildReviewLensPrompt(runtime.snapshot())
+
+    expect(lens.status).toBe("ready")
+    expect(lens.checklist).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "redline-proof",
+          status: "attention",
+          detail: "Redline Proof missing for task_alpha: implementation changed before focused failing proof was captured.",
+        }),
+      ]),
+    )
+    expect(lens.findings).toEqual(
+      expect.arrayContaining([
+        {
+          severity: "warning",
+          summary: "Redline Proof missing for task_alpha: implementation changed before focused failing proof was captured.",
+        },
+      ]),
+    )
+    expect(prompt).toContain("redline-proof: attention")
+  })
+
+  test("passes Redline Proof when a failing diagnostic precedes implementation changes", () => {
+    const runtime = createPlannedRuntime()
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_red",
+        taskId: "task_alpha",
+        type: "diagnostic",
+        summary: "OpenCode adapter focused test failed",
+        payload: { command: "bun test packages/opencode-adapter/tests/plugin.test.ts", exitCode: 1 },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed OpenCode adapter implementation",
+        payload: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "OpenCode adapter tests passed",
+        payload: { command: "bun test packages/opencode-adapter/tests/plugin.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+
+    const lens = deriveReviewLens(runtime.snapshot())
+
+    expect(lens.checklist).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "redline-proof",
+          status: "passed",
+          detail: "Redline Proof satisfied for task_alpha: focused failing proof preceded implementation changes.",
+        }),
+      ]),
+    )
+    expect(lens.findings.map((finding) => finding.summary)).not.toContain(
+      "Redline Proof missing for task_alpha: implementation changed before focused failing proof was captured.",
+    )
+  })
+
+  test("passes Redline Proof when a test edit precedes implementation changes", () => {
+    const runtime = createPlannedRuntime()
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Added OpenCode adapter proof",
+        payload: { filePath: "packages/opencode-adapter/tests/plugin.test.ts" },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_source_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed OpenCode adapter implementation",
+        payload: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "OpenCode adapter tests passed",
+        payload: { command: "bun test packages/opencode-adapter/tests/plugin.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+
+    const lens = deriveReviewLens(runtime.snapshot())
+
+    expect(lens.checklist).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "redline-proof",
+          status: "passed",
+          detail: "Redline Proof satisfied for task_alpha: focused proof file changed before implementation.",
+        }),
+      ]),
+    )
   })
 
   test("blocks review when implementation evidence leaves the contract file scope", () => {
@@ -225,7 +385,7 @@ describe("review lens", () => {
             reviewLens: expect.objectContaining({
               status: "ready",
               implementationTaskId: "task_alpha",
-              findingCount: 0,
+              findingCount: 1,
             }),
           }),
         }),

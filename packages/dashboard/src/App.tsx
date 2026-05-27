@@ -702,6 +702,7 @@ function RightRail({ dispatch, model }: { dispatch: DashboardDispatch; model: Da
       <LoopPulsePanel model={model} />
       <MissionMapPanel model={model} />
       <ScopeSentinelPanel model={model} />
+      <RedlineProofPanel model={model} />
       <ReviewLensPanel model={model} />
       <SealAuditPanel model={model} />
       <ProtocolDeckPanel model={model} />
@@ -908,6 +909,57 @@ function ScopeSentinelPanel({ model }: { model: DashboardModel }) {
           ))}
         </div>
       ) : null}
+    </section>
+  )
+}
+
+function RedlineProofPanel({ model }: { model: DashboardModel }) {
+  const redline = model.redlineProof
+  const tone: MissionStatus =
+    redline.status === "missing"
+      ? "stale"
+      : redline.status === "idle"
+        ? "stale"
+        : "verified"
+  const implementationChanges = redline.implementationChanges.slice(0, 3)
+  const proofSignals = redline.proofSignals.slice(0, 3)
+
+  return (
+    <section className="redline-proof-panel" aria-label="Runesmith redline proof">
+      <div className="inspector-header">
+        <p className="eyebrow">Redline Proof</p>
+        <Badge tone={tone}>{redline.status}</Badge>
+      </div>
+      <div className="redline-proof-head">
+        <span className={`tile-icon tile-icon-${tone}`}><CircleDot aria-hidden="true" /></span>
+        <div>
+          <h2>{redline.taskId ?? "No proof target"}</h2>
+          <p>{redline.summary}</p>
+        </div>
+      </div>
+      <div className="redline-proof-facts">
+        <span>{implementationChanges.length} implementation changes</span>
+        <span>{proofSignals.length} proof signals</span>
+      </div>
+      <div className="redline-proof-signals" aria-label="Redline proof signals">
+        {implementationChanges.length > 0 ? implementationChanges.map((path) => (
+          <span data-status={redline.status} key={`implementation-${path}`}>
+            <strong>Implementation</strong>
+            <small>{path}</small>
+          </span>
+        )) : (
+          <span data-status="not-applicable">
+            <strong>No implementation evidence</strong>
+            <small>Runesmith will watch first file-change ordering.</small>
+          </span>
+        )}
+        {proofSignals.length > 0 ? proofSignals.map((signal) => (
+          <span data-status="satisfied" key={`proof-${signal}`}>
+            <strong>Proof signal</strong>
+            <small>{signal}</small>
+          </span>
+        )) : null}
+      </div>
     </section>
   )
 }

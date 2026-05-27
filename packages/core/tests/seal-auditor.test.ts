@@ -99,6 +99,7 @@ describe("seal audit", () => {
     expect(audit.checks.map((check) => [check.id, check.status])).toEqual([
       ["mission-state", "passed"],
       ["proof-gate", "attention"],
+      ["redline-gate", "attention"],
       ["scope-gate", "passed"],
       ["review-gate", "attention"],
       ["seal-decision", "blocked"],
@@ -149,15 +150,80 @@ describe("seal audit", () => {
       sealTaskId: "task_alpha_seal",
       summary: "mission_alpha is ready for Sealmark checkpoint.",
       nextAction: "Record the seal decision and persist the final capsule.",
-      findings: [],
+      findings: [
+        {
+          severity: "warning",
+          summary: "Redline Proof missing for task_alpha: implementation changed before focused failing proof was captured.",
+        },
+      ],
     })
     expect(audit.checks.map((check) => [check.id, check.status])).toEqual([
       ["mission-state", "passed"],
       ["proof-gate", "passed"],
+      ["redline-gate", "attention"],
       ["scope-gate", "passed"],
       ["review-gate", "passed"],
       ["seal-decision", "attention"],
     ])
+    expect(audit.findings).toEqual(
+      expect.arrayContaining([
+        {
+          severity: "warning",
+          summary: "Redline Proof missing for task_alpha: implementation changed before focused failing proof was captured.",
+        },
+      ]),
+    )
+  })
+
+  test("marks Redline Proof passed when focused failing proof came first", () => {
+    const runtime = createClaimedRuntime()
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_red",
+        taskId: "task_alpha",
+        type: "diagnostic",
+        summary: "Core focused test failed",
+        payload: { command: "bun test packages/core/tests/runtime.test.ts", exitCode: 1 },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runtime files",
+        payload: { filePath: "packages/core/src/runtime.ts" },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Core tests passed",
+        payload: { command: "bun test packages/core/tests/runtime.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+
+    const audit = deriveSealAudit(runtime.snapshot())
+    const prompt = buildSealAuditPrompt(runtime.snapshot())
+
+    expect(audit.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "redline-gate",
+          status: "passed",
+          detail: "Redline Proof satisfied for task_alpha: focused failing proof preceded implementation changes.",
+        }),
+      ]),
+    )
+    expect(prompt).toContain("redline-gate: passed")
   })
 
   test("reports sealed missions as finished after the shared loop completes", () => {
@@ -193,7 +259,7 @@ describe("seal audit", () => {
             sealAudit: expect.objectContaining({
               status: "ready",
               missionId: "mission_alpha",
-              findingCount: 0,
+              findingCount: 1,
             }),
           }),
         }),

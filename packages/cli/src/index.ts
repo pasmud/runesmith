@@ -13,6 +13,7 @@ import {
   deriveMissionMap,
   deriveMissionMemory,
   deriveProofPlan,
+  deriveRedlineProof,
   deriveReviewLens,
   deriveRunicProtocolDeck,
   deriveRunebook,
@@ -40,6 +41,7 @@ import {
   type ProofCommandExecution,
   type ProofRunCommandResult,
   type ProofPlanOptions,
+  type RedlineProof,
   type ReviewLens,
   type RunicProtocolDeck,
   type Runebook,
@@ -325,6 +327,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     const pulse = deriveLoopPulse(snapshot.value)
     const missionMap = deriveMissionMap(snapshot.value)
     const scopeSentinel = deriveScopeSentinel(snapshot.value)
+    const redlineProof = deriveRedlineProof(snapshot.value)
     const reviewLens = deriveReviewLens(snapshot.value)
     const sealAudit = deriveSealAudit(snapshot.value, proofOptions)
     const memory = deriveMissionMemory(snapshot.value)
@@ -355,6 +358,9 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
       `Summary: ${scopeSentinel.summary}`,
       ...formatScopeSentinelChangeLines(scopeSentinel),
       `Findings: ${formatScopeSentinelFindings(scopeSentinel)}`,
+      "Redline proof:",
+      `Status: ${redlineProof.status}`,
+      `Summary: ${redlineProof.summary}`,
       "Review lens:",
       `Summary: ${reviewLens.summary}`,
       ...formatReviewLensBlockedLines(reviewLens),
@@ -609,6 +615,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
   const pulse = deriveLoopPulse(snapshot)
   const missionMap = deriveMissionMap(snapshot)
   const scopeSentinel = deriveScopeSentinel(snapshot)
+  const redlineProof = deriveRedlineProof(snapshot)
   const reviewLens = deriveReviewLens(snapshot)
   const sealAudit = deriveSealAudit(snapshot, proofOptions)
   const memory = deriveMissionMemory(snapshot)
@@ -630,6 +637,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     `proof plan: ${formatProofPlanCommands(proofPlan)}`,
     `mission map: ${formatMissionMapSummary(missionMap)}`,
     `scope sentinel: ${formatScopeSentinelSummary(scopeSentinel)}`,
+    `redline proof: ${formatRedlineProofSummary(redlineProof)}`,
     `review lens: ${formatReviewLensSummary(reviewLens)}`,
     `seal audit: ${formatSealAuditSummary(sealAudit)}`,
     `mission: ${mission ? `${mission.id} ${mission.status} ${mission.goal}` : "none"}`,
@@ -1528,6 +1536,10 @@ function formatScopeSentinelChangeLines(sentinel: ScopeSentinel): string[] {
 
 function formatScopeSentinelFindings(sentinel: ScopeSentinel): string {
   return sentinel.findings.length > 0 ? sentinel.findings.map((finding) => finding.summary).join("; ") : "none"
+}
+
+function formatRedlineProofSummary(redlineProof: RedlineProof): string {
+  return `${redlineProof.status}; ${redlineProof.summary}`
 }
 
 function formatReviewLensSummary(lens: ReviewLens): string {

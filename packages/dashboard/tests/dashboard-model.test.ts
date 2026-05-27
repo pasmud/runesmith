@@ -353,6 +353,13 @@ describe("dashboard model", () => {
       ],
       findings: [],
     })
+    expect(model.redlineProof).toMatchObject({
+      status: "missing",
+      missionId: "mission_live",
+      taskId: "task_live",
+      summary: "Redline Proof missing for task_live: implementation changed before focused failing proof was captured.",
+      implementationChanges: ["packages/dashboard/src/dashboard-model.ts"],
+    })
     expect(model.reviewLens).toMatchObject({
       status: "waiting-for-proof",
       missionId: "mission_live",
@@ -361,6 +368,10 @@ describe("dashboard model", () => {
         {
           severity: "warning",
           summary: "Missing test-result evidence for task_live.",
+        },
+        {
+          severity: "warning",
+          summary: "Redline Proof missing for task_live: implementation changed before focused failing proof was captured.",
         },
       ],
     })
@@ -373,6 +384,7 @@ describe("dashboard model", () => {
     expect(model.sealAudit.checks.map((check) => [check.id, check.status])).toEqual([
       ["mission-state", "passed"],
       ["proof-gate", "attention"],
+      ["redline-gate", "attention"],
       ["scope-gate", "passed"],
       ["review-gate", "attention"],
       ["seal-decision", "blocked"],

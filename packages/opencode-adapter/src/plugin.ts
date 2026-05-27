@@ -6,6 +6,7 @@ import {
   buildMissionMapPrompt,
   buildMissionMemoryPrompt,
   buildProofPlanPrompt,
+  buildRedlineProofPrompt,
   buildReviewLensPrompt,
   buildRunicProtocolPrompt,
   buildRunebookPrompt,
@@ -19,6 +20,7 @@ import {
   deriveMissionMap,
   deriveMissionMemory,
   deriveProofPlan,
+  deriveRedlineProof,
   deriveReviewLens,
   deriveRunicProtocolDeck,
   deriveRunebook,
@@ -394,6 +396,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           const loopPulse = deriveLoopPulse(snapshot, covenant)
           const missionMap = deriveMissionMap(snapshot)
           const scopeSentinel = deriveScopeSentinel(snapshot)
+          const redlineProof = deriveRedlineProof(snapshot)
           const reviewLens = deriveReviewLens(snapshot)
           const sealAudit = deriveSealAudit(snapshot, proofPlanOptions)
           const missionMemory = deriveMissionMemory(snapshot, covenant)
@@ -431,6 +434,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             loopPulse,
             missionMap,
             scopeSentinel,
+            redlineProof,
             reviewLens,
             sealAudit,
             missionMemory,
@@ -604,6 +608,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             prompt = upsertPromptSection(prompt, buildLoopPulsePrompt(snapshot, covenant))
             prompt = upsertPromptSection(prompt, buildMissionMapPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildScopeSentinelPrompt(snapshot))
+            prompt = upsertPromptSection(prompt, buildRedlineProofPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildReviewLensPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildSealAuditPrompt(snapshot, proofPlanOptions))
             prompt = upsertPromptSection(prompt, buildRunebookPrompt(snapshot, { proofPlanOptions, covenant }))
@@ -621,6 +626,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       upsertSystemSection(output, buildLoopPulsePrompt(snapshot, covenant))
       upsertSystemSection(output, buildMissionMapPrompt(snapshot))
       upsertSystemSection(output, buildScopeSentinelPrompt(snapshot))
+      upsertSystemSection(output, buildRedlineProofPrompt(snapshot))
       upsertSystemSection(output, buildReviewLensPrompt(snapshot))
       upsertSystemSection(output, buildSealAuditPrompt(snapshot, proofPlanOptions))
       upsertSystemSection(output, buildRunebookPrompt(snapshot, { proofPlanOptions, covenant }))
@@ -1517,6 +1523,7 @@ function buildAutopilotPrompt(): string {
     "If you reach a session-idle point before preparation, Runesmith can infer the latest user goal from chat context and prepare the mission automatically.",
     "Continue under the returned mission, task, and lease. New autopilot missions are planned as Forge, Review, and Seal tasks. Runesmith records shell, test, file-change, and safe Covenant decision evidence automatically; use `runesmith_task_evidence` for risks, diagnostics, external proof, or decisions the tool hooks cannot infer.",
     "Follow the active Runesmith Runebook card and Active runes as automatic procedure, not as user-invoked workflows.",
+    "Use Runesmith Redline Proof as the test-first/review-discipline signal: prefer focused failing proof or proof-file evidence before implementation edits when behavior is testable.",
     "Prefer `runesmith_os_run` when you need Runesmith to keep executing engine-owned Runebook cards until the mission is sealed or a real stop condition appears.",
     "Prefer `runesmith_next` when you need Runesmith to execute the current Runebook card without choosing a lower-level tool.",
     "When proof is missing, call `runesmith_proof_run` to execute the live Runesmith Proof Plan before asking for completion. When Faultline is active, follow the architecture breakpoint before rerunning proof.",
@@ -1588,12 +1595,14 @@ function buildMessageBootstrap(
 ): string {
   const pulse = deriveLoopPulse(snapshot, covenant)
   const protocolDeck = deriveRunicProtocolDeck(snapshot, { proofPlanOptions, covenant })
+  const redlineProof = deriveRedlineProof(snapshot)
 
   return [
     "<RUNESMITH_BOOTSTRAP>",
     "Runesmith is installed as the OpenCode orchestration OS.",
     `Current next action: ${pulse.nextAction.label} (${pulse.nextAction.id}).`,
     `Active protocol: ${protocolDeck.active.name} [${protocolDeck.active.mode}].`,
+    `Redline Proof: ${redlineProof.status}; ${redlineProof.summary}`,
     "Let Runesmith choose the procedure from runtime state.",
     "Before mutating coding work, use Runesmith to prepare or resume the active mission.",
     "Prefer runesmith_os_run, runesmith_next, runesmith_proof_run, runesmith_risk_resolve, or runesmith_faultline_resolve when Loop Pulse makes them the next engine-owned action.",
@@ -1670,6 +1679,7 @@ function appendCompactionContext(
   upsertTextListSection(context, buildLoopPulsePrompt(snapshot))
   upsertTextListSection(context, buildMissionMapPrompt(snapshot))
   upsertTextListSection(context, buildScopeSentinelPrompt(snapshot))
+  upsertTextListSection(context, buildRedlineProofPrompt(snapshot))
   upsertTextListSection(context, buildReviewLensPrompt(snapshot))
   upsertTextListSection(context, buildSealAuditPrompt(snapshot, proofPlanOptions))
   upsertTextListSection(context, buildRunebookPrompt(snapshot, { proofPlanOptions }))

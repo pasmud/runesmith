@@ -1,4 +1,5 @@
 import { deriveProofPlan, type ProofPlan, type ProofPlanOptions } from "./proof-plan.js"
+import { deriveRedlineProof, type RedlineProof } from "./redline-proof.js"
 import { deriveReviewLens, type ReviewLens } from "./review-lens.js"
 import { deriveScopeSentinel, type ScopeSentinel } from "./scope-sentinel.js"
 import type { RuntimeSnapshot } from "./runtime.js"
@@ -11,6 +12,7 @@ export type SealAuditFindingSeverity = "critical" | "warning" | "info"
 export type SealAuditCheckId =
   | "mission-state"
   | "proof-gate"
+  | "redline-gate"
   | "scope-gate"
   | "review-gate"
   | "seal-decision"
@@ -58,17 +60,19 @@ export function deriveSealAudit(snapshot: RuntimeSnapshot, proofPlanOptions: Pro
   const evidence = Object.values(snapshot.ledgers[graph.mission.id]?.evidence ?? {})
   const sealDecision = sealTask ? selectSealDecision(evidence, sealTask.id) : undefined
   const proofPlan = deriveProofPlan(snapshot, proofPlanOptions)
+  const redlineProof = deriveRedlineProof(snapshot)
   const scopeSentinel = deriveScopeSentinel(snapshot)
   const reviewLens = deriveReviewLens(snapshot)
   const checks = buildChecks({
     graph,
     proofPlan,
+    redlineProof,
     reviewLens,
     scopeSentinel,
     sealDecision,
     sealTask,
   })
-  const findings = buildFindings({ checks, proofPlan, reviewLens, scopeSentinel })
+  const findings = buildFindings({ checks, proofPlan, redlineProof, reviewLens, scopeSentinel })
   const status = selectStatus(graph, checks)
 
   return {
@@ -159,6 +163,7 @@ function selectSealDecision(evidence: Evidence[], sealTaskId: string): Evidence 
 function buildChecks(input: {
   graph: MissionGraph
   proofPlan: ProofPlan
+  redlineProof: RedlineProof
   reviewLens: ReviewLens
   scopeSentinel: ScopeSentinel
   sealDecision: Evidence | undefined
@@ -167,6 +172,7 @@ function buildChecks(input: {
   return [
     buildMissionStateCheck(input.graph),
     buildProofGateCheck(input.graph, input.proofPlan),
+    buildRedlineGateCheck(input.graph, input.redlineProof),
     buildScopeGateCheck(input.graph, input.scopeSentinel),
     buildReviewGateCheck(input.graph, input.reviewLens),
     buildSealDecisionCheck(input.graph, input.reviewLens, input.sealDecision, input.sealTask),
@@ -204,6 +210,18 @@ function buildProofGateCheck(graph: MissionGraph, proofPlan: ProofPlan): SealAud
   }
 
   return check("proof-gate", "Proof gate", "attention", "No proof target is active yet.")
+}
+
+function buildRedlineGateCheck(graph: MissionGraph, redlineProof: RedlineProof): SealAuditCheck {
+  if (graph.mission.status === "complete") {
+    return check("redline-gate", "Redline Proof", "passed", "Mission completed after review captured Redline Proof state.")
+  }
+
+  if (redlineProof.status === "missing") {
+    return check("redline-gate", "Redline Proof", "attention", redlineProof.summary)
+  }
+
+  return check("redline-gate", "Redline Proof", "passed", redlineProof.summary)
 }
 
 function buildScopeGateCheck(graph: MissionGraph, scopeSentinel: ScopeSentinel): SealAuditCheck {
@@ -267,6 +285,7 @@ function buildSealDecisionCheck(
 function buildFindings(input: {
   checks: SealAuditCheck[]
   proofPlan: ProofPlan
+  redlineProof: RedlineProof
   reviewLens: ReviewLens
   scopeSentinel: ScopeSentinel
 }): SealAuditFinding[] {
@@ -285,6 +304,13 @@ function buildFindings(input: {
     findings.push({
       severity: "warning",
       summary: input.proofPlan.handoff,
+    })
+  }
+
+  if (input.redlineProof.status === "missing") {
+    findings.push({
+      severity: "warning",
+      summary: input.redlineProof.summary,
     })
   }
 
@@ -309,7 +335,7 @@ function buildFindings(input: {
 function selectStatus(graph: MissionGraph, checks: SealAuditCheck[]): SealAuditStatus {
   if (graph.mission.status === "complete") return "sealed"
 
-  const nonSealChecks = checks.filter((check) => check.id !== "seal-decision")
+  const nonSealChecks = checks.filter((check) => check.id !== "seal-decision" && check.id !== "redline-gate")
   if (nonSealChecks.some((check) => check.status === "blocked")) return "blocked"
   if (nonSealChecks.some((check) => check.status === "attention")) return "collecting-proof"
 
