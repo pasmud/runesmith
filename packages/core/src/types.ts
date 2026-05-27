@@ -28,10 +28,13 @@ export type IdPrefix =
   | "agent"
   | "contract"
   | "evidence"
+  | "event"
   | "lease"
   | "mission"
   | "task"
   | "tool"
+
+export type IdFactory = (prefix: IdPrefix) => string
 
 export type MissionStatus =
   | "draft"
