@@ -221,6 +221,8 @@ Every stage carries gates and evidence signals. The covenant is a workflow polic
 
 The runtime also derives a live Runesmith Control Brief from the current snapshot. This brief does not ask the user to run a skill. It tells the coding agent what stage comes next, which mission and task are active, what proof is required, and which evidence is still missing. Failed or unknown test runs are treated as diagnostics, so the brief keeps the task in Proof Gate until passing test proof exists.
 
+The Control Brief also includes Runesmith-native Runebook runes. A rune is a small procedure card selected from runtime state, such as `Forge Trace` during scoped edits, `Proofwright` when evidence is missing, or `Recovery Loom` when work is stale. This borrows the useful discipline of explicit workflows while keeping the user experience install-once and automatic; users should not need to invoke external skills or remember process names.
+
 The default Covenant task plan is:
 
 - Forge: implementation work requiring `file-change` and passing `test-result` evidence.

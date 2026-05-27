@@ -109,6 +109,36 @@ describe("runic covenant", () => {
     expect(brief).toContain("Active mission: mission_alpha")
     expect(brief).toContain("Next stage: Proof Gate")
     expect(brief).toContain("missing evidence: test-result")
+    expect(brief).toContain("Active runes:")
+    expect(brief).toContain("Proofwright")
     expect(brief).toContain("Failed or unknown test runs do not satisfy completion proof.")
+  })
+
+  test("selects a recovery rune when the active task is stale", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Recover stale runebook work",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.recover({
+      missionId: "mission_alpha",
+      now: () => new Date("2026-05-27T00:02:00.000Z"),
+      staleAfterMs: 60_000,
+    })
+
+    const brief = buildCovenantControlBrief(runtime.snapshot())
+
+    expect(brief).toContain("Next stage: Recovery Sweep")
+    expect(brief).toContain("Recovery Loom")
+    expect(brief).toContain("Reclaim dependency-ready stale work with a fresh lease before unrelated edits.")
   })
 })

@@ -26,6 +26,22 @@ export type CovenantStage = {
   evidence: string[]
 }
 
+export type CovenantRuneId =
+  | "pathfinder"
+  | "claim-ward"
+  | "forge-trace"
+  | "proofwright"
+  | "mirrorglass"
+  | "sealmark"
+  | "recovery-loom"
+
+export type CovenantRune = {
+  id: CovenantRuneId
+  name: string
+  reason: string
+  steps: string[]
+}
+
 export type RunicCovenant = {
   id: "runic-covenant"
   name: "Runic Covenant"
@@ -47,6 +63,7 @@ export type CovenantControlBrief = {
   assignedAgentId?: string
   requiredEvidence: EvidenceType[]
   missingEvidence: EvidenceType[]
+  runes: CovenantRune[]
   directives: string[]
 }
 
@@ -132,6 +149,73 @@ const covenantStages: CovenantStage[] = [
   },
 ]
 
+const covenantRunes: Record<CovenantRuneId, CovenantRune> = {
+  pathfinder: {
+    id: "pathfinder",
+    name: "Pathfinder",
+    reason: "Frame the mission from repo context before creating duplicate work.",
+    steps: [
+      "Inspect the smallest relevant surface before mutating files.",
+      "Turn uncertainty into a scoped task, not a separate user-facing workflow.",
+    ],
+  },
+  "claim-ward": {
+    id: "claim-ward",
+    name: "Claim Ward",
+    reason: "Protect the active target with a contract, lease, and stable idempotency key.",
+    steps: [
+      "Claim only dependency-ready work.",
+      "Keep tool scope aligned with the assigned contract.",
+    ],
+  },
+  "forge-trace": {
+    id: "forge-trace",
+    name: "Forge Trace",
+    reason: "Make narrow changes and leave evidence the runtime can verify.",
+    steps: [
+      "Edit only the files needed for the active task.",
+      "Prefer targeted checks while the change is still small.",
+    ],
+  },
+  proofwright: {
+    id: "proofwright",
+    name: "Proofwright",
+    reason: "Convert work into completion proof instead of relying on transcript confidence.",
+    steps: [
+      "Run the strongest practical verification before completion.",
+      "Treat failed or unknown test runs as diagnostics, not proof.",
+      "Attach missing evidence before calling the completion gate.",
+    ],
+  },
+  mirrorglass: {
+    id: "mirrorglass",
+    name: "Mirrorglass",
+    reason: "Review the finished change for gaps before sealing the mission.",
+    steps: [
+      "Inspect the diff and any user-facing behavior touched by the task.",
+      "Record a decision only when no blocking gap remains.",
+    ],
+  },
+  sealmark: {
+    id: "sealmark",
+    name: "Sealmark",
+    reason: "Capture a replayable handoff once proof and review are satisfied.",
+    steps: [
+      "Persist the mission capsule after the final state transition.",
+      "Report verification evidence and residual risk clearly.",
+    ],
+  },
+  "recovery-loom": {
+    id: "recovery-loom",
+    name: "Recovery Loom",
+    reason: "Recover drifted work without asking the user to restart orchestration.",
+    steps: [
+      "Reclaim dependency-ready stale work with a fresh lease before unrelated edits.",
+      "Hold unsafe work until explicit evidence or user input is available.",
+    ],
+  },
+}
+
 export function createRunicCovenant(): RunicCovenant {
   return {
     id: "runic-covenant",
@@ -215,6 +299,7 @@ export function deriveCovenantControlBrief(
       stage: covenant.stages.find((stage) => stage.id === "frame") ?? covenant.stages[0]!,
       requiredEvidence: [],
       missingEvidence: [],
+      runes: selectControlRunes("frame", []),
       directives: [
         "Wait for a concrete user goal before creating work.",
         "When coding work appears, prepare or resume a mission automatically before mutating files.",
@@ -243,6 +328,7 @@ export function deriveCovenantControlBrief(
     assignedAgentId: active.task.assignedAgentId,
     requiredEvidence,
     missingEvidence,
+    runes: selectControlRunes(stage.id, missingEvidence),
     directives: buildControlDirectives(stage.id, missingEvidence),
   }
 }
@@ -254,6 +340,14 @@ export function buildCovenantControlBrief(
   const brief = deriveCovenantControlBrief(snapshot, covenant)
   const requiredEvidence = brief.requiredEvidence.length > 0 ? brief.requiredEvidence.join(", ") : "none"
   const missingEvidence = brief.missingEvidence.length > 0 ? brief.missingEvidence.join(", ") : "none"
+  const runeLines = brief.runes.length > 0
+    ? brief.runes.flatMap((rune) => {
+        return [
+          `- ${rune.name}: ${rune.reason}`,
+          ...rune.steps.map((step) => `  - ${step}`),
+        ]
+      })
+    : ["- none"]
 
   const missionLines = brief.status === "active"
     ? [
@@ -269,6 +363,8 @@ export function buildCovenantControlBrief(
     ...missionLines,
     `required evidence: ${requiredEvidence}`,
     `missing evidence: ${missingEvidence}`,
+    "Active runes:",
+    ...runeLines,
     "Directives:",
     ...brief.directives.map((directive) => `- ${directive}`),
   ].join("\n")
@@ -416,6 +512,43 @@ function buildControlDirectives(stageId: CovenantStageId, missingEvidence: Evide
     "Frame the goal, inspect relevant repo context, and avoid unnecessary clarification blocks.",
     "Map the work into the mission graph before execution.",
   ]
+}
+
+function selectControlRunes(stageId: CovenantStageId, missingEvidence: EvidenceType[]): CovenantRune[] {
+  const runeIds: CovenantRuneId[] = []
+
+  if (stageId === "frame" || stageId === "map") {
+    runeIds.push("pathfinder")
+  } else if (stageId === "claim") {
+    runeIds.push("claim-ward")
+  } else if (stageId === "forge") {
+    runeIds.push("forge-trace")
+  } else if (stageId === "prove") {
+    runeIds.push("proofwright")
+  } else if (stageId === "review") {
+    runeIds.push("mirrorglass")
+  } else if (stageId === "seal") {
+    runeIds.push("sealmark")
+  } else if (stageId === "recover") {
+    runeIds.push("recovery-loom")
+  }
+
+  if (missingEvidence.length > 0 && stageId !== "recover") {
+    runeIds.push("proofwright")
+  }
+
+  return unique(runeIds).map((runeId) => cloneRune(covenantRunes[runeId]))
+}
+
+function cloneRune(rune: CovenantRune): CovenantRune {
+  return {
+    ...rune,
+    steps: [...rune.steps],
+  }
+}
+
+function unique<T>(items: T[]): T[] {
+  return [...new Set(items)]
 }
 
 function normalizeGoalForTaskTitle(goal: string): string {
