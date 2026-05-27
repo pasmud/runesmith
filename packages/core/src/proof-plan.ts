@@ -5,6 +5,7 @@ import type { Evidence, EvidenceType, MissionGraph, MissionTask } from "./types.
 
 export type ProofPlanStatus = "idle" | "not-needed" | "needs-proof" | "needs-repair"
 export type ProofPlanCommandKind =
+  | "impact-test"
   | "rerun-diagnostic"
   | "rerun-stale-proof"
   | "typecheck"
@@ -24,6 +25,7 @@ export type ProofPlanCommand = {
 export type ProofPlanOptions = {
   packageManager?: string
   scripts?: Record<string, string>
+  repositoryFiles?: string[]
 }
 
 export type ProofPlan = {
@@ -63,9 +65,11 @@ export function deriveProofPlan(
   const diagnostics = evidence.filter((entry) => entry.type === "diagnostic").map((entry) => entry.summary).slice(0, 3)
   const latestDiagnosticCommand = firstDiagnosticCommand(evidence)
   const latestPassingProofCommand = firstPassingTestCommand(evidence)
+  const changedFiles = extractChangedFiles(evidence)
   const needsRepair = pulse.nextAction.id === "repair-diagnostic" || pulse.nextAction.id === "review-faultline"
   const needsTestProof = pulse.missingEvidence.includes("test-result")
   const commands = buildProofCommands({
+    changedFiles,
     latestDiagnosticCommand: needsRepair ? latestDiagnosticCommand : undefined,
     latestStaleProofCommand: needsRepair ? undefined : latestPassingProofCommand,
     needsTestProof,
@@ -126,6 +130,7 @@ function selectProofTarget(
 }
 
 function buildProofCommands(input: {
+  changedFiles: string[]
   latestDiagnosticCommand?: string
   latestStaleProofCommand?: string
   needsTestProof: boolean
@@ -154,6 +159,11 @@ function buildProofCommands(input: {
       evidenceType: "test-result",
     })
   }
+  for (const command of impactProofCommands(input.changedFiles, input.options)) {
+    if (!commands.some((existing) => existing.command === command.command)) {
+      commands.push(command)
+    }
+  }
 
   for (const command of scriptProofCommands(input.options)) {
     if (!commands.some((existing) => existing.command === command.command)) {
@@ -162,6 +172,19 @@ function buildProofCommands(input: {
   }
 
   return commands
+}
+
+function impactProofCommands(changedFiles: string[], options: ProofPlanOptions): ProofPlanCommand[] {
+  const impacts = selectImpactedTests(changedFiles, options.repositoryFiles)
+
+  return impacts.map((impact, index) => ({
+    id: `impact-test-${index + 1}`,
+    kind: "impact-test",
+    label: "Run impacted test",
+    command: testFileCommand(impact.testFile, options.packageManager),
+    reason: `Run the nearest proof target for changed file ${impact.changedFile} before broad verification.`,
+    evidenceType: "test-result",
+  }))
 }
 
 function scriptProofCommands(options: ProofPlanOptions): ProofPlanCommand[] {
@@ -217,6 +240,62 @@ function scriptProofCommands(options: ProofPlanOptions): ProofPlanCommand[] {
   return commands
 }
 
+function selectImpactedTests(
+  changedFiles: string[],
+  repositoryFiles: string[] | undefined,
+): Array<{ changedFile: string; testFile: string }> {
+  const repositoryFileSet = repositoryFiles
+    ? new Set(repositoryFiles.map(normalizePath).filter(Boolean))
+    : undefined
+  const selected: Array<{ changedFile: string; testFile: string }> = []
+  const seen = new Set<string>()
+
+  for (const changedFile of changedFiles.map(normalizePath).filter(Boolean)) {
+    const candidates = isTestFile(changedFile)
+      ? [changedFile]
+      : repositoryFileSet
+        ? sourceTestCandidates(changedFile).filter((candidate) => repositoryFileSet.has(candidate))
+        : []
+
+    for (const candidate of candidates) {
+      if (seen.has(candidate)) continue
+      seen.add(candidate)
+      selected.push({ changedFile, testFile: candidate })
+      break
+    }
+  }
+
+  return selected
+}
+
+function sourceTestCandidates(filePath: string): string[] {
+  const extensionMatch = filePath.match(/\.[cm]?[jt]sx?$/)
+  if (!extensionMatch) return []
+
+  const extension = extensionMatch[0]
+  const withoutExtension = filePath.slice(0, -extension.length)
+  const basename = withoutExtension.split("/").pop()
+  if (!basename || isTestFile(filePath)) return []
+
+  const candidates: string[] = []
+  for (const suffix of [".test", ".spec"]) {
+    candidates.push(`${withoutExtension}${suffix}${extension}`)
+  }
+
+  const srcMarker = "/src/"
+  const srcIndex = filePath.indexOf(srcMarker)
+  if (srcIndex >= 0) {
+    const packageRoot = filePath.slice(0, srcIndex)
+    const relativeSource = withoutExtension.slice(srcIndex + srcMarker.length)
+    for (const suffix of [".test", ".spec"]) {
+      candidates.push(`${packageRoot}/tests/${relativeSource}${suffix}${extension}`)
+      candidates.push(`${packageRoot}/__tests__/${relativeSource}${suffix}${extension}`)
+    }
+  }
+
+  return candidates
+}
+
 function scriptCommand(
   scriptName: "typecheck" | "lint" | "test" | "build",
   packageManager: string | undefined,
@@ -230,6 +309,17 @@ function scriptCommand(
   if (pm === "pnpm") return scriptName === "test" ? "pnpm test" : `pnpm run ${scriptName}`
 
   return scriptName === "test" ? "npm test" : `npm run ${scriptName}`
+}
+
+function testFileCommand(filePath: string, packageManager: string | undefined): string {
+  const pm = normalizePackageManager(packageManager)
+  const target = quoteShellArg(filePath)
+
+  if (pm === "bun") return `bun test ${target}`
+  if (pm === "pnpm") return `pnpm test -- ${target}`
+  if (pm === "yarn") return `yarn test ${target}`
+
+  return `npm test -- ${target}`
 }
 
 function normalizePackageManager(packageManager: string | undefined): "bun" | "npm" | "pnpm" | "yarn" {
@@ -283,6 +373,54 @@ function isPassingTestResult(evidence: Evidence): boolean {
   if (typeof status !== "string") return false
 
   return ["ok", "pass", "passed", "success", "successful"].includes(status.toLowerCase())
+}
+
+function extractChangedFiles(evidence: Evidence[]): string[] {
+  const files: string[] = []
+
+  for (const entry of evidence) {
+    if (entry.type !== "file-change") continue
+
+    for (const candidate of extractFileCandidates(entry.payload)) {
+      const normalized = normalizePath(candidate)
+      if (normalized) files.push(normalized)
+    }
+  }
+
+  return [...new Set(files)]
+}
+
+function extractFileCandidates(payload: Record<string, unknown>): string[] {
+  const values = [
+    payload.filePath,
+    payload.path,
+    payload.file,
+    payload.files,
+    payload.changedFiles,
+    payload.paths,
+  ]
+
+  return values.flatMap((value) => {
+    if (typeof value === "string") return [value]
+    if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === "string")
+
+    return []
+  })
+}
+
+function normalizePath(path: string): string {
+  return path.trim().replace(/\\/g, "/").replace(/^\.\//, "")
+}
+
+function isTestFile(filePath: string): boolean {
+  return /(^|\/)(tests?|__tests__)\/.+\.(test|spec)\.[cm]?[jt]sx?$/.test(filePath)
+    || /\.(test|spec)\.[cm]?[jt]sx?$/.test(filePath)
+}
+
+function quoteShellArg(value: string): string {
+  if (/^[A-Za-z0-9_./:@+-]+$/.test(value)) return value
+
+  return `"${value.replace(/"/g, '\\"')}"`
 }
 
 function sortEvidenceNewest(evidence: Evidence[]): Evidence[] {

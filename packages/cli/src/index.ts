@@ -2,7 +2,7 @@
 
 import { dirname } from "node:path"
 import { pathToFileURL } from "node:url"
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises"
 import {
   advanceRunicMissionLoop,
   createCovenantTaskPlan,
@@ -81,6 +81,7 @@ export type CliCommandResult = {
 export type CliHost = {
   exists(path: string): boolean | Promise<boolean>
   findCommand?(command: string): string | undefined | Promise<string | undefined>
+  listFiles?(): string[] | Promise<string[]>
   readText(path: string): string | Promise<string>
   runCommand?(command: string, args: string[]): CliCommandResult | Promise<CliCommandResult>
   runShellCommand?(command: string): CliCommandResult | Promise<CliCommandResult>
@@ -102,6 +103,9 @@ export function createMemoryHost(initialFiles: Record<string, string> = {}, opti
     },
     findCommand(command: string): string | undefined {
       return options.commands?.[command]
+    },
+    listFiles(): string[] {
+      return [...files.keys()]
     },
     readText(path: string): string {
       const value = files.get(path)
@@ -147,6 +151,9 @@ export function createNodeHost(): CliHost {
       } catch {
         return undefined
       }
+    },
+    listFiles(): Promise<string[]> {
+      return collectRepositoryFiles(".")
     },
     readText(path: string): Promise<string> {
       return readFile(path, "utf8")
@@ -1596,10 +1603,66 @@ async function readProofPlanOptions(host: CliHost): Promise<ProofPlanOptions> {
     return {
       packageManager: typeof manifest.packageManager === "string" ? manifest.packageManager : undefined,
       scripts: isStringRecord(manifest.scripts) ? manifest.scripts : undefined,
+      repositoryFiles: await listRepositoryFiles(host),
     }
   } catch {
     return {}
   }
+}
+
+async function listRepositoryFiles(host: CliHost): Promise<string[] | undefined> {
+  if (!host.listFiles) return undefined
+
+  const files = await host.listFiles()
+
+  return files.map(normalizeRepositoryPath).filter(Boolean)
+}
+
+async function collectRepositoryFiles(root: string): Promise<string[]> {
+  const files: string[] = []
+  await collectRepositoryFilesInto(root, "", files)
+
+  return files
+}
+
+async function collectRepositoryFilesInto(root: string, relativePath: string, files: string[]): Promise<void> {
+  if (files.length >= 10_000) return
+
+  const directory = relativePath ? `${root}/${relativePath}` : root
+  let entries
+  try {
+    entries = await readdir(directory, { withFileTypes: true })
+  } catch {
+    return
+  }
+
+  for (const entry of entries) {
+    const entryName = String(entry.name)
+    if (ignoredRepositoryEntry(entryName)) continue
+
+    const child = relativePath ? `${relativePath}/${entryName}` : entryName
+    if (entry.isDirectory()) {
+      await collectRepositoryFilesInto(root, child, files)
+    } else if (entry.isFile()) {
+      files.push(normalizeRepositoryPath(child))
+    }
+  }
+}
+
+function ignoredRepositoryEntry(name: string): boolean {
+  return [
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    ".next",
+    ".turbo",
+    ".runesmith",
+  ].includes(name)
+}
+
+function normalizeRepositoryPath(path: string): string {
+  return path.trim().replace(/\\/g, "/").replace(/^\.\//, "")
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {

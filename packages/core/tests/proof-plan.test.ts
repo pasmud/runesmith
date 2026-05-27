@@ -98,6 +98,101 @@ describe("proof plan", () => {
     expect(plan.commands.every((command) => command.evidenceType === "test-result")).toBe(true)
   })
 
+  test("starts missing proof with impacted tests from changed test files", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Run impacted proof before broad verification",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed proof planner tests",
+        payload: { files: ["packages/core/tests/proof-plan.test.ts"] },
+        createdAt: fixedNow().toISOString(),
+      },
+    })
+
+    const plan = deriveProofPlan(runtime.snapshot(), { packageManager: "bun@1.3.13", scripts })
+    const prompt = buildProofPlanPrompt(runtime.snapshot(), { packageManager: "bun@1.3.13", scripts })
+
+    expect(plan.commands.map((command) => command.command)).toEqual([
+      "bun test packages/core/tests/proof-plan.test.ts",
+      "bun run typecheck",
+      "bun test",
+      "bun run build",
+    ])
+    expect(plan.commands[0]).toMatchObject({
+      kind: "impact-test",
+      label: "Run impacted test",
+      reason: "Run the nearest proof target for changed file packages/core/tests/proof-plan.test.ts before broad verification.",
+      evidenceType: "test-result",
+    })
+    expect(plan.handoff).toBe("Run proof for task_alpha: bun test packages/core/tests/proof-plan.test.ts -> bun run typecheck -> bun test -> bun run build.")
+    expect(prompt).toContain("1. Run impacted test: bun test packages/core/tests/proof-plan.test.ts")
+  })
+
+  test("maps changed source files to repository-known impacted tests", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Map source change to impacted proof",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed proof planner source",
+        payload: { filePath: "packages/core/src/proof-plan.ts" },
+        createdAt: fixedNow().toISOString(),
+      },
+    })
+
+    const plan = deriveProofPlan(runtime.snapshot(), {
+      packageManager: "bun@1.3.13",
+      scripts,
+      repositoryFiles: [
+        "packages/core/src/proof-plan.ts",
+        "packages/core/tests/proof-plan.test.ts",
+      ],
+    })
+
+    expect(plan.commands.map((command) => command.command)).toEqual([
+      "bun test packages/core/tests/proof-plan.test.ts",
+      "bun run typecheck",
+      "bun test",
+      "bun run build",
+    ])
+    expect(plan.commands[0]).toMatchObject({
+      kind: "impact-test",
+      label: "Run impacted test",
+      reason: "Run the nearest proof target for changed file packages/core/src/proof-plan.ts before broad verification.",
+    })
+  })
+
   test("includes lint when the repository exposes a lint proof script", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

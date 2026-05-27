@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, join, normalize } from "node:path"
 import {
   applyRuntimeControlAction,
@@ -277,10 +277,58 @@ async function readProofPlanOptions(host: RuntimeStoreHost): Promise<ProofPlanOp
     return {
       packageManager: typeof manifest.packageManager === "string" ? manifest.packageManager : undefined,
       scripts: isStringRecord(manifest.scripts) ? manifest.scripts : undefined,
+      repositoryFiles: await collectRepositoryFiles("."),
     }
   } catch {
     return {}
   }
+}
+
+async function collectRepositoryFiles(root: string): Promise<string[]> {
+  const files: string[] = []
+  await collectRepositoryFilesInto(root, "", files)
+
+  return files
+}
+
+async function collectRepositoryFilesInto(root: string, relativePath: string, files: string[]): Promise<void> {
+  if (files.length >= 10_000) return
+
+  const directory = relativePath ? `${root}/${relativePath}` : root
+  let entries
+  try {
+    entries = await readdir(directory, { withFileTypes: true })
+  } catch {
+    return
+  }
+
+  for (const entry of entries) {
+    const entryName = String(entry.name)
+    if (ignoredRepositoryEntry(entryName)) continue
+
+    const child = relativePath ? `${relativePath}/${entryName}` : entryName
+    if (entry.isDirectory()) {
+      await collectRepositoryFilesInto(root, child, files)
+    } else if (entry.isFile()) {
+      files.push(normalizeRepositoryPath(child))
+    }
+  }
+}
+
+function ignoredRepositoryEntry(name: string): boolean {
+  return [
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    ".next",
+    ".turbo",
+    ".runesmith",
+  ].includes(name)
+}
+
+function normalizeRepositoryPath(path: string): string {
+  return path.trim().replace(/\\/g, "/").replace(/^\.\//, "")
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {

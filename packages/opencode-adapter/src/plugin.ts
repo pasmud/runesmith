@@ -54,7 +54,7 @@ import {
 } from "@runesmith/core"
 import { dirname } from "node:path"
 import { spawn } from "node:child_process"
-import { readFileSync } from "node:fs"
+import { readdirSync, readFileSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 
@@ -1915,10 +1915,58 @@ function readPackageProofPlanOptions(): ProofPlanOptions {
     return {
       packageManager: typeof manifest.packageManager === "string" ? manifest.packageManager : undefined,
       scripts: isStringRecord(manifest.scripts) ? manifest.scripts : undefined,
+      repositoryFiles: collectRepositoryFiles("."),
     }
   } catch {
     return {}
   }
+}
+
+function collectRepositoryFiles(root: string): string[] {
+  const files: string[] = []
+  collectRepositoryFilesInto(root, "", files)
+
+  return files
+}
+
+function collectRepositoryFilesInto(root: string, relativePath: string, files: string[]): void {
+  if (files.length >= 10_000) return
+
+  const directory = relativePath ? `${root}/${relativePath}` : root
+  let entries
+  try {
+    entries = readdirSync(directory, { withFileTypes: true })
+  } catch {
+    return
+  }
+
+  for (const entry of entries) {
+    const entryName = String(entry.name)
+    if (ignoredRepositoryEntry(entryName)) continue
+
+    const child = relativePath ? `${relativePath}/${entryName}` : entryName
+    if (entry.isDirectory()) {
+      collectRepositoryFilesInto(root, child, files)
+    } else if (entry.isFile()) {
+      files.push(normalizeRepositoryPath(child))
+    }
+  }
+}
+
+function ignoredRepositoryEntry(name: string): boolean {
+  return [
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    ".next",
+    ".turbo",
+    ".runesmith",
+  ].includes(name)
+}
+
+function normalizeRepositoryPath(path: string): string {
+  return path.trim().replace(/\\/g, "/").replace(/^\.\//, "")
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {

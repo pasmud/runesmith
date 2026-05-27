@@ -548,6 +548,34 @@ describe("opencode adapter", () => {
     ])
   })
 
+  test("discovers impacted tests for OpenCode proof plans without manual configuration", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({ runtime })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Target impacted proof automatically",
+    })
+    await plugin["tool.execute.after"]?.(
+      {
+        tool: "edit",
+        args: { filePath: "packages/core/src/proof-plan.ts" },
+      },
+      {
+        result: { status: "changed" },
+      },
+    )
+
+    const status = await plugin.tool.runesmith_covenant_status.execute({})
+    const parsed = JSON.parse(status.output)
+
+    expect(parsed.value.proofPlan.commands.map((command: any) => command.command)).toContain(
+      "bun test packages/core/tests/proof-plan.test.ts",
+    )
+    expect(parsed.value.runebook.activeCard.commands.map((command: any) => command.command)[0]).toBe(
+      "bun test packages/core/tests/proof-plan.test.ts",
+    )
+  })
+
   test("injects a live Covenant control brief for the active mission", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const plugin = createRunesmithPlugin({ runtime })

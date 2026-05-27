@@ -15,7 +15,7 @@ Do not ask the user to load skills, name workflows, or manually pick a process. 
 - Protocol Deck selects the current method.
 - Runebook selects the executable card.
 - Mission Memory carries the handoff.
-- Proof Plan chooses verification commands.
+- Proof Plan chooses verification commands, including Runescope impacted tests from changed-file evidence when repository files are discoverable.
 - Seal Audit decides whether completion can be claimed.
 - Runeweave runs engine-owned actions until a real stop condition appears.
 
@@ -31,7 +31,7 @@ When a coding goal appears, prepare or resume the Runesmith mission before mutat
 
 ## Completion Discipline
 
-Completion requires current evidence in the runtime capsule. Passing proof must be newer than the latest relevant file change or diagnostic. Unresolved risk requires later decision evidence. Stale leases must be recovered before unrelated work continues.
+Completion requires current evidence in the runtime capsule. Passing proof must be newer than the latest relevant file change or diagnostic. When Proof Plan includes a `Run impacted test` command, run it before broad verification; the engine selected it from captured file changes. Unresolved risk requires later decision evidence. Stale leases must be recovered before unrelated work continues.
 
 If Loop Pulse selects `Review faultline`, stop ordinary patching. Compare the repeated diagnostics, name the architecture or assumption that made local fixes ineffective, choose a redesign/revert/scope split/new hypothesis, call `runesmith_faultline_resolve` with that path, then rerun the focused proof command only after that breakpoint is resolved.
 

@@ -1232,6 +1232,46 @@ describe("runesmith cli", () => {
     )
   })
 
+  test("prove runs repository-discovered impacted tests before broad proof", async () => {
+    const launched: Array<{ command: string }> = []
+    const host = createMemoryHost(
+      {
+        "package.json": JSON.stringify({
+          packageManager: "bun@1.3.13",
+          scripts: {
+            test: "bun test",
+          },
+        }),
+        "packages/core/tests/runtime.test.ts": "",
+        ".runesmith/runtime/capsule.json": JSON.stringify({
+          version: 1,
+          updatedAt: "2026-05-27T00:00:00.000Z",
+          runtime: snapshot,
+        }),
+      },
+      {
+        runShellCommand(command) {
+          launched.push({ command })
+          return {
+            exitCode: 0,
+            stdout: "tests passed\n",
+            stderr: "",
+          }
+        },
+      },
+    )
+
+    const result = await runCli(["prove"], host)
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("- PASS Run impacted test: bun test packages/core/tests/runtime.test.ts")
+    expect(result.stdout).toContain("- PASS Run tests: bun test")
+    expect(launched).toEqual([
+      { command: "bun test packages/core/tests/runtime.test.ts" },
+      { command: "bun test" },
+    ])
+  })
+
   test("next runs the active Runebook action without choosing a low-level command", async () => {
     const launched: Array<{ command: string }> = []
     const host = createMemoryHost(
