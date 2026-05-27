@@ -1675,6 +1675,10 @@ function buildMessageBootstrap(
   const planContract = derivePlanContract(snapshot)
   const dispatchMatrix = deriveDispatchMatrix(snapshot)
   const redlineProof = deriveRedlineProof(snapshot)
+  const missionMemory = deriveMissionMemory(snapshot, covenant)
+  const repairContract = deriveRepairContract(snapshot)
+  const reviewLens = deriveReviewLens(snapshot)
+  const sealAudit = deriveSealAudit(snapshot, proofPlanOptions)
 
   return [
     "<RUNESMITH_BOOTSTRAP>",
@@ -1684,6 +1688,10 @@ function buildMessageBootstrap(
     `Plan Contract: ${planContract.status}; ${planContract.summary}`,
     `Dispatch Matrix: ${dispatchMatrix.status}; ${dispatchMatrix.summary}`,
     `Redline Proof: ${redlineProof.status}; ${redlineProof.summary}`,
+    `Mission Memory: ${missionMemory.status}; ${missionMemory.handoff}`,
+    `Repair Contract: ${repairContract.status}; ${repairContract.summary}`,
+    `Review Lens: ${reviewLens.status}; ${reviewLens.summary}`,
+    `Seal Audit: ${sealAudit.status}; ${sealAudit.summary}`,
     "Let Runesmith choose the procedure from runtime state.",
     "Before mutating coding work, use Runesmith to prepare or resume the active mission.",
     "If Plan Contract is thin, call runesmith_plan_refine with concrete proof-backed slices before broad implementation.",

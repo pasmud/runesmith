@@ -26,7 +26,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - Direct OpenCode plugin startup repairs project config and the runtime capsule when either is missing or invalid, backing up corrupt state and restoring the last known-good capsule when available before recreating usable local OS files.
 - OpenCode compaction carries the mission capsule forward so long sessions do not lose orchestration state.
 - A live Runesmith Control Brief is injected from runtime state so OpenCode sees the active mission, next Covenant stage, and missing proof without user-managed workflow steps.
-- A compact first-user-message bootstrap also carries the current Loop Pulse and active protocol, giving OpenCode a low-bloat fallback when message hooks are more reliable than repeated system prompt injection.
+- A compact first-user-message bootstrap also carries the current Loop Pulse, active protocol, Mission Memory, Repair Contract, Review Lens, and Seal Audit, giving OpenCode a low-bloat fallback when message hooks are more reliable than repeated system prompt injection.
 - The OpenCode config hook registers bundled Runesmith OS reference docs for fallback discovery, while normal coding work stays driven by Loop Pulse, Protocol Deck, Runebook, and tools instead of manual skill loading.
 - A Runesmith Loop Pulse is injected beside the control brief, giving OpenCode and the dashboard one authoritative next action, execution plan, health signal, priority, blockers, and active runes.
 - A Runesmith Runebook is derived from the same pulse, turning the current state into one active procedure card such as `Forge Trace implementation loop`, `Proofwright proof gate`, `Faultwright repair loop`, or `Mirrorglass risk decision`.
@@ -395,7 +395,8 @@ Once installed and OpenCode is restarted, users do not need to invoke a workflow
 - `Runesmith Dispatch Matrix`: injected into system, message bootstrap, compaction context, and `runesmith_covenant_status` so OpenCode sees ready slots, active leases, blockers, and recommended agent contracts without manual orchestration.
 - `Runesmith Scope Sentinel`: injected into system and compaction context so OpenCode sees contract file-scope drift before Review or Seal.
 - `Runesmith Redline Proof`: injected into system, message bootstrap, compaction context, and `runesmith_covenant_status` so OpenCode sees proof-first ordering without the user loading a workflow.
-- `Runesmith Repair Contract`: injected into system and compaction context so OpenCode sees whether a failed proof is awaiting a scoped edit, ready for focused proof, over-broad, proven, or escalated to Faultline.
+- `Runesmith Repair Contract`: injected into system, message bootstrap, and compaction context so OpenCode sees whether a failed proof is awaiting a scoped edit, ready for focused proof, over-broad, proven, or escalated to Faultline.
+- `Runesmith Mission Memory`, `Runesmith Review Lens`, and `Runesmith Seal Audit`: injected into system, message bootstrap, compaction context, and `runesmith_covenant_status` so OpenCode keeps the current handoff, review readiness, and completion gate after restart or prompt compaction.
 - `Runesmith Review Lens`: injected into system and compaction context so OpenCode sees the pre-seal checklist and findings before autonomous Review or Seal.
 - `Runesmith Seal Audit`: injected into system and compaction context so OpenCode does not claim completion until proof, scope, review, and seal-decision checks are satisfied.
 - `tool.execute.before`: auto-prepares and claims a mission before the first mutating/shell tool when message context is available.
