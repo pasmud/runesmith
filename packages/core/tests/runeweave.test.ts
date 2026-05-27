@@ -236,7 +236,7 @@ describe("runeweave OS loop", () => {
         status: "blocked",
         stopReason: "Autonomous review decision held: Resolve critical review findings before seal.",
         stepCount: 1,
-        finalActionId: "review-change",
+        finalActionId: "resolve-blocker",
       },
     })
     if (!result.ok) return

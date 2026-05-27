@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  advanceRunicMissionLoop,
   createCovenantTaskPlan,
   createRuntime,
   deriveLoopPulse,
@@ -414,6 +415,79 @@ describe("loop pulse", () => {
     ])
     expect(prompt).toContain("Risks: Deletes generated user files without confirmation")
     expect(prompt).toContain("Next action: Resolve risk")
+  })
+
+  test("surfaces Decision Guard blockers after autonomous review is held", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Show review guard state",
+      taskPlan: createCovenantTaskPlan("Show review guard state"),
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runtime and environment",
+        payload: { files: ["packages/core/src/loop-pulse.ts", ".env"] },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Loop pulse tests passed",
+        payload: { command: "bun test packages/core/tests/loop-pulse.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    advanceRunicMissionLoop(runtime, {
+      contract: atlas,
+      holder: "loop-pulse-test",
+      idempotencyScope: "loop-pulse-test",
+      ttlMs: 30_000,
+    })
+
+    const pulse = deriveLoopPulse(runtime.snapshot())
+    const prompt = buildLoopPulsePrompt(runtime.snapshot())
+
+    expect(pulse).toMatchObject({
+      status: "active",
+      health: "critical",
+      taskId: "task_alpha_review",
+      missingEvidence: ["decision"],
+      nextAction: {
+        id: "resolve-blocker",
+        label: "Resolve review guard",
+        priority: "critical",
+        reason: "Review Lens blocked: Resolve critical review findings before seal.",
+      },
+    })
+    expect(pulse.blockers).toEqual(
+      expect.arrayContaining([
+        "review guard: .env is outside agent_atlas file scope.",
+        "missing evidence: decision",
+      ]),
+    )
+    expect(pulse.executionPlan.map((step) => step.id)).toEqual([
+      "identify-blocker",
+      "clear-or-hold-blocker",
+    ])
+    expect(prompt).toContain("Next action: Resolve review guard")
+    expect(prompt).toContain("review guard: .env is outside agent_atlas file scope.")
   })
 
   test("prioritizes stale recovery before blocked work", () => {

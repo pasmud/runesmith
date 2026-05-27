@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  advanceRunicMissionLoop,
   buildMissionMemoryPrompt,
   createCovenantTaskPlan,
   createRuntime,
@@ -319,6 +320,75 @@ describe("mission memory", () => {
     expect(prompt).toContain("Status: blocked")
     expect(prompt).toContain("Missing evidence: decision")
     expect(prompt).toContain("Resolve risk for task_alpha")
+  })
+
+  test("carries Decision Guard review blockers in the handoff after reload", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Remember review guard",
+      taskPlan: createCovenantTaskPlan("Remember review guard"),
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed mission memory and environment",
+        payload: { files: ["packages/core/src/mission-memory.ts", ".env"] },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Mission memory tests passed",
+        payload: { command: "bun test packages/core/tests/mission-memory.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    advanceRunicMissionLoop(runtime, {
+      contract: atlas,
+      holder: "mission-memory-test",
+      idempotencyScope: "mission-memory-test",
+      ttlMs: 30_000,
+    })
+
+    const memory = deriveMissionMemory(runtime.snapshot())
+    const prompt = buildMissionMemoryPrompt(runtime.snapshot())
+
+    expect(memory).toMatchObject({
+      status: "blocked",
+      activeTask: {
+        id: "task_alpha_review",
+        status: "running",
+      },
+      proof: {
+        status: "missing",
+        missing: ["decision"],
+      },
+      nextAction: {
+        id: "resolve-blocker",
+        label: "Resolve review guard",
+      },
+      handoff:
+        "Resolve review guard for task_alpha_review: Review Lens blocked: Resolve critical review findings before seal.",
+    })
+    expect(prompt).toContain("Status: blocked")
+    expect(prompt).toContain("Handoff: Resolve review guard for task_alpha_review")
+    expect(prompt).toContain("Missing evidence: decision")
   })
 
   test("distinguishes blocked handoff from stale recovery", () => {

@@ -6,6 +6,7 @@ import {
   type RunicCovenant,
 } from "./covenant.js"
 import { derivePlanContract } from "./plan-contract.js"
+import { deriveReviewLens } from "./review-lens.js"
 import type { RuntimeSnapshot } from "./runtime.js"
 import type { EvidenceType } from "./types.js"
 
@@ -31,6 +32,13 @@ export type LoopPulseAction = {
   label: string
   priority: LoopPulsePriority
   reason: string
+}
+
+type DecisionGuardSignal = {
+  stage: "review" | "seal"
+  label: string
+  reason: string
+  findings: string[]
 }
 
 export type LoopPulsePlanStepStatus = "active" | "queued" | "blocked"
@@ -99,8 +107,9 @@ export function deriveLoopPulse(
     }
   }
 
-  const blockers = buildBlockers(brief.taskId, brief.taskStatus, brief.missingEvidence, brief.diagnostics, brief.risks)
-  const nextAction = selectNextAction(brief, snapshot)
+  const decisionGuard = deriveDecisionGuardSignal(brief, snapshot)
+  const blockers = buildBlockers(brief.taskId, brief.taskStatus, brief.missingEvidence, brief.diagnostics, brief.risks, decisionGuard)
+  const nextAction = selectNextAction(brief, snapshot, decisionGuard)
 
   return {
     status: "active",
@@ -168,6 +177,7 @@ function buildBlockers(
   missingEvidence: EvidenceType[],
   diagnostics: string[],
   risks: string[],
+  decisionGuard: DecisionGuardSignal | undefined,
 ): string[] {
   const blockers: string[] = []
 
@@ -187,16 +197,23 @@ function buildBlockers(
     blockers.push(`risk: ${risk}`)
   }
 
+  if (decisionGuard) {
+    for (const finding of decisionGuard.findings) {
+      blockers.push(`${decisionGuard.stage} guard: ${finding}`)
+    }
+  }
+
   if (missingEvidence.length > 0) {
     blockers.push(`missing evidence: ${missingEvidence.join(", ")}`)
   }
 
-  return blockers
+  return uniqueStrings(blockers)
 }
 
 function selectNextAction(
   brief: ReturnType<typeof deriveCovenantControlBrief>,
   snapshot: RuntimeSnapshot,
+  decisionGuard: DecisionGuardSignal | undefined,
 ): LoopPulseAction {
   if (brief.taskStatus === "stale") {
     return {
@@ -222,6 +239,15 @@ function selectNextAction(
       label: "Resolve risk",
       priority: "critical",
       reason: "Unresolved risk evidence requires an explicit later decision before completion.",
+    }
+  }
+
+  if (decisionGuard) {
+    return {
+      id: "resolve-blocker",
+      label: decisionGuard.label,
+      priority: "critical",
+      reason: decisionGuard.reason,
     }
   }
 
@@ -583,4 +609,56 @@ function shouldRefineThinPlan(
 
 function missionHasEvidence(snapshot: RuntimeSnapshot, missionId: string): boolean {
   return Object.keys(snapshot.ledgers[missionId]?.evidence ?? {}).length > 0
+}
+
+function deriveDecisionGuardSignal(
+  brief: ReturnType<typeof deriveCovenantControlBrief>,
+  snapshot: RuntimeSnapshot,
+): DecisionGuardSignal | undefined {
+  if (!brief.missingEvidence.includes("decision")) return undefined
+
+  const taskTitle = brief.taskTitle?.toLowerCase() ?? ""
+  if (taskTitle.startsWith("review:")) {
+    const lens = deriveReviewLens(snapshot)
+    const blockingChecks = lens.checklist.filter((check) => check.status === "blocked" && check.id !== "review-decision")
+    const criticalFindings = lens.findings.filter((finding) => finding.severity === "critical")
+    if (lens.status === "ready" && blockingChecks.length === 0 && criticalFindings.length === 0) return undefined
+
+    const findings = uniqueStrings([
+      ...criticalFindings.map((finding) => finding.summary),
+      ...blockingChecks.map((check) => check.detail),
+    ])
+
+    return {
+      stage: "review",
+      label: "Resolve review guard",
+      reason: `Review Lens blocked: ${lens.nextAction}`,
+      findings: findings.length > 0 ? findings : [lens.summary],
+    }
+  }
+
+  if (taskTitle.startsWith("seal:") || brief.stage.id === "seal") {
+    const lens = deriveReviewLens(snapshot)
+    const blockingChecks = lens.checklist.filter((check) => check.status === "blocked" && check.id !== "review-decision")
+    const criticalFindings = lens.findings.filter((finding) => finding.severity === "critical")
+    if ((lens.status === "ready" || lens.status === "approved") && blockingChecks.length === 0 && criticalFindings.length === 0) return undefined
+
+    const findings = uniqueStrings([
+      ...criticalFindings.map((finding) => finding.summary),
+      ...blockingChecks.map((check) => check.detail),
+    ])
+
+    return {
+      stage: "seal",
+      label: "Resolve seal guard",
+      reason: `Seal Audit blocked: ${lens.nextAction}`,
+      findings: findings.length > 0 ? findings : [lens.summary],
+    }
+  }
+
+  return undefined
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.filter((value) => value.trim().length > 0))]
 }

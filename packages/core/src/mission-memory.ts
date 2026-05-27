@@ -303,7 +303,7 @@ function buildHandoff(input: {
   }
 
   if (input.status === "blocked") {
-    const label = input.pulse.nextAction.id === "resolve-risk" ? "Resolve risk" : "Resolve blocker"
+    const label = input.pulse.nextAction.label
 
     return `${label} for ${taskId}: ${input.pulse.nextAction.reason}`
   }
