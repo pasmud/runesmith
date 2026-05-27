@@ -4,11 +4,15 @@ import { dirname } from "node:path"
 import { pathToFileURL } from "node:url"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import {
+  createCovenantTaskPlan,
+  createRuntime,
   defaultRuntimeCapsulePath,
   deriveLoopPulse,
   loadRuntimeCapsule,
   saveRuntimeCapsule,
+  type AgentContract,
   type Evidence,
+  type IdFactory,
   type Lease,
   type RuntimeSnapshot,
 } from "@runesmith/core"
@@ -106,6 +110,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     return success(`${lines.join("\n")}${lines.length > 0 ? "\n" : ""}`)
   }
 
+  if (command === "mission" && subcommand === "start") {
+    return startMissionFromCli([maybeId, ...rest].filter((value): value is string => Boolean(value)), host)
+  }
+
   if (command === "mission" && subcommand === "inspect" && maybeId) {
     const snapshot = await readSnapshot(host, rest)
     if (!snapshot.ok) return snapshot.result
@@ -141,7 +149,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     ].join("\n"))
   }
 
-  return failure("Usage: runesmith <up|install|init|doctor|mission list|mission inspect>\n")
+  return failure("Usage: runesmith <up|install|init|doctor|mission start|mission list|mission inspect>\n")
 }
 
 function success(stdout: string): CliResult {
@@ -177,12 +185,34 @@ const emptySnapshot: RuntimeSnapshot = {
   contracts: {},
 }
 
+const cliAtlasContract: AgentContract = {
+  id: "agent_atlas",
+  displayName: "Atlas",
+  description: "Implementation agent for TypeScript, tests, and repository edits.",
+  capabilities: ["typescript", "testing", "repository-maintenance"],
+  allowedTools: ["read", "edit", "bash", "test"],
+  modelPolicy: {
+    primary: "anthropic/claude-sonnet-4.5",
+    fallbacks: ["openai/gpt-5.1-codex"],
+  },
+  fileScope: ["packages/**", "docs/**", "examples/**"],
+  completionCriteria: ["Relevant files changed", "Verification command recorded"],
+  requiredEvidence: ["file-change", "test-result"],
+  fallbacks: ["agent_oracle"],
+}
+
 async function writeProjectConfig(host: CliHost): Promise<void> {
   await host.writeText(".runesmith/config.json", JSON.stringify({
     version: 1,
     runtimeDir: ".runesmith/runtime",
     defaultStaleAfterMs: 120_000,
   }, null, 2))
+}
+
+async function ensureProjectConfig(host: CliHost): Promise<void> {
+  if (await host.exists(".runesmith/config.json")) return
+
+  await writeProjectConfig(host)
 }
 
 async function ensureRuntimeCapsule(host: CliHost): Promise<void> {
@@ -245,6 +275,109 @@ async function readSnapshot(host: CliHost, args: string[]): Promise<SnapshotRead
     ok: true,
     value: JSON.parse(raw) as RuntimeSnapshot,
   }
+}
+
+async function startMissionFromCli(args: string[], host: CliHost): Promise<CliResult> {
+  const goal = parseMissionStartGoal(args)
+  if (!goal) {
+    return failure("Usage: runesmith mission start <goal>\n")
+  }
+
+  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  if (!capsule.ok) {
+    return failure(`${capsule.error.message}\n`)
+  }
+
+  await ensureProjectConfig(host)
+
+  const snapshot = capsule.value?.runtime ?? emptySnapshot
+  const runtime = createRuntime({
+    snapshot,
+    idFactory: createCliIdFactory(snapshot),
+  })
+  runtime.registerContract(cliAtlasContract)
+
+  const started = runtime.startMission({
+    goal,
+    taskPlan: createCovenantTaskPlan(goal),
+  })
+  if (!started.ok) return failure(`${started.error.message}\n`)
+
+  const claimed = runtime.claimTask({
+    missionId: started.value.missionId,
+    taskId: started.value.rootTaskId,
+    contractId: cliAtlasContract.id,
+    holder: "runesmith-cli",
+    idempotencyKey: `cli:${fingerprint(goal)}`,
+    ttlMs: 30_000,
+  })
+  if (!claimed.ok) return failure(`${claimed.error.message}\n`)
+
+  const snapshotAfterClaim = runtime.snapshot()
+  await saveRuntimeCapsule(host, {
+    path: defaultRuntimeCapsulePath,
+    snapshot: snapshotAfterClaim,
+  })
+  const pulse = deriveLoopPulse(snapshotAfterClaim)
+
+  return success([
+    "Mission started",
+    `mission: ${started.value.missionId}`,
+    `task: ${started.value.rootTaskId}`,
+    `lease: ${claimed.value.lease.id}`,
+    `goal: ${goal}`,
+    `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
+    `runtime: ${defaultRuntimeCapsulePath}`,
+    "",
+  ].join("\n"))
+}
+
+function parseMissionStartGoal(args: string[]): string {
+  const goalArgs = args[0] === "--goal" ? args.slice(1) : args
+
+  return goalArgs.join(" ").trim().replace(/\s+/g, " ")
+}
+
+function createCliIdFactory(snapshot: RuntimeSnapshot): IdFactory {
+  const counts = new Map<string, number>()
+  for (const prefix of ["mission", "task", "lease", "event"] as const) {
+    counts.set(prefix, maxExistingCliId(snapshot, prefix))
+  }
+
+  return (prefix) => {
+    const count = (counts.get(prefix) ?? 0) + 1
+    counts.set(prefix, count)
+
+    return `${prefix}_cli_${count}`
+  }
+}
+
+function maxExistingCliId(snapshot: RuntimeSnapshot, prefix: Parameters<IdFactory>[0]): number {
+  const ids = [
+    ...Object.keys(snapshot.graphs),
+    ...Object.values(snapshot.graphs).flatMap((graph) => [
+      ...Object.keys(graph.tasks),
+      ...graph.events.map((event) => event.id),
+    ]),
+    ...Object.keys(snapshot.leases.leases),
+  ]
+  const marker = `${prefix}_cli_`
+
+  return ids.reduce((max, id) => {
+    if (!id.startsWith(marker)) return max
+    const value = Number.parseInt(id.slice(marker.length), 10)
+    return Number.isFinite(value) ? Math.max(max, value) : max
+  }, 0)
+}
+
+function fingerprint(value: string): string {
+  let hash = 0x811c9dc5
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+
+  return (hash >>> 0).toString(36)
 }
 
 function formatMissionEvidence(snapshot: RuntimeSnapshot, missionId: string): string[] {

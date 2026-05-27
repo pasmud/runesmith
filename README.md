@@ -110,9 +110,12 @@ bun run dev:dashboard
 Inspect persisted missions:
 
 ```bash
+bun packages/cli/src/index.ts mission start "Build direct CLI orchestration"
 bun packages/cli/src/index.ts mission list
 bun packages/cli/src/index.ts mission inspect <mission-id>
 ```
+
+`mission start` creates the same default Forge -> Review -> Seal Covenant graph used by OpenCode and the dashboard, registers the Atlas contract, claims the first task with a lease, and saves `.runesmith/runtime/capsule.json`.
 
 `mission inspect` prints the mission status, Loop Pulse next action, required and missing evidence, active runes, task list, evidence ledger entries, and active leases for that mission.
 

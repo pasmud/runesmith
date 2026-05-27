@@ -338,6 +338,60 @@ describe("runesmith cli", () => {
     })
   })
 
+  test("mission start bootstraps a planned covenant mission into the runtime capsule", async () => {
+    const host = createMemoryHost()
+
+    const result = await runCli(["mission", "start", "Build direct CLI orchestration"], host)
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Mission started",
+        "mission: mission_cli_1",
+        "task: task_cli_1",
+        "lease: lease_cli_1",
+        "goal: Build direct CLI orchestration",
+        "next: Continue forge [attention/high]",
+        "runtime: .runesmith/runtime/capsule.json",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+    expect(host.readText(".runesmith/config.json")).toContain("\"runtimeDir\": \".runesmith/runtime\"")
+
+    const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
+    const graph = capsule.runtime.graphs.mission_cli_1
+    expect(graph.mission.goal).toBe("Build direct CLI orchestration")
+    expect(Object.keys(graph.tasks)).toEqual([
+      "task_cli_1",
+      "task_cli_1_review",
+      "task_cli_1_seal",
+    ])
+    expect(graph.tasks.task_cli_1).toMatchObject({
+      status: "running",
+      assignedAgentId: "agent_atlas",
+      requiredEvidence: ["file-change", "test-result"],
+    })
+    expect(capsule.runtime.contracts.agent_atlas.displayName).toBe("Atlas")
+    expect(capsule.runtime.leases.leases.lease_cli_1).toMatchObject({
+      targetId: "task_cli_1",
+      holder: "runesmith-cli",
+      status: "active",
+    })
+  })
+
+  test("mission start requires a goal", async () => {
+    const host = createMemoryHost()
+
+    const result = await runCli(["mission", "start"], host)
+
+    expect(result).toEqual({
+      exitCode: 1,
+      stdout: "",
+      stderr: "Usage: runesmith mission start <goal>\n",
+    })
+  })
+
   test("mission inspect prints graph details from a snapshot", async () => {
     const host = createMemoryHost({
       "snapshot.json": JSON.stringify(snapshot),
