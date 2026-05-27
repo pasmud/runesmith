@@ -1,3 +1,4 @@
+export * from "./agent-mesh.js"
 export * from "./contracts.js"
 export * from "./covenant.js"
 export * from "./dispatch-matrix.js"

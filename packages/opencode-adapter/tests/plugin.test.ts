@@ -42,6 +42,19 @@ function createMemoryRuntimeHost(
 }
 
 describe("opencode adapter", () => {
+  test("registers the default Runesmith agent mesh without user-authored contracts", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    createRunesmithPlugin({ runtime })
+
+    expect(Object.keys(runtime.snapshot().contracts)).toEqual([
+      "agent_atlas",
+      "agent_oracle",
+      "agent_artificer",
+      "agent_scout",
+      "agent_steward",
+    ])
+  })
+
   test("starts missions through adapter tools", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const plugin = createRunesmithPlugin({ runtime })

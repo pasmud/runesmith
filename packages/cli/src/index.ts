@@ -6,9 +6,11 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises"
 import {
   advanceRunicMissionLoop,
   createCovenantTaskPlan,
+  createRunesmithAgentContracts,
   createRuntime,
   defaultProjectConfigPath,
   defaultRuntimeCapsulePath,
+  defaultRunesmithAgentContract,
   deriveDispatchMatrix,
   deriveLoopPulse,
   deriveMissionMap,
@@ -445,20 +447,12 @@ const emptySnapshot: RuntimeSnapshot = {
   contracts: {},
 }
 
-const cliAtlasContract: AgentContract = {
-  id: "agent_atlas",
-  displayName: "Atlas",
-  description: "Implementation agent for TypeScript, tests, and repository edits.",
-  capabilities: ["typescript", "testing", "repository-maintenance"],
-  allowedTools: ["read", "edit", "bash", "test"],
-  modelPolicy: {
-    primary: "anthropic/claude-sonnet-4.5",
-    fallbacks: ["openai/gpt-5.1-codex"],
-  },
-  fileScope: ["packages/**", "docs/**", "examples/**"],
-  completionCriteria: ["Relevant files changed", "Verification command recorded"],
-  requiredEvidence: ["file-change", "test-result"],
-  fallbacks: ["agent_oracle"],
+const cliAtlasContract: AgentContract = defaultRunesmithAgentContract
+
+function registerCliAgentMesh(runtime: ReturnType<typeof createRuntime>): void {
+  for (const contract of createRunesmithAgentContracts()) {
+    runtime.registerContract(contract)
+  }
 }
 
 const defaultOpenCodePackagePluginEntry = "runesmith@git+https://github.com/pasmud/runesmith.git"
@@ -701,7 +695,7 @@ async function runesmithIgnite(args: string[], host: CliHost): Promise<CliResult
     snapshot: capsule.value.runtime,
     idFactory,
   })
-  runtime.registerContract(cliAtlasContract)
+  registerCliAgentMesh(runtime)
 
   const goal = parsed.goal?.trim()
   const ignition = goal
@@ -930,7 +924,7 @@ async function startMissionFromCli(args: string[], host: CliHost): Promise<CliRe
     snapshot,
     idFactory: createCliIdFactory(snapshot),
   })
-  runtime.registerContract(cliAtlasContract)
+  registerCliAgentMesh(runtime)
 
   const started = runtime.startMission({
     goal,
@@ -1030,7 +1024,7 @@ async function recordEvidenceFromCli(args: string[], host: CliHost): Promise<Cli
     snapshot: capsule.value.runtime,
     idFactory,
   })
-  runtime.registerContract(cliAtlasContract)
+  registerCliAgentMesh(runtime)
 
   const evidenceId = input.value.evidenceId ?? idFactory("evidence")
   const recorded = runtime.addTaskEvidence({
@@ -1076,7 +1070,7 @@ async function tickMissionFromCli(host: CliHost): Promise<CliResult> {
     snapshot: capsule.value.runtime,
     idFactory: createCliIdFactory(capsule.value.runtime),
   })
-  runtime.registerContract(cliAtlasContract)
+  registerCliAgentMesh(runtime)
 
   const advanced = advanceRunicMissionLoop(runtime, {
     contract: cliAtlasContract,
@@ -1121,7 +1115,7 @@ async function runProofFromCli(host: CliHost): Promise<CliResult> {
     snapshot: capsule.value.runtime,
     idFactory,
   })
-  runtime.registerContract(cliAtlasContract)
+  registerCliAgentMesh(runtime)
 
   const proofOptions = await readProofPlanOptions(host)
   const proofPlan = deriveProofPlan(runtime.snapshot(), proofOptions)
@@ -1180,7 +1174,7 @@ async function runNextFromCli(args: string[], host: CliHost): Promise<CliResult>
     snapshot: capsule.value.runtime,
     idFactory,
   })
-  runtime.registerContract(cliAtlasContract)
+  registerCliAgentMesh(runtime)
 
   const proofOptions = await readProofPlanOptions(host)
   const next = await runRunebookNext(runtime, {
@@ -1240,7 +1234,7 @@ async function runOsFromCli(args: string[], host: CliHost): Promise<CliResult> {
     snapshot: capsule.value.runtime,
     idFactory,
   })
-  runtime.registerContract(cliAtlasContract)
+  registerCliAgentMesh(runtime)
 
   const proofOptions = await readProofPlanOptions(host)
   const loop = await runRuneweave(runtime, {
@@ -1305,7 +1299,7 @@ async function resolveRiskFromCli(args: string[], host: CliHost): Promise<CliRes
     snapshot: capsule.value.runtime,
     idFactory,
   })
-  runtime.registerContract(cliAtlasContract)
+  registerCliAgentMesh(runtime)
 
   const resolved = resolveRunicRisk(runtime, {
     contract: cliAtlasContract,
@@ -1356,7 +1350,7 @@ async function resolveFaultlineFromCli(args: string[], host: CliHost): Promise<C
     snapshot: capsule.value.runtime,
     idFactory,
   })
-  runtime.registerContract(cliAtlasContract)
+  registerCliAgentMesh(runtime)
 
   const resolved = resolveRunicFaultline(runtime, {
     contract: cliAtlasContract,

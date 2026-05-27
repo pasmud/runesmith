@@ -13,6 +13,7 @@ import {
   deriveRunebook,
   deriveScopeSentinel,
   deriveSealAudit,
+  createRunesmithAgentContractMap,
   getNextCovenantStage,
   type AgentContract,
   type CovenantStage,
@@ -865,7 +866,7 @@ function buildSeededProtocolDeck(tasks: TaskCard[]): RunicProtocolDeck {
 function buildSeededRuntimeSnapshot(tasks: TaskCard[]): RuntimeSnapshot {
   const missionId = "mission_dashboard_seed"
   const now = "2026-05-27T00:00:00.000Z"
-  const contracts = buildSeededAgentContracts(tasks)
+  const contracts = createRunesmithAgentContractMap()
   const evidenceEntries = tasks.flatMap((task) => {
     return task.evidence
       .filter(isEvidenceType)
@@ -903,7 +904,7 @@ function buildSeededRuntimeSnapshot(tasks: TaskCard[]): RuntimeSnapshot {
               title: task.title,
               description: task.summary,
               status: mapMissionStatusToTaskStatus(task.status),
-              requiredCapabilities: [...task.tools],
+              requiredCapabilities: requiredCapabilitiesForSeededTask(task),
               requiredEvidence,
               ...(assignedAgentId ? { assignedAgentId } : {}),
               createdAt: now,
@@ -922,32 +923,6 @@ function buildSeededRuntimeSnapshot(tasks: TaskCard[]): RuntimeSnapshot {
     leases: { leases: buildSeededTaskLeases(tasks, now) },
     contracts,
   }
-}
-
-function buildSeededAgentContracts(tasks: TaskCard[]): Record<string, AgentContract> {
-  return Object.fromEntries(seededAgents.map((agent) => {
-    const assignedTasks = tasks.filter((task) => task.agent === agent.name)
-    const requiredEvidence = uniqueEvidenceTypesForTasks(assignedTasks)
-    const contract: AgentContract = {
-      id: agent.id,
-      displayName: agent.name,
-      description: agent.role,
-      capabilities: [...agent.tools],
-      allowedTools: [...agent.tools],
-      modelPolicy: {
-        primary: agent.model,
-        fallbacks: agent.model.includes("gpt-5.1-codex") ? [] : ["gpt-5.1-codex"],
-      },
-      fileScope: buildSeededFileScope(agent),
-      completionCriteria: assignedTasks.length > 0
-        ? assignedTasks.map((task) => `Complete ${task.title} with ${task.evidence.join(", ") || "decision"} evidence`)
-        : [`Keep ${agent.name} available for matching dispatch slots`],
-      requiredEvidence,
-      fallbacks: agent.id === "agent_oracle" ? [] : ["agent_oracle"],
-    }
-
-    return [agent.id, contract]
-  }))
 }
 
 function buildSeededTaskLeases(tasks: TaskCard[], now: string): RuntimeSnapshot["leases"]["leases"] {
@@ -976,17 +951,13 @@ function findSeededAgentContractId(agentName: string): string | undefined {
   return seededAgents.find((agent) => agent.name === agentName)?.id
 }
 
-function buildSeededFileScope(agent: AgentNode): string[] {
-  if (agent.id === "agent_artificer") return ["packages/dashboard/**"]
-  if (agent.id === "agent_steward") return ["README.md", ".opencode/**", "docs/**"]
-  if (agent.id === "agent_scout") return ["packages/**", ".runesmith/**"]
-  if (agent.id === "agent_oracle") return ["packages/**/tests/**", "packages/**/*.test.ts"]
+function requiredCapabilitiesForSeededTask(task: TaskCard): string[] {
+  if (task.agent === "Artificer") return ["typescript", "ui"]
+  if (task.agent === "Oracle") return ["testing"]
+  if (task.agent === "Scout") return ["diagnostics", "recovery"]
+  if (task.agent === "Steward") return ["repository-maintenance", "release"]
 
-  return ["packages/core/**", "packages/cli/**", "packages/opencode-adapter/**"]
-}
-
-function uniqueEvidenceTypesForTasks(tasks: TaskCard[]): EvidenceType[] {
-  return [...new Set(tasks.flatMap((task) => task.evidence).filter(isEvidenceType))]
+  return ["typescript", "testing"]
 }
 
 function advanceCovenantStage(model: DashboardModel): DashboardModel {

@@ -1066,6 +1066,13 @@ describe("runesmith cli", () => {
       assignedAgentId: "agent_atlas",
       requiredEvidence: ["file-change", "test-result"],
     })
+    expect(Object.keys(capsule.runtime.contracts)).toEqual([
+      "agent_atlas",
+      "agent_oracle",
+      "agent_artificer",
+      "agent_scout",
+      "agent_steward",
+    ])
     expect(capsule.runtime.contracts.agent_atlas.displayName).toBe("Atlas")
     expect(capsule.runtime.leases.leases.lease_cli_1).toMatchObject({
       targetId: "task_cli_1",

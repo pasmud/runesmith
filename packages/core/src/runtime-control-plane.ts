@@ -1,3 +1,4 @@
+import { createRunesmithAgentContracts, defaultRunesmithAgentContract } from "./agent-mesh.js"
 import { createCovenantTaskPlan } from "./covenant.js"
 import { deriveLoopPulse } from "./loop-pulse.js"
 import { deriveProofPlan, type ProofPlanCommand, type ProofPlanOptions } from "./proof-plan.js"
@@ -92,21 +93,7 @@ export type RuntimeControlActionOptions = Pick<RuntimeOptions, "idFactory" | "no
   runProofCommand?: (command: ProofPlanCommand) => Promise<ProofCommandExecution> | ProofCommandExecution
 }
 
-export const defaultRuntimeControlContract: AgentContract = {
-  id: "agent_atlas",
-  displayName: "Atlas",
-  description: "Implementation agent for TypeScript, tests, and repository edits.",
-  capabilities: ["typescript", "testing", "repository-maintenance"],
-  allowedTools: ["read", "edit", "bash", "test"],
-  modelPolicy: {
-    primary: "anthropic/claude-sonnet-4.5",
-    fallbacks: ["openai/gpt-5.1-codex"],
-  },
-  fileScope: ["packages/**", "docs/**", "examples/**"],
-  completionCriteria: ["Relevant files changed", "Verification command recorded"],
-  requiredEvidence: ["file-change", "test-result"],
-  fallbacks: ["agent_oracle"],
-}
+export const defaultRuntimeControlContract: AgentContract = defaultRunesmithAgentContract
 
 const runtimeControlStaleAfterMs = 120_000
 
@@ -120,7 +107,7 @@ export async function applyRuntimeControlAction(
     idFactory: options.idFactory,
     now: options.now,
   })
-  runtime.registerContract(defaultRuntimeControlContract)
+  registerRunesmithAgentMesh(runtime)
 
   if (action.type === "forge-directive") {
     return forgeRuntimeDirective(runtime, action.prompt)
@@ -147,6 +134,12 @@ export async function applyRuntimeControlAction(
   }
 
   return runRuntimeAutopilotCycle(runtime, options)
+}
+
+function registerRunesmithAgentMesh(runtime: ReturnType<typeof createRuntime>): void {
+  for (const contract of createRunesmithAgentContracts()) {
+    runtime.registerContract(contract)
+  }
 }
 
 function forgeRuntimeDirective(

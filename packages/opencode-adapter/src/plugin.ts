@@ -15,8 +15,10 @@ import {
   buildRunebookPrompt,
   buildScopeSentinelPrompt,
   buildSealAuditPrompt,
+  createRunesmithAgentContracts,
   createRuntime,
   createRunicCovenant,
+  defaultRunesmithAgentContract,
   defaultProjectConfigPath,
   deriveDispatchMatrix,
   deriveCovenantControlBrief,
@@ -238,21 +240,7 @@ type OpenCodeEventInput = {
   [key: string]: unknown
 }
 
-const defaultAtlasContract: AgentContract = {
-  id: "agent_atlas",
-  displayName: "Atlas",
-  description: "Implementation agent for TypeScript, tests, and repository edits.",
-  capabilities: ["typescript", "testing", "repository-maintenance"],
-  allowedTools: ["read", "edit", "bash", "test"],
-  modelPolicy: {
-    primary: "anthropic/claude-sonnet-4.5",
-    fallbacks: ["openai/gpt-5.1-codex"],
-  },
-  fileScope: ["packages/**", "docs/**", "examples/**"],
-  completionCriteria: ["Relevant files changed", "Verification command recorded"],
-  requiredEvidence: ["file-change", "test-result"],
-  fallbacks: ["agent_oracle"],
-}
+const defaultAtlasContract: AgentContract = defaultRunesmithAgentContract
 
 const autopilotStaleAfterMs = 120_000
 const shellProofCaptureLimit = 64_000
@@ -264,7 +252,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
   const proofPlanOptions = resolveProofPlanOptions(options.proofPlanOptions)
   const covenantPrompt = buildCovenantPrompt(covenant)
   const autopilotPrompt = buildAutopilotPrompt()
-  for (const contract of options.contracts ?? [defaultAtlasContract]) {
+  for (const contract of options.contracts ?? createRunesmithAgentContracts()) {
     runtime.registerContract(contract)
   }
 

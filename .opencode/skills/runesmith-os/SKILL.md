@@ -15,6 +15,7 @@ Do not ask the user to load skills, name workflows, or manually pick a process. 
 - Protocol Deck selects the current method.
 - Runebook selects the executable card.
 - Mission Memory carries the handoff.
+- Agent Mesh provides the default Atlas, Oracle, Artificer, Scout, and Steward contracts without user-authored setup.
 - Plan Contract checks whether the engine-owned map is thin, ready, or blocked before broad work starts.
 - Dispatch Matrix selects ready, active, blocked, serial, and parallel dispatch slots from leases, dependencies, and agent contracts.
 - Proof Plan chooses verification commands, including Runescope impacted tests from changed-file evidence when repository files are discoverable.
