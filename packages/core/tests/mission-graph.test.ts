@@ -93,6 +93,46 @@ describe("mission graph", () => {
       rootTaskId: "task_alpha",
       taskCount: 3,
     })
+    expect(result.value.events[1]).toEqual({
+      id: "event_alpha_map",
+      type: "mission.mapped",
+      at: "2026-05-27T00:00:00.000Z",
+      targetId: "mission_alpha",
+      message: "Mission mapped",
+      data: {
+        rootTaskId: "task_alpha",
+        taskCount: 3,
+        tasks: [
+          {
+            id: "task_alpha",
+            key: "forge",
+            title: "Forge: Build zero-touch OpenCode orchestration",
+            description: "Implement the smallest useful change for: Build zero-touch OpenCode orchestration",
+            requiredCapabilities: ["typescript", "testing"],
+            requiredEvidence: ["file-change", "test-result"],
+            dependsOn: [],
+          },
+          {
+            id: "task_alpha_review",
+            key: "review",
+            title: "Review: Build zero-touch OpenCode orchestration",
+            description: "Review the diff, behavior, and residual risk for: Build zero-touch OpenCode orchestration",
+            requiredCapabilities: ["testing"],
+            requiredEvidence: ["decision"],
+            dependsOn: ["task_alpha"],
+          },
+          {
+            id: "task_alpha_seal",
+            key: "seal",
+            title: "Seal: Build zero-touch OpenCode orchestration",
+            description: "Capture the final checkpoint and handoff for: Build zero-touch OpenCode orchestration",
+            requiredCapabilities: ["repository-maintenance"],
+            requiredEvidence: ["decision"],
+            dependsOn: ["task_alpha_review"],
+          },
+        ],
+      },
+    })
   })
 
   test("transitions queued tasks to running", () => {

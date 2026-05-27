@@ -64,6 +64,7 @@ export function createMissionGraph(input: CreateMissionGraphInput) {
   const rootTaskId = idFactory("task")
   const eventId = idFactory("event")
   const taskPlan = input.taskPlan?.length ? input.taskPlan : undefined
+  const plannedTaskIds = taskPlan ? buildPlannedTaskIds(taskPlan, rootTaskId) : undefined
   const tasks = taskPlan
     ? buildPlannedTasks({
         missionId,
@@ -71,6 +72,7 @@ export function createMissionGraph(input: CreateMissionGraphInput) {
         now,
         defaultCapabilities: input.requiredCapabilities ?? [],
         taskPlan,
+        taskIds: plannedTaskIds!,
       })
     : {
         [rootTaskId]: {
@@ -104,6 +106,26 @@ export function createMissionGraph(input: CreateMissionGraphInput) {
         message: "Mission created",
         data: taskPlan ? { rootTaskId, taskCount: taskPlan.length } : { rootTaskId },
       },
+      ...(taskPlan && plannedTaskIds
+        ? [
+            {
+              id: `${eventId}_map`,
+              type: "mission.mapped",
+              at: now,
+              targetId: missionId,
+              message: "Mission mapped",
+              data: {
+                rootTaskId,
+                taskCount: taskPlan.length,
+                tasks: buildMissionMapTasks({
+                  taskPlan,
+                  taskIds: plannedTaskIds,
+                  tasks,
+                }),
+              },
+            },
+          ]
+        : []),
     ],
   }
 
@@ -173,16 +195,11 @@ function buildPlannedTasks(input: {
   now: string
   defaultCapabilities: string[]
   taskPlan: MissionTaskPlanItem[]
+  taskIds: Map<string, string>
 }): Record<string, MissionTask> {
-  const taskIds = new Map(
-    input.taskPlan.map((item, index) => {
-      return [item.key, index === 0 ? input.rootTaskId : `${input.rootTaskId}_${normalizePlanKey(item.key)}`]
-    }),
-  )
-
   return Object.fromEntries(
     input.taskPlan.map((item, index) => {
-      const id = taskIds.get(item.key)!
+      const id = input.taskIds.get(item.key)!
       const task: MissionTask = {
         id,
         missionId: input.missionId,
@@ -192,7 +209,7 @@ function buildPlannedTasks(input: {
         status: "queued",
         requiredCapabilities: item.requiredCapabilities ?? input.defaultCapabilities,
         requiredEvidence: item.requiredEvidence ? [...item.requiredEvidence] : undefined,
-        dependsOn: item.dependsOn?.map((dependencyKey) => taskIds.get(dependencyKey) ?? dependencyKey),
+        dependsOn: item.dependsOn?.map((dependencyKey) => input.taskIds.get(dependencyKey) ?? dependencyKey),
         createdAt: input.now,
         updatedAt: input.now,
       }
@@ -200,6 +217,35 @@ function buildPlannedTasks(input: {
       return [id, task]
     }),
   )
+}
+
+function buildPlannedTaskIds(taskPlan: MissionTaskPlanItem[], rootTaskId: string): Map<string, string> {
+  return new Map(
+    taskPlan.map((item, index) => {
+      return [item.key, index === 0 ? rootTaskId : `${rootTaskId}_${normalizePlanKey(item.key)}`]
+    }),
+  )
+}
+
+function buildMissionMapTasks(input: {
+  taskPlan: MissionTaskPlanItem[]
+  taskIds: Map<string, string>
+  tasks: Record<string, MissionTask>
+}): Array<Record<string, unknown>> {
+  return input.taskPlan.map((item) => {
+    const id = input.taskIds.get(item.key)!
+    const task = input.tasks[id]!
+
+    return {
+      id,
+      key: item.key,
+      title: task.title,
+      description: task.description,
+      requiredCapabilities: [...task.requiredCapabilities],
+      requiredEvidence: [...(task.requiredEvidence ?? [])],
+      dependsOn: [...(task.dependsOn ?? [])],
+    }
+  })
 }
 
 function normalizePlanKey(key: string): string {

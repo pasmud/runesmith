@@ -10,7 +10,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - Tasks cannot complete without evidence.
 - Recovery policies can detect stale or unsafe work before it silently disappears.
 - The Runic Covenant is injected automatically so agents frame, map, claim, forge, prove, repair, review, seal, and recover work without the user babysitting the loop.
-- Runesmith Autopilot prepares a mission from the latest OpenCode user request, creates a Forge -> Review -> Seal task plan, claims the next ready task with a stable lease, and replays the same claim instead of duplicating work.
+- Runesmith Autopilot prepares a mission from the latest OpenCode user request, creates a Forge -> Review -> Seal task plan, records a durable `mission.mapped` trace, claims the next ready task with a stable lease, and replays the same claim instead of duplicating work.
 - The first mutating OpenCode tool can auto-start orchestration, so the agent does not have to remember a manual mission-start step before editing.
 - OpenCode idle events can also prepare the first mission from chat context, so a session can enter the orchestration loop before any file or shell tool runs.
 - Tool execution evidence is captured automatically from OpenCode shell, test, and file-edit hooks.
@@ -63,6 +63,8 @@ Once the OpenCode plugin is installed, Runesmith injects the Covenant into the c
 
 Each stage has gates and evidence requirements. The point is simple: install once, then let the engine drive end-to-end work through leases, proof, review, snapshots, and recovery.
 
+When Runesmith creates a planned mission, it writes a `mission.mapped` event into the runtime capsule with every Covenant task, dependency, required capability, and evidence gate. That is the Runesmith-native version of explicit agent workflows: the plan is durable, inspectable, and replayable, but it is produced by the engine instead of handed to the user as another manual checklist.
+
 The static Covenant is paired with a live `Runesmith Control Brief`. That brief is derived from the runtime capsule and tells the agent the active mission, active task, next Covenant stage, required evidence, and missing evidence. Failed or unknown test runs stay diagnostic, enter Repair Gate, and keep the loop focused on the latest failing command until passing proof exists.
 
 The Control Brief carries active runes, and the Runebook turns those runes into one concrete procedure card. A card includes autonomy mode (`auto`, `guarded`, or `hold`), trigger, intent, steps, required evidence, exact Proof Plan commands, OpenCode tool hints, and stop conditions. This is the Runesmith-native version of workflow skills: the user does not install, remember, or invoke process names, because the engine derives the card from the runtime capsule.
@@ -81,7 +83,7 @@ Runesmith Next is the default hands-off surface above the Runebook. It reads the
 
 Runeweave is the default OS run loop above Runesmith Next. It repeatedly executes engine-owned Runebook cards with a safety step limit, then stops with a concrete reason: sealed, idle, needs implementation evidence, proof failed, risk held, blocked, or step limit reached. This is the boundary that keeps the product magical without faking autonomy: Runesmith handles leases, recovery, proof, decisions, Review, and Seal; the coding agent still performs creative implementation edits when the active card says `Continue forge`.
 
-Runesmith Autopilot is the OpenCode-facing part of that loop. The plugin injects a short bootstrap that tells the coding agent to call `runesmith_autopilot_prepare` when a real coding goal appears. That tool reads the latest user message when no explicit goal is provided, starts or resumes the matching active mission, creates the default Covenant task graph, claims the next ready task through the lease scheduler, and saves the runtime capsule.
+Runesmith Autopilot is the OpenCode-facing part of that loop. The plugin injects a short bootstrap that tells the coding agent to call `runesmith_autopilot_prepare` when a real coding goal appears. That tool reads the latest user message when no explicit goal is provided, starts or resumes the matching active mission, creates the default Covenant task graph with its mission map trace, claims the next ready task through the lease scheduler, and saves the runtime capsule.
 
 If the agent reaches for a mutating or shell tool before explicitly calling `runesmith_autopilot_prepare`, Runesmith uses `tool.execute.before` to infer the latest user goal, start or resume the mission, and claim the first dependency-ready task. If OpenCode reaches `session.idle` first and includes chat messages, Runesmith uses that same prepare path from the latest user message. Read-only tools are ignored so repo inspection does not create noisy missions.
 

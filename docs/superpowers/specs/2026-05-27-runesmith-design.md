@@ -100,7 +100,7 @@ Responsibilities:
 - `runesmith next`: execute the active Runebook card from the runtime capsule, proving, repairing, recovering, applying a supplied risk decision, or advancing the shared mission loop without requiring users to choose a lower-level command.
 - `runesmith prove`: execute the active Proof Plan from the runtime capsule, record passing commands as `test-result` evidence, record the first failing command as `diagnostic` evidence, and advance the shared mission loop after passing proof.
 - Published packages expose built `dist` entrypoints, keep Bun source imports for local agent execution, and use publishable internal dependency ranges instead of workspace-only dependency specifiers.
-- `runesmith mission start <goal>`: bootstrap local config if needed, create the default Forge -> Review -> Seal Covenant mission, register Atlas, claim the first task, and persist the runtime capsule for OpenCode/dashboard resumption.
+- `runesmith mission start <goal>`: bootstrap local config if needed, create the default Forge -> Review -> Seal Covenant mission, record the `mission.mapped` task/dependency/evidence trace, register Atlas, claim the first task, and persist the runtime capsule for OpenCode/dashboard resumption.
 - `runesmith risk resolve --summary <summary>`: record a decision for the active unresolved risk and advance the shared mission loop without requiring mission or task ids.
 - `runesmith mission evidence <mission-id> <task-id>` and `runesmith mission tick`: record task proof and advance the persisted capsule through the same evidence gate used by OpenCode, including active repair diagnostics and safe autonomous Review and Seal decisions.
 - `runesmith mission list`: print active mission summaries from snapshots.
@@ -355,7 +355,7 @@ Runtime-backed controls:
 
 - `/api/runtime-capsule` reads the local runtime capsule.
 - `/api/runtime-control` accepts dashboard actions and persists the resulting capsule.
-- Command Forge starts a planned Covenant mission from the dashboard directive, registers the default Atlas contract, claims the first task, and saves the capsule.
+- Command Forge starts a planned Covenant mission from the dashboard directive, records the durable mission map trace, registers the default Atlas contract, claims the first task, and saves the capsule.
 - Run OS executes Runeweave through the same router used by OpenCode and CLI, making the primary dashboard action prove, repair, recover, resolve supplied risk decisions, advance, and seal until a stop condition is reached.
 - Run Next executes only the active Runebook card when a single bounded step is needed.
 - Run Proof executes the active Proof Plan on the server side, persists `test-result` or `diagnostic` evidence, and advances the mission loop when the run passes.
