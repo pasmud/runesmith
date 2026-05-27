@@ -1,28 +1,26 @@
-import { useReducer, useState, type CSSProperties, type Dispatch, type FormEvent } from "react"
+import { useReducer, useState, type CSSProperties, type Dispatch, type FormEvent, type ReactNode } from "react"
 import {
   Activity,
   AlertTriangle,
   Archive,
+  Bell,
   Bot,
   Camera,
   CheckCircle2,
   CircleDot,
   Clock3,
   Command,
-  FileCheck2,
   Gauge,
   GitBranch,
   Hammer,
+  Home,
   LayoutDashboard,
-  ListChecks,
   Lock,
-  Network,
   PauseCircle,
-  Radio,
+  Search,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
-  TerminalSquare,
   Zap,
 } from "lucide-react"
 
@@ -43,35 +41,42 @@ import {
 
 const lanes = ["Plan", "Build", "Verify", "Recover"] as const
 
+const appTiles = [
+  { label: "Mission Board", owner: "runesmith-core", view: "missions", icon: LayoutDashboard },
+  { label: "Agent Mesh", owner: "runesmith-runtime", view: "agents", icon: Bot },
+  { label: "Policy Gates", owner: "runesmith-guard", view: "policies", icon: ShieldCheck },
+  { label: "Evidence Ledger", owner: "runesmith-ledger", view: "snapshots", icon: GitBranch },
+] satisfies Array<{ label: string; owner: string; view: DashboardView; icon: typeof LayoutDashboard }>
+
 const navItems = [
-  { view: "missions", label: "Missions", icon: LayoutDashboard },
+  { view: "missions", label: "Home", icon: Home },
   { view: "agents", label: "Agents", icon: Bot },
   { view: "policies", label: "Policies", icon: ShieldCheck },
   { view: "snapshots", label: "Snapshots", icon: GitBranch },
-] satisfies Array<{ view: DashboardView; label: string; icon: typeof LayoutDashboard }>
+] satisfies Array<{ view: DashboardView; label: string; icon: typeof Home }>
 
 const sectionMeta = {
   missions: {
-    eyebrow: "OpenCode Mission OS",
-    title: "Operate the agentic run",
+    title: "Good afternoon",
+    subtitle: "What would you like Runesmith to orchestrate today?",
     status: "Mission board online",
   },
   agents: {
-    eyebrow: "Agent Mesh",
-    title: "Coordinate specialist leases",
+    title: "Agent mesh",
+    subtitle: "Coordinate leases, model policy, and specialist capacity.",
     status: "Capacity routing armed",
   },
   policies: {
-    eyebrow: "Runtime Policy",
-    title: "Enforce autonomy gates",
+    title: "Policy gates",
+    subtitle: "Tune the guardrails that keep agent autonomy honest.",
     status: "Guardrails enforcing",
   },
   snapshots: {
-    eyebrow: "Evidence Ledger",
-    title: "Replay mission state",
+    title: "Evidence ledger",
+    subtitle: "Replay mission checkpoints, artifacts, and recovery anchors.",
     status: "Snapshots indexed",
   },
-} satisfies Record<DashboardView, { eyebrow: string; title: string; status: string }>
+} satisfies Record<DashboardView, { title: string; subtitle: string; status: string }>
 
 const statusIcon = {
   running: Activity,
@@ -81,6 +86,7 @@ const statusIcon = {
 } satisfies Record<MissionStatus, typeof Activity>
 
 type DashboardDispatch = Dispatch<DashboardAction>
+type DashboardModel = ReturnType<typeof buildDashboardModel>
 
 export function App() {
   const [model, dispatch] = useReducer(reduceDashboardModel, undefined, buildDashboardModel)
@@ -95,61 +101,13 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <aside className="sidebar">
-        <div className="brand-lockup">
-          <div className="brand-mark">
-            <Sparkles aria-hidden="true" />
-          </div>
-          <div>
-            <p className="brand-name">Runesmith</p>
-            <p className="brand-subtitle">Orchestration OS</p>
-          </div>
-        </div>
-
-        <nav className="nav-stack" aria-label="Runesmith sections">
-          {navItems.map(({ view, label, icon: Icon }) => (
-            <button
-              aria-current={model.activeView === view ? "page" : undefined}
-              className={model.activeView === view ? "nav-item nav-item-active" : "nav-item"}
-              key={view}
-              onClick={() => dispatch({ type: "select-view", view })}
-              type="button"
-            >
-              <Icon />
-              {label}
-            </button>
-          ))}
-        </nav>
-
-        <Separator />
-
-        <div className="sidebar-block">
-          <p className="eyebrow">Runtime Health</p>
-          <div className="health-row"><span>Readiness</span><Badge tone="verified">{model.operationalScore}%</Badge></div>
-          <div className="health-row"><span>Autonomy mode</span><Badge>{model.mode}</Badge></div>
-          <div className="health-row"><span>Evidence gate</span><Badge tone="verified">armed</Badge></div>
-          <div className="health-row"><span>Stall radar</span><Badge tone={model.metrics.stale > 0 ? "stale" : "verified"}>{model.metrics.stale > 0 ? "watching" : "clear"}</Badge></div>
-        </div>
-
-        <div className="sidebar-block sidebar-compact">
-          <p className="eyebrow">Command Feed</p>
-          {model.commandLog.slice(0, 3).map((item) => (
-            <div className="mini-event" key={item.id}>
-              <span className={`tone-dot tone-dot-${item.tone}`} />
-              <div>
-                <strong>{item.label}</strong>
-                <span>{item.detail}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </aside>
+      <Sidebar dispatch={dispatch} model={model} />
 
       <section className="workspace">
-        <header className="topbar">
+        <header className="workspace-header">
           <div>
-            <p className="eyebrow">{activeSection.eyebrow}</p>
             <h1>{activeSection.title}</h1>
+            <p>{activeSection.subtitle}</p>
           </div>
           <div className="topbar-actions">
             <Button onClick={() => dispatch({ type: "create-snapshot" })} variant="outline">
@@ -160,30 +118,6 @@ export function App() {
             </Button>
           </div>
         </header>
-
-        <section aria-live="polite" className="notice-strip">
-          <Sparkles aria-hidden="true" />
-          <span>{model.notice}</span>
-          <strong>{activeSection.status}</strong>
-        </section>
-
-        <section className="os-overview" aria-label="Runesmith readiness">
-          <div className="score-panel">
-            <div>
-              <p className="eyebrow">Readiness Score</p>
-              <strong>{model.operationalScore}</strong>
-            </div>
-            <div className="score-ring" style={{ "--score": `${model.operationalScore}%` } as CSSProperties}>
-              <Gauge aria-hidden="true" />
-            </div>
-          </div>
-          <div className="metric-grid" aria-label="Mission metrics">
-            <Metric label="Running" status="running" value={model.metrics.running} />
-            <Metric label="Verified" status="verified" value={model.metrics.verified} />
-            <Metric label="Stale" status="stale" value={model.metrics.stale} />
-            <Metric label="Blocked" status="blocked" value={model.metrics.blocked} />
-          </div>
-        </section>
 
         <form className="command-center" onSubmit={forgeDirective}>
           <Command aria-hidden="true" />
@@ -199,21 +133,97 @@ export function App() {
           </Button>
         </form>
 
+        <section aria-live="polite" className="notice-strip">
+          <Sparkles aria-hidden="true" />
+          <span>{model.notice}</span>
+          <strong>{activeSection.status}</strong>
+        </section>
+
         <ActiveView dispatch={dispatch} model={model} />
       </section>
 
-      <Inspector dispatch={dispatch} model={model} />
+      <RightRail dispatch={dispatch} model={model} />
     </main>
   )
 }
 
-function ActiveView({
-  dispatch,
-  model,
-}: {
-  dispatch: DashboardDispatch
-  model: ReturnType<typeof buildDashboardModel>
-}) {
+function Sidebar({ dispatch, model }: { dispatch: DashboardDispatch; model: DashboardModel }) {
+  return (
+    <aside className="sidebar">
+      <div className="brand-lockup">
+        <div>
+          <p className="brand-name">Runesmith <span>OS</span></p>
+        </div>
+        <Sparkles aria-hidden="true" />
+      </div>
+
+      <label className="search-box">
+        <Search aria-hidden="true" />
+        <input aria-label="Search Runesmith" placeholder="Search" />
+        <kbd>⌘K</kbd>
+      </label>
+
+      <nav className="nav-stack" aria-label="Runesmith sections">
+        {navItems.map(({ view, label, icon: Icon }) => (
+          <button
+            aria-current={model.activeView === view ? "page" : undefined}
+            className={model.activeView === view ? "nav-item nav-item-active" : "nav-item"}
+            key={view}
+            onClick={() => dispatch({ type: "select-view", view })}
+            type="button"
+          >
+            <Icon />
+            {label}
+            {view === "missions" && model.metrics.stale > 0 ? <Badge tone="blocked">{model.metrics.stale}</Badge> : null}
+          </button>
+        ))}
+      </nav>
+
+      <Separator />
+
+      <SidebarGroup title="Agents">
+        {model.agents.slice(0, 4).map((agent) => (
+          <button className="sidebar-row" key={agent.id} onClick={() => dispatch({ type: "select-agent", agentId: agent.id })} type="button">
+            <span className="row-avatar">{agent.name[0]}</span>
+            <span>{agent.name}</span>
+          </button>
+        ))}
+      </SidebarGroup>
+
+      <SidebarGroup title="Apps">
+        {appTiles.map(({ icon: Icon, label, view }) => (
+          <button className="sidebar-row" key={label} onClick={() => dispatch({ type: "select-view", view })} type="button">
+            <span className="row-avatar row-avatar-green"><Icon aria-hidden="true" /></span>
+            <span>{label}</span>
+          </button>
+        ))}
+      </SidebarGroup>
+
+      <SidebarGroup title="Artifacts">
+        {model.snapshots.slice(0, 3).map((snapshot) => (
+          <button className="sidebar-row" key={snapshot.id} onClick={() => dispatch({ type: "select-view", view: "snapshots" })} type="button">
+            <span className="row-avatar row-avatar-pink"><Archive aria-hidden="true" /></span>
+            <span>{snapshot.label}</span>
+          </button>
+        ))}
+      </SidebarGroup>
+    </aside>
+  )
+}
+
+function SidebarGroup({ children, title }: { children: ReactNode; title: string }) {
+  return (
+    <section className="sidebar-group">
+      <div className="sidebar-group-title">
+        <span>{title}</span>
+        <span>⌃</span>
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function ActiveView({ dispatch, model }: { dispatch: DashboardDispatch; model: DashboardModel }) {
   if (model.activeView === "agents") {
     return <AgentsView dispatch={dispatch} model={model} />
   }
@@ -226,21 +236,114 @@ function ActiveView({
     return <SnapshotsView dispatch={dispatch} snapshots={model.snapshots} />
   }
 
+  return <HomeView dispatch={dispatch} model={model} />
+}
+
+function HomeView({ dispatch, model }: { dispatch: DashboardDispatch; model: DashboardModel }) {
   return (
-    <>
-      <MissionBoard dispatch={dispatch} model={model} />
-      <TimelinePanel timeline={model.timeline} />
-    </>
+    <section className="home-stack">
+      <section>
+        <SectionHeader action="View all 5" title="Top agents" />
+        <div className="top-agent-grid">
+          {model.agents.slice(0, 4).map((agent) => (
+            <button className="top-agent-card" key={agent.id} onClick={() => dispatch({ type: "select-agent", agentId: agent.id })} type="button">
+              <span className="tile-icon"><Bot aria-hidden="true" /></span>
+              <strong>{agent.name}</strong>
+              <span><i className={`status-dot status-dot-${agent.status}`} />{agent.status}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="home-grid">
+        <div className="panel-card">
+          <SectionHeader action="View all 4" title="Top apps" />
+          <div className="app-list">
+            {appTiles.map(({ icon: Icon, label, owner, view }) => (
+              <button className="app-row" key={label} onClick={() => dispatch({ type: "select-view", view })} type="button">
+                <span className="tile-icon tile-icon-green"><Icon aria-hidden="true" /></span>
+                <span><strong>{label}</strong><small>by {owner}</small></span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="panel-card">
+          <SectionHeader action={`View all ${model.snapshots.length}`} title="Recent artifacts" />
+          <div className="artifact-list">
+            {model.snapshots.slice(0, 3).map((snapshot) => (
+              <button className="artifact-row" key={snapshot.id} onClick={() => dispatch({ type: "select-view", view: "snapshots" })} type="button">
+                <span className="tile-icon tile-icon-pink"><Archive aria-hidden="true" /></span>
+                <span><strong>{snapshot.label}</strong><small>{snapshot.hash}</small></span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="jobs-panel">
+        <SectionHeader action="View all 3" title="Cron Jobs" />
+        <JobRow
+          detail={`Active · Every 30m · by ${model.selectedAgent.name}`}
+          label="Guarded autopilot cycle"
+          onRun={() => dispatch({ type: "run-autopilot-cycle" })}
+          tone="verified"
+        />
+        <JobRow
+          detail={`Active · Stale threshold watch · ${model.metrics.stale} stale`}
+          label="Recovery sweep"
+          onRun={() => dispatch({ type: "recover-stale" })}
+          tone={model.metrics.stale > 0 ? "stale" : "verified"}
+        />
+        <JobRow
+          detail={`Manual · Evidence gate verifier · ${model.metrics.verified} verified`}
+          label="Evidence verifier"
+          onRun={() => dispatch({ type: "run-verifier" })}
+          tone="running"
+        />
+      </section>
+
+      <section className="panel-card">
+        <SectionHeader action="Mission lanes" title="Active work" />
+        <MissionBoard dispatch={dispatch} model={model} />
+      </section>
+    </section>
   )
 }
 
-function MissionBoard({
-  dispatch,
-  model,
+function SectionHeader({ action, title }: { action: string; title: string }) {
+  return (
+    <div className="section-header">
+      <h2>{title}</h2>
+      <span>{action}</span>
+    </div>
+  )
+}
+
+function JobRow({
+  detail,
+  label,
+  onRun,
+  tone,
 }: {
-  dispatch: DashboardDispatch
-  model: ReturnType<typeof buildDashboardModel>
+  detail: string
+  label: string
+  onRun: () => void
+  tone: MissionStatus
 }) {
+  return (
+    <div className="job-row">
+      <span className={`tile-icon tile-icon-${tone}`}><Clock3 aria-hidden="true" /></span>
+      <div>
+        <strong>{label}</strong>
+        <span>{detail}</span>
+      </div>
+      <Button onClick={onRun} size="sm" variant="outline">Run</Button>
+    </div>
+  )
+}
+
+function MissionBoard({ dispatch, model }: { dispatch: DashboardDispatch; model: DashboardModel }) {
   return (
     <section className="mission-board" aria-label="Mission lanes">
       {lanes.map((lane) => (
@@ -267,22 +370,10 @@ function MissionBoard({
   )
 }
 
-function AgentsView({
-  dispatch,
-  model,
-}: {
-  dispatch: DashboardDispatch
-  model: ReturnType<typeof buildDashboardModel>
-}) {
+function AgentsView({ dispatch, model }: { dispatch: DashboardDispatch; model: DashboardModel }) {
   return (
     <section className="view-stack" aria-label="Agent mesh">
-      <div className="view-header">
-        <div>
-          <p className="eyebrow">Mesh Control</p>
-          <h2>Agent leases, capacity, and tool scopes</h2>
-        </div>
-        <Badge tone="verified">{model.agents.filter((agent) => agent.status === "active").length} active</Badge>
-      </div>
+      <ViewHero score={model.operationalScore} status={`${model.agents.filter((agent) => agent.status === "active").length} active`} title="Agent leases, capacity, and tool scopes" />
       <div className="agent-grid">
         {model.agents.map((agent) => (
           <AgentCard
@@ -295,6 +386,20 @@ function AgentsView({
         ))}
       </div>
     </section>
+  )
+}
+
+function ViewHero({ score, status, title }: { score: number; status: string; title: string }) {
+  return (
+    <div className="view-hero">
+      <div>
+        <h2>{title}</h2>
+        <span>{status}</span>
+      </div>
+      <div className="score-ring" style={{ "--score": `${score}%` } as CSSProperties}>
+        <Gauge aria-hidden="true" />
+      </div>
+    </div>
   )
 }
 
@@ -341,22 +446,10 @@ function AgentCard({
   )
 }
 
-function PoliciesView({
-  dispatch,
-  policies,
-}: {
-  dispatch: DashboardDispatch
-  policies: PolicyGate[]
-}) {
+function PoliciesView({ dispatch, policies }: { dispatch: DashboardDispatch; policies: PolicyGate[] }) {
   return (
     <section className="view-stack" aria-label="Policy gates">
-      <div className="view-header">
-        <div>
-          <p className="eyebrow">Guardrail Matrix</p>
-          <h2>Autonomy gates that keep agents honest</h2>
-        </div>
-        <Badge tone="verified">{policies.filter((policy) => policy.enabled).length} enforcing</Badge>
-      </div>
+      <ViewHero score={policies.filter((policy) => policy.enabled).length * 20} status={`${policies.filter((policy) => policy.enabled).length} enforcing`} title="Autonomy gates that keep agents honest" />
       <div className="policy-grid">
         {policies.map((policy) => (
           <article className={policy.enabled ? "policy-card" : "policy-card policy-card-disabled"} key={policy.id}>
@@ -384,19 +477,13 @@ function PoliciesView({
   )
 }
 
-function SnapshotsView({
-  dispatch,
-  snapshots,
-}: {
-  dispatch: DashboardDispatch
-  snapshots: SnapshotRecord[]
-}) {
+function SnapshotsView({ dispatch, snapshots }: { dispatch: DashboardDispatch; snapshots: SnapshotRecord[] }) {
   return (
     <section className="view-stack" aria-label="Mission snapshots">
-      <div className="view-header">
+      <div className="view-hero">
         <div>
-          <p className="eyebrow">Replay Ledger</p>
           <h2>Evidence checkpoints and recovery anchors</h2>
+          <span>{snapshots.length} sealed snapshots</span>
         </div>
         <Button onClick={() => dispatch({ type: "create-snapshot" })} variant="outline">
           <Archive data-icon="inline-start" />Seal checkpoint
@@ -420,115 +507,65 @@ function SnapshotsView({
   )
 }
 
-function TimelinePanel({ timeline }: { timeline: Array<{ id: string; label: string; detail: string; tone: MissionStatus }> }) {
+function RightRail({ dispatch, model }: { dispatch: DashboardDispatch; model: DashboardModel }) {
+  const unread = model.commandLog.length
+
   return (
-    <section className="timeline" aria-label="Runtime timeline">
-      <div className="timeline-header">
-        <ListChecks />
-        <span>Runtime Timeline</span>
-      </div>
-      <div className="timeline-row">
-        {timeline.map((item) => {
-          const Icon = statusIcon[item.tone]
-          return (
-            <div className="timeline-item" key={item.id}>
-              <Icon aria-hidden="true" />
-              <div>
-                <strong>{item.label}</strong>
-                <span>{item.detail}</span>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </section>
-  )
-}
-
-function Inspector({
-  dispatch,
-  model,
-}: {
-  dispatch: DashboardDispatch
-  model: ReturnType<typeof buildDashboardModel>
-}) {
-  return (
-    <aside className="inspector">
-      <div className="inspector-header">
-        <p className="eyebrow">Selected Task</p>
-        <Badge tone={model.selectedTask.status}>{model.selectedTask.status}</Badge>
-      </div>
-      <h2>{model.selectedTask.title}</h2>
-      <p className="inspector-summary">{model.selectedTask.summary}</p>
-
-      <div className="inspector-actions">
-        <Button onClick={() => dispatch({ type: "hold-selected" })} variant="outline">
-          <PauseCircle data-icon="inline-start" />Hold
-        </Button>
-        <Button onClick={() => dispatch({ type: "verify-selected" })}>
-          <CheckCircle2 data-icon="inline-start" />Verify
-        </Button>
-      </div>
-
-      <Separator />
-
-      <section className="detail-stack">
-        <Detail label="Agent" value={model.selectedTask.agent} icon={Bot} />
-        <Detail label="Active lease" value="task.claim / 30s" icon={CircleDot} />
-        <Detail label="Model policy" value="sonnet -> gpt-5.1-codex" icon={TerminalSquare} />
-      </section>
-
-      <section className="operator-card">
-        <div className="operator-title">
-          <Network aria-hidden="true" />
+    <aside className="right-rail">
+      <section className="notifications">
+        <header className="rail-header">
           <div>
-            <span>Focused Agent</span>
-            <strong>{model.selectedAgent.name}</strong>
+            <h2>Notifications</h2>
+            {unread > 0 ? <Badge tone="blocked">{unread}</Badge> : null}
           </div>
-          <Badge>{model.selectedAgent.status}</Badge>
-        </div>
-        <p>{model.selectedAgent.focus}</p>
-        <div className="capacity-track">
-          <span style={{ width: `${model.selectedAgent.capacity}%` }} />
+          <button className="link-button" onClick={() => dispatch({ type: "mark-notifications-read" })} type="button">Mark all read</button>
+        </header>
+        <div className="notification-list">
+          {model.commandLog.length > 0 ? (
+            model.commandLog.slice(0, 5).map((item) => (
+              <article className="notification-item" key={item.id}>
+                <div>
+                  <span className={`notification-pill notification-pill-${item.tone}`}>{item.tone === "blocked" ? "Alert" : item.tone === "stale" ? "Needs input" : "Task"}</span>
+                  <strong>{item.label}</strong>
+                </div>
+                <p>{item.detail}</p>
+                <small>runesmith-os · just now</small>
+                <i />
+              </article>
+            ))
+          ) : (
+            <div className="empty-state">
+              <Bell aria-hidden="true" />
+              <strong>No unread notifications</strong>
+              <span>Command feed is clear.</span>
+            </div>
+          )}
         </div>
       </section>
 
-      <section>
-        <p className="section-title">Evidence</p>
-        <div className="chip-row">
-          {model.selectedTask.evidence.map((item) => <Badge key={item} tone="verified">{item}</Badge>)}
+      <section className="task-panel">
+        <div className="inspector-header">
+          <p className="eyebrow">Selected Task</p>
+          <Badge tone={model.selectedTask.status}>{model.selectedTask.status}</Badge>
         </div>
-      </section>
-
-      <section>
-        <p className="section-title">Allowed Tools</p>
-        <div className="chip-row">
-          {model.selectedTask.tools.map((item) => <Badge key={item}>{item}</Badge>)}
+        <h2>{model.selectedTask.title}</h2>
+        <p>{model.selectedTask.summary}</p>
+        <div className="inspector-actions">
+          <Button onClick={() => dispatch({ type: "hold-selected" })} variant="outline">
+            <PauseCircle data-icon="inline-start" />Hold
+          </Button>
+          <Button onClick={() => dispatch({ type: "verify-selected" })}>
+            <CheckCircle2 data-icon="inline-start" />Verify
+          </Button>
         </div>
-      </section>
-
-      <section>
-        <p className="section-title">OS Gates</p>
-        <div className="gate-stack">
-          <Detail label="Lease mutex" value="exclusive" icon={Lock} />
-          <Detail label="Evidence ledger" value={`${model.snapshots[0]?.evidence ?? 0} proofs`} icon={FileCheck2} />
-          <Detail label="Recovery radar" value={model.metrics.stale > 0 ? "armed" : "clear"} icon={Radio} />
+        <Separator />
+        <div className="detail-stack">
+          <Detail label="Agent" value={model.selectedTask.agent} icon={Bot} />
+          <Detail label="Lease" value="task.claim / 30s" icon={CircleDot} />
+          <Detail label="Policy" value="evidence gated" icon={Lock} />
         </div>
       </section>
     </aside>
-  )
-}
-
-function Metric({ label, status, value }: { label: string; status: MissionStatus; value: number }) {
-  const Icon = statusIcon[status]
-  return (
-    <div className={`metric metric-${status}`}>
-      <Icon aria-hidden="true" />
-      <div>
-        <span>{label}</span>
-        <strong>{value}</strong>
-      </div>
-    </div>
   )
 }
 

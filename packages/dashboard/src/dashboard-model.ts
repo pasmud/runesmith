@@ -96,6 +96,7 @@ export type DashboardAction =
   | { type: "create-snapshot" }
   | { type: "select-agent"; agentId: string }
   | { type: "boost-agent"; agentId: string }
+  | { type: "mark-notifications-read" }
 
 const viewNotice = {
   missions: "Showing mission lanes and task evidence.",
@@ -477,6 +478,13 @@ export function reduceDashboardModel(model: DashboardModel, action: DashboardAct
 
     case "boost-agent":
       return boostAgent(model, action.agentId)
+
+    case "mark-notifications-read":
+      return deriveDashboardModel({
+        ...model,
+        commandLog: [],
+        notice: "Marked command notifications read.",
+      })
   }
 }
 

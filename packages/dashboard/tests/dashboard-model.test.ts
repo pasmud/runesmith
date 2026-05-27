@@ -138,4 +138,13 @@ describe("dashboard model", () => {
     expect(next.selectedAgentId).toBe("agent_scout")
     expect(next.notice).toBe("Focused Scout in the agent mesh.")
   })
+
+  test("marks command notifications as read", () => {
+    const model = buildDashboardModel()
+
+    const next = reduceDashboardModel(model, { type: "mark-notifications-read" })
+
+    expect(next.commandLog).toHaveLength(0)
+    expect(next.notice).toBe("Marked command notifications read.")
+  })
 })
