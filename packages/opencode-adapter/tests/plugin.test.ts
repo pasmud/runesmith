@@ -64,7 +64,7 @@ describe("opencode adapter", () => {
       taskId: "task_alpha",
       type: "test-result",
       summary: "Tests passed",
-      payload: { command: "bun test packages/core/tests" },
+      payload: { command: "bun test packages/core/tests", exitCode: 0 },
       evidenceId: "evidence_test",
     })
 
@@ -336,6 +336,46 @@ describe("opencode adapter", () => {
     expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.status).toBe("complete")
     expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("complete")
     expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.mission.status).toBe("complete")
+  })
+
+  test("does not seal the active task when captured tests fail", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({ runtime })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Hold after failing proof",
+    })
+    await plugin["tool.execute.after"]?.(
+      { tool: "edit" },
+      {
+        args: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+        result: { status: "changed" },
+      },
+    )
+    await plugin["tool.execute.after"]?.(
+      { tool: "bash" },
+      {
+        args: { command: "bun test packages/opencode-adapter/tests/plugin.test.ts" },
+        result: { exitCode: 1, stdout: "", stderr: "1 fail" },
+      },
+    )
+
+    const evidence = Object.values(runtime.snapshot().ledgers.mission_alpha.evidence)
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.status).toBe("running")
+    expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("running")
+    expect(evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "diagnostic",
+          payload: expect.objectContaining({
+            tool: "bash",
+            command: "bun test packages/opencode-adapter/tests/plugin.test.ts",
+            exitCode: 1,
+          }),
+        }),
+      ]),
+    )
+    expect(evidence.some((item) => item.type === "test-result")).toBe(false)
   })
 
   test("autopilot tick completes the active task once captured evidence satisfies the contract", async () => {

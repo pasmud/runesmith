@@ -4,6 +4,7 @@ import {
   createRunicCovenant,
   defaultRuntimeCapsulePath,
   loadRuntimeCapsule,
+  missingRequiredEvidence,
   saveRuntimeCapsule,
   type AgentContract,
   type EvidenceType,
@@ -602,13 +603,9 @@ function getMissingEvidence(
   input: { missionId: string; taskId: string; requiredEvidence: EvidenceType[] },
 ): EvidenceType[] {
   const ledger = snapshot.ledgers[input.missionId]
-  const present = new Set(
-    Object.values(ledger?.evidence ?? {})
-      .filter((evidence) => evidence.taskId === input.taskId)
-      .map((evidence) => evidence.type),
-  )
+  if (!ledger) return input.requiredEvidence
 
-  return input.requiredEvidence.filter((type) => !present.has(type))
+  return missingRequiredEvidence(ledger, input)
 }
 
 function getOpenCodeEventType(input: OpenCodeEventInput): string | undefined {
@@ -672,8 +669,10 @@ function classifyToolEvidence(
 
   if (isShellTool(lowerTool)) {
     const isTest = command ? isTestCommand(command) : false
+    const testPassed = isTest && isPassingExecution(result)
+
     return {
-      type: isTest ? "test-result" : "command-output",
+      type: testPassed ? "test-result" : isTest ? "diagnostic" : "command-output",
       summary: command ? `${tool} ran ${command}` : `${tool} executed`,
       payload: {
         command,
@@ -720,6 +719,16 @@ function isFileMutationTool(tool: string): boolean {
 
 function isShellTool(tool: string): boolean {
   return ["bash", "shell", "terminal", "exec", "command"].some((name) => tool === name || tool.includes(name))
+}
+
+function isPassingExecution(result: Record<string, unknown> | undefined): boolean {
+  const exitCode = extractExitCode(result)
+  if (typeof exitCode === "number") return exitCode === 0
+
+  const status = normalizeGoal(result?.status)
+  if (!status) return false
+
+  return ["ok", "pass", "passed", "success", "successful"].includes(status.toLowerCase())
 }
 
 function isTestCommand(command: string): boolean {

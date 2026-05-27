@@ -74,7 +74,7 @@ describe("dashboard runtime control plane", () => {
         taskId: "task_alpha",
         type: "test-result",
         summary: "Dashboard tests passed",
-        payload: { command: "bun test packages/dashboard/tests" },
+        payload: { command: "bun test packages/dashboard/tests", exitCode: 0 },
         createdAt: fixedNow().toISOString(),
       },
     })

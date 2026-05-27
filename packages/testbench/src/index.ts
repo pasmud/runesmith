@@ -133,7 +133,7 @@ export function runEvidenceGateScenario() {
       taskId: "task_alpha",
       type: "test-result",
       summary: "Tests passed",
-      payload: { command: "bun test packages/core/tests" },
+      payload: { command: "bun test packages/core/tests", exitCode: 0 },
       createdAt: "2026-05-27T00:01:00.000Z",
     },
   })

@@ -179,6 +179,7 @@ Evidence types:
 - `risk`
 
 A task cannot move to `complete` unless its contract-required evidence exists. This is the primary guard against false completion.
+For `test-result` requirements, evidence must prove a passing run, such as `exitCode: 0` or an explicit success status. Failed or unknown test runs are diagnostic context, not completion proof.
 
 ### Runtime Capsule
 
@@ -228,7 +229,7 @@ Runesmith Autopilot is the install-once bridge between OpenCode chat and the run
 
 For zero-touch operation, the adapter also uses `tool.execute.before`. When the first mutating or shell tool is about to run, and no active task exists, Runesmith infers the latest user goal from message context and runs the same prepare path. Read-only tools and Runesmith's own tools are ignored to avoid creating noisy missions.
 
-After a mission is prepared, the `tool.execute.after` hook records routine proof automatically. Shell commands become `command-output` evidence, recognized test commands become `test-result` evidence, and file mutation tools become `file-change` evidence on the active non-terminal task. After recording evidence, the hook runs the evidence-gated advance loop so a task can seal immediately when the required proof exists. Runesmith ignores read-only tools and its own tools to avoid noisy ledgers and feedback loops.
+After a mission is prepared, the `tool.execute.after` hook records routine proof automatically. Shell commands become `command-output` evidence, recognized passing test commands become `test-result` evidence, failed test commands become `diagnostic` evidence, and file mutation tools become `file-change` evidence on the active non-terminal task. After recording evidence, the hook runs the evidence-gated advance loop so a task can seal immediately when the required proof exists. Runesmith ignores read-only tools and its own tools to avoid noisy ledgers and feedback loops.
 
 The `runesmith_autopilot_tick` tool, and the same loop on OpenCode `session.idle` events, checks the active task's assigned contract. If required evidence is missing, it holds with a missing-evidence list. If proof is present, it calls the runtime completion gate and persists the capsule. This keeps the agent loop automatic while preserving evidence-gated completion.
 

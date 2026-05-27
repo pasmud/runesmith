@@ -160,7 +160,7 @@ describe("runesmith runtime", () => {
         taskId: "task_alpha",
         type: "test-result",
         summary: "Core tests passed",
-        payload: { command: "bun test packages/core/tests" },
+        payload: { command: "bun test packages/core/tests", exitCode: 0 },
         createdAt: "2026-05-27T00:01:00.000Z",
       },
     })
@@ -242,7 +242,7 @@ describe("runesmith runtime", () => {
         taskId: "task_alpha",
         type: "test-result",
         summary: "Tests passed",
-        payload: {},
+        payload: { command: "bun test packages/core/tests", exitCode: 0 },
         createdAt: "2026-05-27T00:00:00.000Z",
       },
     })
