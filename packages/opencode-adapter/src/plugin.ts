@@ -1590,8 +1590,12 @@ function extractMessages(value: unknown): unknown[] | undefined {
 
 function extractMessageText(message: Record<string, unknown>): string | undefined {
   const candidates = [message.text, message.content, message.parts]
-  const text = candidates.map(extractTextValue).filter(Boolean).join("\n")
+  const text = stripRunesmithBootstrapBlocks(candidates.map(extractTextValue).filter(Boolean).join("\n"))
   return text.length > 0 ? text : undefined
+}
+
+function stripRunesmithBootstrapBlocks(text: string): string {
+  return text.replace(/<RUNESMITH_BOOTSTRAP>[\s\S]*?<\/RUNESMITH_BOOTSTRAP>/g, "\n")
 }
 
 function extractTextValue(value: unknown): string {

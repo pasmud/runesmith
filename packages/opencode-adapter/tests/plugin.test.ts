@@ -343,6 +343,26 @@ describe("opencode adapter", () => {
     expect(userParts[1].text).toBe("Build a self-driving OpenCode harness")
   })
 
+  test("infers the user goal from bootstrapped OpenCode messages without storing Runesmith bootstrap text", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({ runtime })
+    const output = {
+      messages: [
+        {
+          info: { role: "user" },
+          parts: [{ type: "text", text: "Build a bootstrap-safe mission loop" }],
+        },
+      ],
+    }
+
+    await plugin["experimental.chat.messages.transform"]?.({}, output)
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      messages: output.messages,
+    })
+
+    expect(runtime.snapshot().graphs.mission_alpha.mission.goal).toBe("Build a bootstrap-safe mission loop")
+  })
+
   test("registers bundled Runesmith protocol docs with OpenCode skills config", async () => {
     const plugin = createRunesmithPlugin()
     const config: any = {}
