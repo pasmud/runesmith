@@ -23,6 +23,7 @@ The first production slice includes:
 - A native Runic Covenant workflow layer that installs automatically with the OpenCode plugin and drives frame, map, claim, forge, prove, review, seal, and recovery behavior without manual workflow invocation.
 - A default runtime capsule at `.runesmith/runtime/capsule.json` so mission state survives OpenCode restarts and CLI inspection works without requiring a manual snapshot flag.
 - Runesmith Autopilot hooks for OpenCode system bootstrap and compaction continuity, so the engine can prepare and resume missions without the user loading separate workflow skills.
+- Automatic evidence capture from OpenCode tool execution events for shell commands, test runs, and file edits.
 
 Out of scope for the first slice:
 
@@ -58,6 +59,7 @@ Responsibilities:
 - Register mission tools.
 - Inject the Runic Covenant and Runesmith Autopilot through OpenCode's system transform hook.
 - Inject a mission capsule summary through OpenCode's compaction hook.
+- Record evidence from OpenCode tool execution hooks without requiring the agent to call evidence tools manually for routine shell, test, and file-change proof.
 - Translate OpenCode events into core runtime events.
 - Use the core lease scheduler before sending any internal prompt or continuation.
 - Keep OpenCode-specific types and instability out of `packages/core`.
@@ -219,6 +221,8 @@ Runesmith Autopilot is the install-once bridge between OpenCode chat and the run
 - Persists the runtime capsule after mission creation and claim.
 - Returns mission, task, lease, replay, and agent metadata for subsequent evidence and completion calls.
 
+After a mission is prepared, the `tool.execute.after` hook records routine proof automatically. Shell commands become `command-output` evidence, recognized test commands become `test-result` evidence, and file mutation tools become `file-change` evidence on the active non-terminal task. Runesmith ignores read-only tools and its own tools to avoid noisy ledgers and feedback loops.
+
 The compaction hook appends a mission capsule summary containing active missions, tasks, leases, and evidence counts. This gives continuation sessions enough orchestration state to recover or keep working before starting a new loop.
 
 ### Recovery Policies
@@ -251,6 +255,7 @@ The adapter also exposes documented OpenCode hooks:
 
 - `experimental.chat.system.transform`: injects the Runic Covenant and Runesmith Autopilot bootstrap.
 - `experimental.session.compacting`: appends the current mission capsule summary to compaction context.
+- `tool.execute.after`: records useful command, test, and file-change evidence against the active Runesmith task.
 
 ## Dashboard Direction
 

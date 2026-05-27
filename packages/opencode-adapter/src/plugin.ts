@@ -48,6 +48,7 @@ export type RunesmithPlugin = {
   }
   "experimental.chat.system.transform": (input: unknown, output: OpenCodeSystemOutput) => Promise<void> | void
   "experimental.session.compacting": (input: unknown, output: OpenCodeCompactionOutput) => Promise<void> | void
+  "tool.execute.after": (input: OpenCodeToolInput, output: OpenCodeToolOutput) => Promise<void> | void
 }
 
 export type PluginOptions = RuntimeOptions & {
@@ -113,6 +114,17 @@ type OpenCodeSystemOutput = {
 type OpenCodeCompactionOutput = {
   context?: string[]
   prompt?: string
+}
+
+type OpenCodeToolInput = {
+  tool?: string
+  [key: string]: unknown
+}
+
+type OpenCodeToolOutput = {
+  args?: unknown
+  result?: unknown
+  [key: string]: unknown
 }
 
 const defaultAtlasContract: AgentContract = {
@@ -336,6 +348,14 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
     "experimental.session.compacting"(_input, output) {
       appendCompactionContext(output, runtime.snapshot())
     },
+    async "tool.execute.after"(input, output) {
+      await recordToolExecutionEvidence({
+        runtime,
+        runtimeStore: options.runtimeStore,
+        input,
+        output,
+      })
+    },
   }
 }
 
@@ -410,12 +430,242 @@ async function prepareAutopilotMission(input: PrepareAutopilotMissionInput): Pro
   })
 }
 
+type RecordToolExecutionEvidenceInput = {
+  runtime: RunesmithRuntime
+  runtimeStore?: PluginRuntimeStore
+  input: OpenCodeToolInput
+  output: OpenCodeToolOutput
+}
+
+async function recordToolExecutionEvidence(input: RecordToolExecutionEvidenceInput): Promise<void> {
+  const tool = normalizeGoal(input.input.tool)
+  if (!tool || tool.startsWith("runesmith_")) return
+
+  const snapshot = input.runtime.snapshot()
+  const target = selectActiveTask(snapshot)
+  if (!target) return
+
+  const args = asRecord(input.output.args) ?? {}
+  const result = asRecord(input.output.result) ?? asRecord(input.output)
+  const evidence = classifyToolEvidence(tool, args, result)
+  if (!evidence) return
+
+  const recorded = input.runtime.addTaskEvidence({
+    missionId: target.missionId,
+    evidence: {
+      id: buildAutomaticEvidenceId(tool, target.taskId, args, result),
+      taskId: target.taskId,
+      type: evidence.type,
+      summary: evidence.summary,
+      payload: {
+        tool,
+        ...evidence.payload,
+      },
+      createdAt: new Date().toISOString(),
+    },
+  })
+
+  if (recorded.ok) {
+    await persistRuntime(input.runtimeStore, input.runtime)
+  }
+}
+
+function selectActiveTask(snapshot: RuntimeSnapshot): { missionId: string; taskId: string } | undefined {
+  const terminalMissionStatuses = new Set(["complete", "failed", "cancelled"])
+  const terminalTaskStatuses = new Set(["complete", "failed", "cancelled"])
+  const statusRank: Record<string, number> = {
+    running: 0,
+    verifying: 1,
+    queued: 2,
+    stale: 3,
+    blocked: 4,
+  }
+
+  return Object.values(snapshot.graphs)
+    .filter((graph) => !terminalMissionStatuses.has(graph.mission.status))
+    .flatMap((graph) => {
+      return Object.values(graph.tasks)
+        .filter((task) => !terminalTaskStatuses.has(task.status))
+        .map((task) => ({
+          missionId: graph.mission.id,
+          taskId: task.id,
+          status: task.status,
+          updatedAt: task.updatedAt,
+        }))
+    })
+    .sort((left, right) => {
+      const statusDelta = (statusRank[left.status] ?? 99) - (statusRank[right.status] ?? 99)
+      if (statusDelta !== 0) return statusDelta
+      return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+    })[0]
+}
+
+function classifyToolEvidence(
+  tool: string,
+  args: Record<string, unknown>,
+  result: Record<string, unknown> | undefined,
+): { type: EvidenceType; summary: string; payload: Record<string, unknown> } | undefined {
+  const lowerTool = tool.toLowerCase()
+  const command = normalizeGoal(args.command)
+  const filePath = extractFilePath(args)
+  const exitCode = extractExitCode(result)
+
+  if (isReadOnlyTool(lowerTool)) return undefined
+
+  if (isFileMutationTool(lowerTool)) {
+    return {
+      type: "file-change",
+      summary: filePath ? `${tool} changed ${filePath}` : `${tool} changed files`,
+      payload: {
+        filePath,
+        args: sanitizeForPayload(args),
+        result: summarizeResult(result),
+      },
+    }
+  }
+
+  if (isShellTool(lowerTool)) {
+    const isTest = command ? isTestCommand(command) : false
+    return {
+      type: isTest ? "test-result" : "command-output",
+      summary: command ? `${tool} ran ${command}` : `${tool} executed`,
+      payload: {
+        command,
+        exitCode,
+        args: sanitizeForPayload(args),
+        result: summarizeResult(result),
+      },
+    }
+  }
+
+  return {
+    type: "command-output",
+    summary: `${tool} executed`,
+    payload: {
+      filePath,
+      exitCode,
+      args: sanitizeForPayload(args),
+      result: summarizeResult(result),
+    },
+  }
+}
+
+function isReadOnlyTool(tool: string): boolean {
+  return [
+    "read",
+    "grep",
+    "glob",
+    "list",
+    "ls",
+    "find",
+    "search",
+  ].some((name) => tool === name || tool.endsWith(`.${name}`))
+}
+
+function isFileMutationTool(tool: string): boolean {
+  return [
+    "edit",
+    "write",
+    "patch",
+    "apply_patch",
+    "multiedit",
+  ].some((name) => tool === name || tool.includes(name))
+}
+
+function isShellTool(tool: string): boolean {
+  return ["bash", "shell", "terminal", "exec", "command"].some((name) => tool === name || tool.includes(name))
+}
+
+function isTestCommand(command: string): boolean {
+  const normalized = command.toLowerCase()
+  return [
+    " test",
+    "bun test",
+    "npm test",
+    "pnpm test",
+    "yarn test",
+    "vitest",
+    "jest",
+    "playwright",
+    "cypress",
+    "cargo test",
+    "go test",
+    "pytest",
+    "rspec",
+  ].some((needle) => normalized.includes(needle.trim()))
+}
+
+function extractFilePath(args: Record<string, unknown>): string | undefined {
+  return normalizeGoal(args.filePath)
+    ?? normalizeGoal(args.file)
+    ?? normalizeGoal(args.path)
+    ?? normalizeGoal(args.target)
+}
+
+function extractExitCode(result: Record<string, unknown> | undefined): number | undefined {
+  const value = result?.exitCode ?? result?.code ?? result?.statusCode
+  return typeof value === "number" ? value : undefined
+}
+
+function summarizeResult(result: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  if (!result) return undefined
+
+  return {
+    exitCode: extractExitCode(result),
+    status: normalizeGoal(result.status),
+    stdout: truncateText(normalizeGoal(result.stdout), 1_000),
+    stderr: truncateText(normalizeGoal(result.stderr), 1_000),
+    output: truncateText(normalizeGoal(result.output), 1_000),
+    message: truncateText(normalizeGoal(result.message), 1_000),
+  }
+}
+
+function sanitizeForPayload(value: unknown): unknown {
+  if (typeof value === "string") return truncateText(value, 1_000)
+  if (typeof value === "number" || typeof value === "boolean" || value === null || value === undefined) return value
+  if (Array.isArray(value)) return value.slice(0, 20).map(sanitizeForPayload)
+
+  const record = asRecord(value)
+  if (!record) return undefined
+
+  return Object.fromEntries(
+    Object.entries(record)
+      .slice(0, 25)
+      .map(([key, entry]) => [key, sanitizeForPayload(entry)]),
+  )
+}
+
+function truncateText(value: string | undefined, maxLength: number): string | undefined {
+  if (!value) return undefined
+  return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value
+}
+
+function buildAutomaticEvidenceId(
+  tool: string,
+  taskId: string,
+  args: Record<string, unknown>,
+  result: Record<string, unknown> | undefined,
+): string {
+  const stableExecutionId = normalizeGoal(result?.id)
+    ?? normalizeGoal(result?.toolCallId)
+    ?? normalizeGoal(result?.callId)
+    ?? normalizeGoal(args.id)
+    ?? normalizeGoal(args.toolCallId)
+    ?? normalizeGoal(args.callId)
+
+  if (stableExecutionId) {
+    return `evidence_auto_${fingerprint(`${taskId}:${tool}:${stableExecutionId}`)}`
+  }
+
+  return `evidence_auto_${fingerprint(`${taskId}:${tool}:${JSON.stringify(sanitizeForPayload(args))}`)}_${crypto.randomUUID()}`
+}
+
 function buildAutopilotPrompt(): string {
   return [
     "## Runesmith Autopilot",
     "Runesmith is installed as the orchestration engine for this OpenCode session.",
     "When the user asks for coding, repo, debugging, UI, or research-to-implementation work, call `runesmith_autopilot_prepare` with the latest user goal or message list before starting edits.",
-    "Continue under the returned mission, task, and lease. Record file-change, command-output, test-result, diagnostic, decision, or risk evidence with `runesmith_task_evidence` as work progresses.",
+    "Continue under the returned mission, task, and lease. Runesmith records shell, test, and file-change tool evidence automatically; use `runesmith_task_evidence` only for decisions, risks, diagnostics, or external proof the tool hooks cannot see.",
     "Do not ask the user to invoke Runesmith, skills, or a workflow by name. Keep the user experience install-once and direct.",
     "Before claiming completion, attach required evidence and use `runesmith_task_complete`; if state looks stale or conflicting, run `runesmith_recover` first.",
   ].join("\n")

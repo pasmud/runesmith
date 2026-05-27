@@ -196,4 +196,66 @@ describe("opencode adapter", () => {
     expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.assignedAgentId).toBe("agent_atlas")
     expect(writes.length).toBeGreaterThanOrEqual(2)
   })
+
+  test("records evidence automatically from OpenCode tool execution events", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const writes: string[] = []
+    const plugin = createRunesmithPlugin({
+      runtime,
+      runtimeStore: {
+        save(snapshot) {
+          writes.push(JSON.stringify(snapshot))
+        },
+      },
+    })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Wire automatic evidence capture",
+    })
+    await plugin["tool.execute.after"]?.(
+      {
+        tool: "bash",
+        sessionID: "session_alpha",
+      },
+      {
+        args: { command: "bun test packages/opencode-adapter/tests/plugin.test.ts" },
+        result: { exitCode: 0, stdout: "6 pass", stderr: "" },
+      },
+    )
+    await plugin["tool.execute.after"]?.(
+      {
+        tool: "edit",
+      },
+      {
+        args: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+        result: { status: "changed" },
+      },
+    )
+
+    const evidence = Object.values(runtime.snapshot().ledgers.mission_alpha.evidence)
+    expect(evidence).toHaveLength(2)
+    expect(evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task_alpha",
+          type: "test-result",
+          summary: expect.stringContaining("bash"),
+          payload: expect.objectContaining({
+            tool: "bash",
+            command: "bun test packages/opencode-adapter/tests/plugin.test.ts",
+            exitCode: 0,
+          }),
+        }),
+        expect.objectContaining({
+          taskId: "task_alpha",
+          type: "file-change",
+          payload: expect.objectContaining({
+            tool: "edit",
+            filePath: "packages/opencode-adapter/src/plugin.ts",
+          }),
+        }),
+      ]),
+    )
+    expect(JSON.parse(writes.at(-1) ?? "{}").ledgers.mission_alpha.evidence).toBeDefined()
+  })
 })

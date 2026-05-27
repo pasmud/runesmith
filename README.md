@@ -11,6 +11,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - Recovery policies can detect stale or unsafe work before it silently disappears.
 - The Runic Covenant is injected automatically so agents frame, map, claim, forge, prove, review, seal, and recover work without the user babysitting the loop.
 - Runesmith Autopilot prepares a mission from the latest OpenCode user request, claims the root task with a stable lease, and replays the same claim instead of duplicating work.
+- Tool execution evidence is captured automatically from OpenCode shell, test, and file-edit hooks.
 - Runtime state is stored in a local capsule so missions survive OpenCode restarts.
 - OpenCode compaction carries the mission capsule forward so long sessions do not lose orchestration state.
 - The dashboard is an operating surface: forge directives, run guarded autopilot, boost agents, toggle policies, and seal evidence snapshots.
@@ -41,6 +42,8 @@ Once the OpenCode plugin is installed, Runesmith injects the Covenant into the c
 Each stage has gates and evidence requirements. The point is simple: install once, then let the engine drive end-to-end work through leases, proof, review, snapshots, and recovery.
 
 Runesmith Autopilot is the OpenCode-facing part of that loop. The plugin injects a short bootstrap that tells the coding agent to call `runesmith_autopilot_prepare` when a real coding goal appears. That tool reads the latest user message when no explicit goal is provided, starts or resumes the matching active mission, claims the mission root through the lease scheduler, and saves the runtime capsule.
+
+After that, Runesmith listens to OpenCode tool execution. Shell commands become `command-output` evidence, test commands become `test-result` evidence, and file-edit tools become `file-change` evidence on the active task. Manual evidence calls are still available for decisions, risks, diagnostics, screenshots, review notes, and proof that happens outside OpenCode tools.
 
 ## Orchestration OS Surface
 
@@ -108,5 +111,6 @@ Once installed and OpenCode is restarted, users do not need to invoke a workflow
 
 - `experimental.chat.system.transform`: injects the Runic Covenant and Runesmith Autopilot bootstrap.
 - `experimental.session.compacting`: appends the current mission capsule to compaction context.
+- `tool.execute.after`: records useful shell, test, and file-change evidence against the active Runesmith task.
 - `runesmith_autopilot_prepare`: starts or resumes the active mission from the latest user goal and claims its root task.
 - Mission tools for status, claim, evidence, completion, covenant status, and recovery.
