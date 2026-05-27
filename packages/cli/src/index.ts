@@ -77,7 +77,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
 
   if (command === "mission" && subcommand === "list") {
     const snapshot = await readSnapshot(host, [maybeId, ...rest].filter((value): value is string => Boolean(value)))
-    if (!snapshot.ok) return snapshot
+    if (!snapshot.ok) return snapshot.result
 
     const lines = Object.values(snapshot.value.graphs).map((graph) => {
       return `${graph.mission.id} ${graph.mission.status} ${graph.mission.goal}`
@@ -88,7 +88,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
 
   if (command === "mission" && subcommand === "inspect" && maybeId) {
     const snapshot = await readSnapshot(host, rest)
-    if (!snapshot.ok) return snapshot
+    if (!snapshot.ok) return snapshot.result
 
     const graph = snapshot.value.graphs[maybeId]
     if (!graph) {
@@ -128,11 +128,24 @@ function failure(stderr: string): CliResult {
   }
 }
 
-async function readSnapshot(host: CliHost, args: string[]): Promise<{ ok: true; value: RuntimeSnapshot } | CliResult> {
+type SnapshotReadResult =
+  | {
+      ok: true
+      value: RuntimeSnapshot
+    }
+  | {
+      ok: false
+      result: CliResult
+    }
+
+async function readSnapshot(host: CliHost, args: string[]): Promise<SnapshotReadResult> {
   const snapshotFlagIndex = args.indexOf("--snapshot")
   const snapshotPath = snapshotFlagIndex >= 0 ? args[snapshotFlagIndex + 1] : undefined
   if (!snapshotPath) {
-    return failure("Missing --snapshot <path>\n")
+    return {
+      ok: false,
+      result: failure("Missing --snapshot <path>\n"),
+    }
   }
 
   const raw = await host.readText(snapshotPath)
