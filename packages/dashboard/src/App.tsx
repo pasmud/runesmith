@@ -701,6 +701,7 @@ function RightRail({ dispatch, model }: { dispatch: DashboardDispatch; model: Da
     <aside className="right-rail">
       <LoopPulsePanel model={model} />
       <MissionMapPanel model={model} />
+      <PlanContractPanel model={model} />
       <ScopeSentinelPanel model={model} />
       <RedlineProofPanel model={model} />
       <RepairContractPanel model={model} />
@@ -811,6 +812,50 @@ function MissionMapPanel({ model }: { model: DashboardModel }) {
             <strong>No map yet</strong>
             <span>Start a mission to create the engine plan.</span>
           </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function PlanContractPanel({ model }: { model: DashboardModel }) {
+  const contract = model.planContract
+  const tone: MissionStatus =
+    contract.status === "blocked"
+      ? "blocked"
+      : contract.status === "thin" || contract.status === "idle"
+        ? "stale"
+        : "verified"
+  const slices = contract.executionSlices.slice(0, 3)
+
+  return (
+    <section className="plan-contract-panel" aria-label="Runesmith plan contract">
+      <div className="inspector-header">
+        <p className="eyebrow">Plan Contract</p>
+        <Badge tone={tone}>{contract.status}</Badge>
+      </div>
+      <div className="plan-contract-head">
+        <span className={`tile-icon tile-icon-${tone}`}><LayoutDashboard aria-hidden="true" /></span>
+        <div>
+          <h2>{contract.goal ?? "Awaiting plan"}</h2>
+          <p>{contract.summary}</p>
+        </div>
+      </div>
+      <div className="plan-contract-facts">
+        <span>{contract.taskCount} tasks</span>
+        <span>{contract.implementationTaskCount} implementation slices</span>
+      </div>
+      <div className="plan-contract-slices" aria-label="Plan contract slices">
+        {slices.length > 0 ? slices.map((slice) => (
+          <span data-status={contract.status} key={slice.id}>
+            <strong>{slice.key}</strong>
+            <small>{slice.title}</small>
+          </span>
+        )) : (
+          <span data-status={contract.status}>
+            <strong>No execution slices</strong>
+            <small>{contract.missing[0] ?? "Start a mission to arm the plan contract."}</small>
+          </span>
         )}
       </div>
     </section>

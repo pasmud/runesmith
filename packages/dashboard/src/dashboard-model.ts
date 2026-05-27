@@ -3,6 +3,7 @@ import {
   deriveMissionMap,
   deriveMissionMemory,
   deriveLoopPulse,
+  derivePlanContract,
   deriveProofPlan,
   deriveRedlineProof,
   deriveRepairContract,
@@ -21,6 +22,7 @@ import {
   type MissionMemory,
   type MissionGraph,
   type MissionMap,
+  type PlanContract,
   type ProofPlan,
   type RedlineProof,
   type RepairContract,
@@ -112,6 +114,7 @@ export type DashboardModel = {
   loopPulse: LoopPulse
   missionMap: MissionMap
   missionMemory: MissionMemory
+  planContract: PlanContract
   proofPlan: ProofPlan
   protocolDeck: RunicProtocolDeck
   redlineProof: RedlineProof
@@ -690,6 +693,9 @@ function deriveDashboardModel(input: {
   const missionMap = input.runtimeSnapshot
     ? deriveMissionMap(input.runtimeSnapshot)
     : buildSeededMissionMap(input.tasks)
+  const planContract = input.runtimeSnapshot
+    ? derivePlanContract(input.runtimeSnapshot)
+    : buildSeededPlanContract(input.tasks)
   const proofPlan = input.runtimeSnapshot
     ? deriveProofPlan(input.runtimeSnapshot)
     : buildSeededProofPlan(input.tasks)
@@ -722,6 +728,7 @@ function deriveDashboardModel(input: {
     loopPulse,
     missionMap,
     missionMemory,
+    planContract,
     proofPlan,
     protocolDeck,
     redlineProof,
@@ -745,6 +752,14 @@ function buildSeededMissionMap(tasks: TaskCard[]): MissionMap {
   }
 
   return deriveMissionMap(buildSeededRuntimeSnapshot(tasks))
+}
+
+function buildSeededPlanContract(tasks: TaskCard[]): PlanContract {
+  if (tasks.length === 0) {
+    return derivePlanContract(emptyRuntimeSnapshot())
+  }
+
+  return derivePlanContract(buildSeededRuntimeSnapshot(tasks))
 }
 
 function buildSeededReviewLens(tasks: TaskCard[]): ReviewLens {

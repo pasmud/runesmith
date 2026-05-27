@@ -12,6 +12,7 @@ import {
   deriveLoopPulse,
   deriveMissionMap,
   deriveMissionMemory,
+  derivePlanContract,
   deriveProofPlan,
   deriveRedlineProof,
   deriveRepairContract,
@@ -39,6 +40,7 @@ import {
   type IdFactory,
   type Lease,
   type MissionMap,
+  type PlanContract,
   type ProofCommandExecution,
   type ProofRunCommandResult,
   type ProofPlanOptions,
@@ -328,6 +330,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     const proofOptions = await readProofPlanOptions(host)
     const pulse = deriveLoopPulse(snapshot.value)
     const missionMap = deriveMissionMap(snapshot.value)
+    const planContract = derivePlanContract(snapshot.value)
     const scopeSentinel = deriveScopeSentinel(snapshot.value)
     const redlineProof = deriveRedlineProof(snapshot.value)
     const repairContract = deriveRepairContract(snapshot.value)
@@ -357,6 +360,9 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
       "Mission map:",
       `Summary: ${missionMap.summary}`,
       ...formatMissionMapTaskLines(missionMap),
+      "Plan contract:",
+      `Status: ${planContract.status}`,
+      `Summary: ${planContract.summary}`,
       "Scope sentinel:",
       `Summary: ${scopeSentinel.summary}`,
       ...formatScopeSentinelChangeLines(scopeSentinel),
@@ -620,6 +626,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
   const proofOptions = await readProofPlanOptions(host)
   const pulse = deriveLoopPulse(snapshot)
   const missionMap = deriveMissionMap(snapshot)
+  const planContract = derivePlanContract(snapshot)
   const scopeSentinel = deriveScopeSentinel(snapshot)
   const redlineProof = deriveRedlineProof(snapshot)
   const repairContract = deriveRepairContract(snapshot)
@@ -643,6 +650,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     `handoff: ${memory.handoff}`,
     `proof plan: ${formatProofPlanCommands(proofPlan)}`,
     `mission map: ${formatMissionMapSummary(missionMap)}`,
+    `plan contract: ${formatPlanContractSummary(planContract)}`,
     `scope sentinel: ${formatScopeSentinelSummary(scopeSentinel)}`,
     `redline proof: ${formatRedlineProofSummary(redlineProof)}`,
     `repair contract: ${formatRepairContractSummary(repairContract)}`,
@@ -1552,6 +1560,10 @@ function formatRedlineProofSummary(redlineProof: RedlineProof): string {
 
 function formatRepairContractSummary(repairContract: RepairContract): string {
   return `${repairContract.status}; ${repairContract.summary}`
+}
+
+function formatPlanContractSummary(planContract: PlanContract): string {
+  return `${planContract.status}; ${planContract.summary}`
 }
 
 function formatReviewLensSummary(lens: ReviewLens): string {

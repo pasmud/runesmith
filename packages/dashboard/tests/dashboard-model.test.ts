@@ -360,6 +360,13 @@ describe("dashboard model", () => {
       summary: "Redline Proof missing for task_live: implementation changed before focused failing proof was captured.",
       implementationChanges: ["packages/dashboard/src/dashboard-model.ts"],
     })
+    expect(model.planContract).toMatchObject({
+      status: "ready",
+      missionId: "mission_live",
+      taskCount: 2,
+      implementationTaskCount: 1,
+      summary: "Plan contract ready for mission_live: 1 focused implementation slice is mapped with proof evidence.",
+    })
     expect(model.repairContract).toMatchObject({
       status: "idle",
       missionId: "mission_live",

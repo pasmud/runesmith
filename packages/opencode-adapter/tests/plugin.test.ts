@@ -202,6 +202,10 @@ describe("opencode adapter", () => {
           status: "idle",
           summary: "No active failed diagnostic is waiting for repair on task_alpha.",
         },
+        planContract: {
+          status: "thin",
+          summary: "Plan contract thin for mission_alpha: Forge/Review/Seal exists, but implementation has no concrete execution slices yet.",
+        },
         sealAudit: {
           status: "collecting-proof",
           missionId: "mission_alpha",
@@ -420,6 +424,7 @@ describe("opencode adapter", () => {
     expect(systemOutput.system.join("\n")).toContain("Runesmith Autopilot")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Mission Memory")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Mission Map")
+    expect(systemOutput.system.join("\n")).toContain("Runesmith Plan Contract")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Scope Sentinel")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Redline Proof")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Repair Contract")
@@ -441,6 +446,7 @@ describe("opencode adapter", () => {
     expect(compactOutput.context.join("\n")).toContain("Runesmith Control Brief")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Mission Memory")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Mission Map")
+    expect(compactOutput.context.join("\n")).toContain("Runesmith Plan Contract")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Scope Sentinel")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Redline Proof")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Repair Contract")
@@ -476,6 +482,7 @@ describe("opencode adapter", () => {
     expect(userParts[0].text).toContain("Runesmith is installed as the OpenCode orchestration OS.")
     expect(userParts[0].text).toContain("Current next action: Wait for goal")
     expect(userParts[0].text).toContain("Active protocol: Pathfinder Intake Protocol")
+    expect(userParts[0].text).toContain("Plan Contract: idle")
     expect(userParts[0].text).toContain("Redline Proof: idle")
     expect(userParts[0].text).toContain("Do not ask the user to load skills or invoke workflows by name.")
     expect(userParts.filter((part) => part.text.includes("<RUNESMITH_BOOTSTRAP>"))).toHaveLength(1)
@@ -616,6 +623,8 @@ describe("opencode adapter", () => {
     expect(prompt).toContain("Active protocol: Forge Trace Protocol [auto]")
     expect(prompt).toContain("Runesmith Mission Map")
     expect(prompt).toContain("Next task: task_alpha")
+    expect(prompt).toContain("Runesmith Plan Contract")
+    expect(prompt).toContain("Plan contract thin for mission_alpha")
     expect(prompt).toContain("Runesmith Redline Proof")
     expect(prompt).toContain("Status: not-applicable")
     expect(prompt).toContain("Runesmith Repair Contract")

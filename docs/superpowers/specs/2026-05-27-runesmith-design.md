@@ -39,6 +39,7 @@ The first production slice includes:
 - A Runesmith Loop Pulse that derives one authoritative next action, compact execution plan, health signal, priority, blockers, required evidence, and active runes from the runtime capsule.
 - A Runesmith Runebook that turns the live Loop Pulse into one active procedure card with autonomy mode, trigger, intent, steps, required evidence, commands, tool hints, and stop conditions.
 - A Runesmith Protocol Deck that turns Loop Pulse state into engine-selected protocols with objective, procedure, verification, forbidden moves, and tool hints, giving Runesmith its own install-once workflow layer instead of relying on external skill names.
+- A Runesmith Plan Contract that classifies the active Mission Map as thin, ready, blocked, or idle; it surfaces concrete execution slices, detects missing proof obligations, and inherits evidence requirements from assigned agent contracts for older capsules.
 - A Runesmith Proof Plan that turns missing proof, stale proof, failed diagnostics, and changed-file impact into exact verification commands across OpenCode, CLI, and dashboard surfaces, including impacted tests and lint when a repository exposes them.
 - A Runesmith Proof Runner that executes the active Proof Plan, records passing proof or failing diagnostics, and advances the shared mission loop when proof passes.
 - A Runesmith Redline Proof signal that checks whether focused failing proof or proof-file evidence preceded implementation edits, surfaces missing discipline in OpenCode, CLI, dashboard, Review Lens, and Seal Audit, and keeps the user path install-once instead of workflow-name driven.
@@ -73,6 +74,7 @@ Responsibilities:
 - Evidence ledger.
 - Recovery policy evaluation.
 - Protocol Deck derivation from Loop Pulse, Runebook, and Proof Plan.
+- Plan Contract derivation from Mission Map, task evidence requirements, and assigned agent contracts.
 - Repair Contract derivation from diagnostic, proof, and file-change evidence.
 - Serialization to and from JSON snapshots.
 
@@ -85,7 +87,7 @@ Responsibilities:
 - Export an OpenCode plugin module.
 - Register mission tools.
 - Inject the Runic Covenant and Runesmith Autopilot through OpenCode's system transform hook.
-- Inject a mission capsule summary through OpenCode's compaction hook.
+- Inject a mission capsule summary, Mission Map, and Plan Contract through OpenCode's system and compaction hooks.
 - Record evidence from OpenCode tool execution hooks without requiring the agent to call evidence tools manually for routine shell, test, and file-change proof.
 - Advance the active mission from idle events through Runeweave and the runtime evidence gate, with automatic Proof Plan execution gated by implementation or repair evidence and stop reasons recorded on the mission graph.
 - Translate OpenCode events into core runtime events.
@@ -106,7 +108,7 @@ Responsibilities:
 - `runesmith init`: create project config.
 - `runesmith doctor`: validate config, runtime capsule, host OpenCode CLI availability, OpenCode plugin wiring, dashboard launch readiness, and an internal Forge -> Review -> Seal loop smoke test; exit nonzero with an actionable repair hint when setup is incomplete.
 - `runesmith install --mode npm`: write only the default git-installable OpenCode package entry for existing projects, while keeping `--package` available for pinned tags, forks, or future registry releases.
-- `runesmith status`: print the current OS state, OpenCode CLI readiness, Loop Pulse next action, execution plan, Mission Map summary, Scope Sentinel status, Redline Proof status, Repair Contract status, Review Lens status, Seal Audit status, active mission and task, missing proof, diagnostics, active runes, active Runebook card, and Proof Plan commands without requiring users to learn the lower-level mission commands.
+- `runesmith status`: print the current OS state, OpenCode CLI readiness, Loop Pulse next action, execution plan, Mission Map summary, Plan Contract status, Scope Sentinel status, Redline Proof status, Repair Contract status, Review Lens status, Seal Audit status, active mission and task, missing proof, diagnostics, active runes, active Runebook card, and Proof Plan commands without requiring users to learn the lower-level mission commands.
 - `runesmith run`: run Runeweave over the runtime capsule until Runesmith seals the mission or stops at implementation work, failed proof, Faultline architecture review, unresolved risk, blocker, idle state, or a safety step limit.
 - `runesmith next`: execute the active Runebook card from the runtime capsule, proving, repairing, recovering, applying a supplied Faultline or risk decision, or advancing the shared mission loop without requiring users to choose a lower-level command.
 - `runesmith prove`: execute the active Proof Plan from the runtime capsule, record passing commands as `test-result` evidence, record the first failing command as `diagnostic` evidence, and advance the shared mission loop after passing proof.
@@ -116,7 +118,7 @@ Responsibilities:
 - `runesmith faultline resolve --summary <summary>`: record an architecture-path decision for the active Faultline breakpoint and return to focused repair proof without requiring mission or task ids.
 - `runesmith mission evidence <mission-id> <task-id>` and `runesmith mission tick`: record task proof and advance the persisted capsule through the same evidence gate used by OpenCode, including active repair diagnostics and safe autonomous Review and Seal decisions.
 - `runesmith mission list`: print active mission summaries from snapshots.
-- `runesmith mission inspect <id>`: print graph, Loop Pulse, Mission Map, Scope Sentinel, Redline Proof, Repair Contract, Review Lens, Seal Audit, Runebook card, Proof Plan, missing proof, active diagnostics, active runes, evidence, leases, and recovery state.
+- `runesmith mission inspect <id>`: print graph, Loop Pulse, Mission Map, Plan Contract, Scope Sentinel, Redline Proof, Repair Contract, Review Lens, Seal Audit, Runebook card, Proof Plan, missing proof, active diagnostics, active runes, evidence, leases, and recovery state.
 
 ### `packages/dashboard`
 
@@ -127,6 +129,7 @@ Responsibilities:
 - Vite React app.
 - shadcn/ui component conventions.
 - OpenClaw OS-inspired structure: workspace sidebar, mission lanes, live evidence, tool/action timeline, agent/session visibility, direct controls.
+- Plan Contract panel showing map quality, implementation-slice count, and current execution slices beside Mission Map.
 - Reads the local runtime capsule through a Vite dev API and falls back to seeded data only when no capsule exists.
 - Exposes a runtime control API for dashboard actions that should persist into the same capsule OpenCode uses.
 
