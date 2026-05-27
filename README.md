@@ -122,7 +122,7 @@ For OpenCode users, the direct path is a single plugin entry:
 }
 ```
 
-Add it to your global or project `opencode.json`, restart OpenCode, and let OpenCode install the package at startup. The repo root exports the Runesmith OpenCode plugin, runs the package build during git-package preparation, and loads the same Runic Covenant, Control Brief, Loop Pulse, Runebook, `runesmith_os_run`, `runesmith_next`, tool hooks, runtime capsule, and evidence-gated autopilot described above.
+Add it to your global or project `opencode.json`, restart OpenCode, and let OpenCode install the package at startup. The repo root exports the Runesmith OpenCode plugin, runs the package build during git-package preparation, creates `.runesmith/runtime/capsule.json` on first load when it is missing, resumes that capsule on later OpenCode starts, and loads the same Runic Covenant, Control Brief, Loop Pulse, Runebook, `runesmith_os_run`, `runesmith_next`, tool hooks, runtime capsule, and evidence-gated autopilot described above.
 
 This is the Runesmith-native version of the useful Superpowers install lesson: one line for the user, automatic behavior inside the harness. Users should not need to manually load skills, invoke workflows, or remember process names for normal coding work.
 
@@ -257,6 +257,8 @@ bun packages/cli/src/index.ts up --mode npm
 bun packages/cli/src/index.ts doctor --mode npm
 
 # Package-only wiring is still available for existing projects.
+# On first OpenCode load, the package plugin also creates the default capsule
+# automatically and then persists every mission mutation there.
 bun packages/cli/src/index.ts install --mode npm
 ```
 

@@ -10,7 +10,7 @@ Add Runesmith to the `plugin` array in your global or project `opencode.json`:
 }
 ```
 
-Restart OpenCode. OpenCode installs package plugins with Bun at startup, then loads the Runesmith plugin entrypoint from this repo.
+Restart OpenCode. OpenCode installs package plugins with Bun at startup, then loads the Runesmith plugin entrypoint from this repo. The package plugin creates `.runesmith/runtime/capsule.json` on first load when it is missing, resumes that capsule on later starts, and persists each mission mutation back into the same file.
 
 ## What Loads
 
@@ -32,6 +32,6 @@ bun packages/cli/src/index.ts risk resolve --summary "Operator accepts the activ
 bun packages/cli/src/index.ts launch -- <opencode args>
 ```
 
-Use plain `up` for a local development shim, or `up --mode npm` to initialize Runesmith and write the direct package plugin entry into OpenCode config.
+Use plain `up` for a local development shim, or `up --mode npm` to initialize Runesmith and write the direct package plugin entry into OpenCode config. Existing projects can also use only the package entry above; Runesmith will bootstrap the default runtime capsule when OpenCode loads the plugin.
 
 Use `bun packages/cli/src/index.ts doctor` when OpenCode does not load the plugin or the runtime capsule looks invalid.

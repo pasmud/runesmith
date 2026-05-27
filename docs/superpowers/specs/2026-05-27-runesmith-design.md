@@ -211,7 +211,7 @@ For `risk` evidence, the ledger opens a human-hold gate. If the latest risk is n
 
 ### Runtime Capsule
 
-The runtime capsule is the default durable state file for a local project. It is a versioned JSON envelope containing graphs, ledgers, leases, and contracts. OpenCode plugin mutations save the capsule after successful mission, claim, evidence, completion, and recovery operations.
+The runtime capsule is the default durable state file for a local project. It is a versioned JSON envelope containing graphs, ledgers, leases, and contracts. The direct OpenCode package plugin creates the default capsule on first load when it is missing, resumes an existing capsule on later starts, and saves plugin mutations after successful mission, claim, evidence, completion, and recovery operations.
 
 Default path:
 

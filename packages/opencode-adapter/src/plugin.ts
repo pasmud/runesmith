@@ -39,6 +39,7 @@ import {
   type RiskResolutionVerdict,
   type RuntimeOptions,
   type RuntimeSnapshot,
+  type RuntimeStoreHost,
 } from "@runesmith/core"
 import { dirname } from "node:path"
 import { exec } from "node:child_process"
@@ -100,6 +101,11 @@ export type PluginOptions = RuntimeOptions & {
 
 export type PluginRuntimeStore = {
   save(snapshot: RuntimeSnapshot): Promise<void> | void
+}
+
+export type OpenCodePluginFactoryOptions = PluginOptions & {
+  host?: RuntimeStoreHost
+  capsulePath?: string
 }
 
 type CovenantStatusArgs = Record<string, never>
@@ -594,22 +600,44 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
   }
 }
 
-export default async function RunesmithOpenCodePlugin(): Promise<RunesmithPlugin> {
-  const host = createNodeRuntimeStoreHost()
-  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
-  const snapshot = capsule.ok ? capsule.value?.runtime : undefined
+export async function createRunesmithOpenCodePlugin(
+  options: OpenCodePluginFactoryOptions = {},
+): Promise<RunesmithPlugin> {
+  const host = options.host ?? createNodeRuntimeStoreHost()
+  const capsulePath = options.capsulePath ?? defaultRuntimeCapsulePath
+  const capsule = await loadRuntimeCapsule(host, capsulePath)
+  const runtime = options.runtime ?? createRuntime({
+    ...options,
+    snapshot: capsule.ok ? capsule.value?.runtime ?? options.snapshot : options.snapshot,
+  })
+  const runtimeStore: PluginRuntimeStore = {
+    async save(nextSnapshot) {
+      await saveRuntimeCapsule(host, {
+        path: capsulePath,
+        snapshot: nextSnapshot,
+      })
+      await options.runtimeStore?.save(nextSnapshot)
+    },
+  }
+
+  if (capsule.ok && !capsule.value) {
+    const snapshot = runtime.snapshot()
+    await saveRuntimeCapsule(host, {
+      path: capsulePath,
+      snapshot,
+    })
+    await options.runtimeStore?.save(snapshot)
+  }
 
   return createRunesmithPlugin({
-    snapshot,
-    runtimeStore: {
-      async save(nextSnapshot) {
-        await saveRuntimeCapsule(host, {
-          path: defaultRuntimeCapsulePath,
-          snapshot: nextSnapshot,
-        })
-      },
-    },
+    ...options,
+    runtime,
+    runtimeStore,
   })
+}
+
+export default async function RunesmithOpenCodePlugin(): Promise<RunesmithPlugin> {
+  return createRunesmithOpenCodePlugin()
 }
 
 type PrepareAutopilotMissionInput = {

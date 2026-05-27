@@ -1,10 +1,38 @@
 import { describe, expect, test } from "bun:test"
 
-import { createRuntime } from "@runesmith/core"
-import { createRunesmithPlugin, type PluginRuntimeStore } from "../src/plugin"
+import {
+  createRuntime,
+  defaultRuntimeCapsulePath,
+  loadRuntimeCapsule,
+  saveRuntimeCapsule,
+  type RuntimeStoreHost,
+} from "@runesmith/core"
+import { createRunesmithOpenCodePlugin, createRunesmithPlugin, type PluginRuntimeStore } from "../src/plugin"
 
 const fixedNow = () => new Date("2026-05-27T00:00:00.000Z")
 const ids = (prefix: string) => `${prefix}_alpha`
+
+function createMemoryRuntimeHost(
+  initialFiles: Record<string, string> = {},
+): RuntimeStoreHost & { files: Map<string, string> } {
+  const files = new Map(Object.entries(initialFiles))
+
+  return {
+    files,
+    exists(path) {
+      return files.has(path)
+    },
+    readText(path) {
+      const value = files.get(path)
+      if (value === undefined) throw new Error(`missing file: ${path}`)
+
+      return value
+    },
+    writeText(path, text) {
+      files.set(path, text)
+    },
+  }
+}
 
 describe("opencode adapter", () => {
   test("starts missions through adapter tools", async () => {
@@ -191,6 +219,68 @@ describe("opencode adapter", () => {
 
     expect(writes).toHaveLength(2)
     expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.tasks.task_alpha.assignedAgentId).toBe("agent_atlas")
+  })
+
+  test("direct OpenCode plugin creates and persists the default runtime capsule without setup", async () => {
+    const host = createMemoryRuntimeHost()
+    const plugin = await createRunesmithOpenCodePlugin({
+      host,
+      idFactory: ids,
+      now: fixedNow,
+    })
+
+    const initial = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+    expect(initial.ok).toBe(true)
+    if (!initial.ok || !initial.value) throw new Error("expected package plugin to create the runtime capsule")
+    expect(initial.value.runtime.graphs).toEqual({})
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Zero-config package persistence",
+    })
+
+    const saved = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+    expect(saved.ok).toBe(true)
+    if (!saved.ok || !saved.value) throw new Error("expected package plugin to persist mission state")
+    expect(saved.value.runtime.graphs.mission_alpha.mission.goal).toBe("Zero-config package persistence")
+    expect(saved.value.runtime.graphs.mission_alpha.tasks.task_alpha.assignedAgentId).toBe("agent_atlas")
+  })
+
+  test("direct OpenCode plugin resumes the existing runtime capsule", async () => {
+    const host = createMemoryRuntimeHost()
+    const existingRuntime = createRuntime({ idFactory: ids, now: fixedNow })
+
+    existingRuntime.startMission({
+      goal: "Resume package capsule",
+    })
+    await saveRuntimeCapsule(host, {
+      path: defaultRuntimeCapsulePath,
+      snapshot: existingRuntime.snapshot(),
+      now: fixedNow,
+    })
+
+    const plugin = await createRunesmithOpenCodePlugin({
+      host,
+      idFactory: ids,
+      now: fixedNow,
+    })
+    const status = await plugin.tool.runesmith_covenant_status.execute({})
+
+    expect(JSON.parse(status.output)).toMatchObject({
+      ok: true,
+      value: {
+        controlBrief: {
+          missionId: "mission_alpha",
+          missionGoal: "Resume package capsule",
+        },
+        loopPulse: {
+          missionId: "mission_alpha",
+        },
+        missionMemory: {
+          missionId: "mission_alpha",
+          goal: "Resume package capsule",
+        },
+      },
+    })
   })
 
   test("supports documented OpenCode system and compaction hooks", async () => {
