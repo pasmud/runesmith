@@ -252,7 +252,7 @@ Run the dashboard:
 bun packages/cli/src/index.ts dashboard
 ```
 
-`dashboard` repairs missing project config, creates the configured runtime capsule when needed, then launches the packaged dashboard server against the built UI. Use `--host <host>` or `--port <port>` when another service already owns the default `127.0.0.1:4177` address.
+`dashboard` repairs missing project config, creates the configured runtime capsule when needed, builds dashboard assets when they are missing, then launches the packaged dashboard server. Use `--host <host>` or `--port <port>` when another service already owns the default `127.0.0.1:4177` address.
 
 Inspect persisted missions:
 

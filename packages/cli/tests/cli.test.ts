@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test"
+import { fileURLToPath } from "node:url"
 
 import { createMemoryHost, createNodeHost, runCli } from "../src/index"
+
+const dashboardDistIndexPath = fileURLToPath(new URL("../../dashboard/dist/index.html", import.meta.url))
 
 const snapshot = {
   graphs: {
@@ -767,7 +770,9 @@ describe("runesmith cli", () => {
   test("dashboard bootstraps runtime state and launches the packaged dashboard server", async () => {
     const launched: Array<{ command: string; args: string[] }> = []
     const host = createMemoryHost(
-      {},
+      {
+        [dashboardDistIndexPath]: "<!doctype html><title>Runesmith Mission Control</title>",
+      },
       {
         runCommand(command, args) {
           launched.push({ command, args })
@@ -819,6 +824,46 @@ describe("runesmith cli", () => {
     expect(launched[0]?.args).toContain(".runesmith/runtime/capsule.json")
     expect(launched[0]?.args).toContain("--dist")
     expect(launched[0]?.args.some((arg) => arg.includes("packages") && arg.includes("dashboard") && arg.includes("dist"))).toBe(true)
+  })
+
+  test("dashboard builds missing dashboard assets before launching the server", async () => {
+    const launched: Array<{ command: string; args: string[] }> = []
+    const host = createMemoryHost(
+      {},
+      {
+        runCommand(command, args) {
+          launched.push({ command, args })
+          if (args.includes("build")) {
+            host.writeText(dashboardDistIndexPath, "<!doctype html><title>Runesmith Mission Control</title>")
+
+            return { exitCode: 0, stdout: "built dashboard\n", stderr: "" }
+          }
+
+          return {
+            exitCode: 0,
+            stdout: [
+              "Runesmith dashboard",
+              "url: http://127.0.0.1:4888",
+              "runtime: .runesmith/runtime/capsule.json",
+              "",
+            ].join("\n"),
+            stderr: "",
+          }
+        },
+      },
+    )
+
+    const result = await runCli(["dashboard", "--host", "127.0.0.1", "--port", "4888"], host)
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("Runesmith dashboard")
+    expect(launched).toHaveLength(2)
+    expect(launched[0]?.command).toBe("bun")
+    expect(launched[0]?.args).toContain("run")
+    expect(launched[0]?.args).toContain("--cwd")
+    expect(launched[0]?.args.some((arg) => arg.includes("packages") && arg.includes("dashboard"))).toBe(true)
+    expect(launched[0]?.args).toContain("build")
+    expect(launched[1]?.args).toContain("--dist")
   })
 
   test("launch bootstraps Runesmith and runs OpenCode with pass-through args", async () => {

@@ -538,6 +538,21 @@ async function runesmithDashboard(args: string[], host: CliHost): Promise<CliRes
   const options = parseFlagOptions(args)
   const hostName = options.host ?? "127.0.0.1"
   const port = options.port ?? "4177"
+  if (!(await host.exists(resolveDashboardDistIndexPath()))) {
+    const build = await host.runCommand("bun", [
+      "run",
+      "--cwd",
+      resolveDashboardSourceDir(),
+      "build",
+    ])
+    if (build.exitCode !== 0) {
+      return {
+        exitCode: build.exitCode,
+        stdout: build.stdout ?? "",
+        stderr: build.stderr ?? "",
+      }
+    }
+  }
 
   const launched = await host.runCommand("bun", [
     resolveDashboardServerScript(),
@@ -1627,6 +1642,14 @@ function resolveDashboardServerScript(): string {
 
 function resolveDashboardDistDir(): string {
   return fileURLToPath(new URL("../../dashboard/dist", import.meta.url))
+}
+
+function resolveDashboardDistIndexPath(): string {
+  return fileURLToPath(new URL("../../dashboard/dist/index.html", import.meta.url))
+}
+
+function resolveDashboardSourceDir(): string {
+  return fileURLToPath(new URL("../../dashboard", import.meta.url))
 }
 
 if (import.meta.main) {
