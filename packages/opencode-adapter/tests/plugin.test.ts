@@ -197,6 +197,48 @@ describe("opencode adapter", () => {
     expect(writes.length).toBeGreaterThanOrEqual(2)
   })
 
+  test("auto-prepares a mission before the first mutating OpenCode tool executes", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const writes: string[] = []
+    const plugin = createRunesmithPlugin({
+      runtime,
+      runtimeStore: {
+        save(snapshot) {
+          writes.push(JSON.stringify(snapshot))
+        },
+      },
+    })
+
+    await plugin["tool.execute.before"]?.(
+      {
+        tool: "edit",
+        messages: [
+          { info: { role: "user" }, parts: [{ type: "text", text: "Add a zero-touch orchestration guard" }] },
+        ],
+      },
+      {
+        args: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+      },
+    )
+    await plugin["tool.execute.before"]?.(
+      {
+        tool: "edit",
+        messages: [
+          { info: { role: "user" }, parts: [{ type: "text", text: "Add a zero-touch orchestration guard" }] },
+        ],
+      },
+      {
+        args: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+      },
+    )
+
+    expect(runtime.snapshot().graphs.mission_alpha.mission.goal).toBe("Add a zero-touch orchestration guard")
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.assignedAgentId).toBe("agent_atlas")
+    expect(runtime.snapshot().leases.leases.lease_alpha?.holder).toBe("runesmith-autopilot")
+    expect(Object.keys(runtime.snapshot().graphs)).toEqual(["mission_alpha"])
+    expect(writes.length).toBeGreaterThanOrEqual(2)
+  })
+
   test("records evidence automatically from OpenCode tool execution events", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const writes: string[] = []

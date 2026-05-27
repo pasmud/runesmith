@@ -49,6 +49,7 @@ export type RunesmithPlugin = {
   }
   "experimental.chat.system.transform": (input: unknown, output: OpenCodeSystemOutput) => Promise<void> | void
   "experimental.session.compacting": (input: unknown, output: OpenCodeCompactionOutput) => Promise<void> | void
+  "tool.execute.before": (input: OpenCodeToolInput, output: OpenCodeToolOutput) => Promise<void> | void
   "tool.execute.after": (input: OpenCodeToolInput, output: OpenCodeToolOutput) => Promise<void> | void
   event?: (input: OpenCodeEventInput) => Promise<void> | void
 }
@@ -368,6 +369,14 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
     "experimental.session.compacting"(_input, output) {
       appendCompactionContext(output, runtime.snapshot())
     },
+    async "tool.execute.before"(input, output) {
+      await prepareBeforeToolExecution({
+        runtime,
+        runtimeStore: options.runtimeStore,
+        input,
+        output,
+      })
+    },
     async "tool.execute.after"(input, output) {
       await recordToolExecutionEvidence({
         runtime,
@@ -455,6 +464,35 @@ async function prepareAutopilotMission(input: PrepareAutopilotMissionInput): Pro
     goal,
     replayed: claimed.value.replayed,
     missionCreated,
+  })
+}
+
+type PrepareBeforeToolExecutionInput = {
+  runtime: RunesmithRuntime
+  runtimeStore?: PluginRuntimeStore
+  input: OpenCodeToolInput
+  output: OpenCodeToolOutput
+}
+
+async function prepareBeforeToolExecution(input: PrepareBeforeToolExecutionInput): Promise<void> {
+  const tool = normalizeGoal(input.input.tool)
+  if (!tool) return
+
+  const lowerTool = tool.toLowerCase()
+  if (tool.startsWith("runesmith_") || isReadOnlyTool(lowerTool)) return
+  if (selectActiveTask(input.runtime.snapshot())) return
+
+  const messages = extractMessages(input.input) ?? extractMessages(input.output)
+  const goal = normalizeGoal(input.input.goal) ?? normalizeGoal(input.output.goal) ?? extractLatestUserGoal(messages)
+  if (!goal) return
+
+  await prepareAutopilotMission({
+    runtime: input.runtime,
+    runtimeStore: input.runtimeStore,
+    args: {
+      goal,
+      messages,
+    },
   })
 }
 
@@ -876,6 +914,13 @@ function extractLatestUserGoal(messages: unknown[] | undefined): string | undefi
   }
 
   return undefined
+}
+
+function extractMessages(value: unknown): unknown[] | undefined {
+  const record = asRecord(value)
+  if (!record) return undefined
+
+  return Array.isArray(record.messages) ? record.messages : undefined
 }
 
 function extractMessageText(message: Record<string, unknown>): string | undefined {
