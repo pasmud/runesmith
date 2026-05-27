@@ -40,6 +40,7 @@ describe("package publish contracts", () => {
     expect(pkg.dependencies?.["@runesmith/core"]).toBe("file:packages/core")
     expect(pkg.files).toEqual([
       ".opencode/INSTALL.md",
+      ".opencode/skills",
       "packages/core/dist",
       "packages/core/src",
       "packages/core/package.json",

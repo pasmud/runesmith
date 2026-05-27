@@ -343,6 +343,17 @@ describe("opencode adapter", () => {
     expect(userParts[1].text).toBe("Build a self-driving OpenCode harness")
   })
 
+  test("registers bundled Runesmith protocol docs with OpenCode skills config", async () => {
+    const plugin = createRunesmithPlugin()
+    const config: any = {}
+
+    expect(typeof (plugin as any).config).toBe("function")
+    await (plugin as any).config(config)
+
+    expect(config.skills.paths).toHaveLength(1)
+    expect(config.skills.paths[0].replace(/\\/g, "/")).toEndWith("/.opencode/skills")
+  })
+
   test("injects repository proof commands into OpenCode prompts and tool status", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const plugin = createRunesmithPlugin({

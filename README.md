@@ -25,6 +25,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - OpenCode compaction carries the mission capsule forward so long sessions do not lose orchestration state.
 - A live Runesmith Control Brief is injected from runtime state so OpenCode sees the active mission, next Covenant stage, and missing proof without user-managed workflow steps.
 - A compact first-user-message bootstrap also carries the current Loop Pulse and active protocol, giving OpenCode a low-bloat fallback when message hooks are more reliable than repeated system prompt injection.
+- The OpenCode config hook registers bundled Runesmith OS reference docs for fallback discovery, while normal coding work stays driven by Loop Pulse, Protocol Deck, Runebook, and tools instead of manual skill loading.
 - A Runesmith Loop Pulse is injected beside the control brief, giving OpenCode and the dashboard one authoritative next action, execution plan, health signal, priority, blockers, and active runes.
 - A Runesmith Runebook is derived from the same pulse, turning the current state into one active procedure card such as `Forge Trace implementation loop`, `Proofwright proof gate`, `Faultwright repair loop`, or `Mirrorglass risk decision`.
 - The Runesmith Protocol Deck is the built-in, engine-selected workflow layer: OpenCode receives the right Runesmith protocol automatically, such as `Forge Trace Protocol`, `Proofwright Proof Protocol`, or `Faultwright Repair Protocol`, without the user invoking external skills or workflow names.

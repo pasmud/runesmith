@@ -45,6 +45,7 @@ import { dirname } from "node:path"
 import { exec } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
 
 export type ToolResponse = {
@@ -88,6 +89,7 @@ export type RunesmithPlugin = {
   "experimental.session.compacting": (input: unknown, output: OpenCodeCompactionOutput) => Promise<void> | void
   "tool.execute.before": (input: OpenCodeToolInput, output: OpenCodeToolOutput) => Promise<void> | void
   "tool.execute.after": (input: OpenCodeToolInput, output: OpenCodeToolOutput) => Promise<void> | void
+  config: (config: OpenCodeConfig) => Promise<void> | void
   event?: (input: OpenCodeEventInput) => Promise<void> | void
 }
 
@@ -182,6 +184,14 @@ type OpenCodeMessagesOutput = {
   messages?: unknown[]
 }
 
+type OpenCodeConfig = {
+  skills?: {
+    paths?: unknown[]
+    [key: string]: unknown
+  }
+  [key: string]: unknown
+}
+
 type OpenCodeCompactionOutput = {
   context?: string[]
   prompt?: string
@@ -221,6 +231,7 @@ const defaultAtlasContract: AgentContract = {
 
 const autopilotStaleAfterMs = 120_000
 const execAsync = promisify(exec)
+const runesmithOpenCodeSkillsPath = fileURLToPath(new URL("../../../.opencode/skills", import.meta.url))
 
 export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlugin {
   const runtime = options.runtime ?? createRuntime(options)
@@ -591,6 +602,9 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
         runtimeStore: options.runtimeStore,
         recoverStale: false,
       })
+    },
+    config(config) {
+      registerRunesmithSkillsPath(config)
     },
     async event(input) {
       if (getOpenCodeEventType(input) !== "session.idle") return
@@ -1436,6 +1450,17 @@ function getMessageRole(message: Record<string, unknown> | undefined): string | 
   if (!message) return undefined
 
   return stringValue(message.role) ?? stringValue(asRecord(message.info)?.role)
+}
+
+function registerRunesmithSkillsPath(config: OpenCodeConfig): void {
+  config.skills = config.skills ?? {}
+  const paths = Array.isArray(config.skills.paths) ? config.skills.paths : []
+
+  if (!paths.includes(runesmithOpenCodeSkillsPath)) {
+    paths.push(runesmithOpenCodeSkillsPath)
+  }
+
+  config.skills.paths = paths
 }
 
 function upsertSystemSection(output: OpenCodeSystemOutput, section: string): void {
