@@ -26,6 +26,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - A live Runesmith Control Brief is injected from runtime state so OpenCode sees the active mission, next Covenant stage, and missing proof without user-managed workflow steps.
 - A Runesmith Loop Pulse is injected beside the control brief, giving OpenCode and the dashboard one authoritative next action, execution plan, health signal, priority, blockers, and active runes.
 - A Runesmith Runebook is derived from the same pulse, turning the current state into one active procedure card such as `Forge Trace implementation loop`, `Proofwright proof gate`, `Faultwright repair loop`, or `Mirrorglass risk decision`.
+- The Runesmith Protocol Deck is the built-in, engine-selected workflow layer: OpenCode receives the right Runesmith protocol automatically, such as `Forge Trace Protocol`, `Proofwright Proof Protocol`, or `Faultwright Repair Protocol`, without the user invoking external skills or workflow names.
 - Runesmith Mission Memory condenses the current mission, active task, proof state, latest diagnostics, decisions, and continuation handoff so restarts, compaction, CLI checks, and the dashboard all preserve the same next move.
 - Runesmith Proof Plan turns missing proof or failed diagnostics into concrete verification commands, so agents can rerun the failing command, typecheck, test, and build without the user remembering a workflow ritual.
 - Runesmith Proof Runner can execute those Proof Plan commands, capture passing `test-result` evidence or failing `diagnostic` evidence, and advance the mission through the same evidence gate.
@@ -63,6 +64,8 @@ Each stage has gates and evidence requirements. The point is simple: install onc
 The static Covenant is paired with a live `Runesmith Control Brief`. That brief is derived from the runtime capsule and tells the agent the active mission, active task, next Covenant stage, required evidence, and missing evidence. Failed or unknown test runs stay diagnostic, enter Repair Gate, and keep the loop focused on the latest failing command until passing proof exists.
 
 The Control Brief carries active runes, and the Runebook turns those runes into one concrete procedure card. A card includes autonomy mode (`auto`, `guarded`, or `hold`), trigger, intent, steps, required evidence, exact Proof Plan commands, OpenCode tool hints, and stop conditions. This is the Runesmith-native version of workflow skills: the user does not install, remember, or invoke process names, because the engine derives the card from the runtime capsule.
+
+The Protocol Deck sits beside the Runebook as Runesmith's own version of agentic workflow discipline. It converts the live Loop Pulse into an engine-selected protocol with objective, procedure, verification, forbidden moves, and tool hints. It borrows the useful idea of explicit methods, but keeps the interaction install-once: OpenCode sees `Faultwright Repair Protocol` after a diagnostic, `Proofwright Proof Protocol` when implementation proof is ready, `Recovery Loom Protocol` when a lease is stale, and `Mirrorglass Risk Protocol` when a decision hold is active. The user never has to load or name a protocol.
 
 The Loop Pulse is the runtime's heartbeat for agentic work. It derives the next OS action from the same mission capsule, including `Wait for goal`, `Continue forge`, `Capture proof`, `Repair diagnostic`, `Resolve risk`, `Recover stale work`, `Review change`, and `Seal mission`. It also expands that action into a small execution plan with active, queued, and blocked steps, required evidence, and active runes. This keeps OpenCode prompts, compaction context, CLI status, and dashboard status aligned around one loop decision instead of separate prompt-side heuristics.
 
@@ -162,7 +165,7 @@ Check the operating loop without learning the mission subcommands:
 bun packages/cli/src/index.ts status
 ```
 
-`status` prints the Runesmith install state, OpenCode CLI readiness, Loop Pulse next action, execution plan, active mission and task, missing evidence, diagnostics, active runes, active Runebook card, and Proof Plan commands from the runtime capsule. It also stays useful before bootstrap by showing the idle engine state and the next launch/dashboard commands.
+`status` prints the Runesmith install state, OpenCode CLI readiness, Loop Pulse next action, execution plan, active mission and task, missing evidence, diagnostics, active runes, active Runebook card, active Protocol Deck protocol, and Proof Plan commands from the runtime capsule. It also stays useful before bootstrap by showing the idle engine state and the next launch/dashboard commands.
 
 Run the OS loop until Runesmith reaches a real stop condition:
 
@@ -270,6 +273,7 @@ Once installed and OpenCode is restarted, users do not need to invoke a workflow
 
 - `experimental.chat.system.transform`: injects the Runic Covenant and Runesmith Autopilot bootstrap.
 - `experimental.session.compacting`: appends the current mission capsule, Control Brief, Loop Pulse, Runebook, Mission Memory, and Proof Plan to compaction context.
+- `Runesmith Protocol Deck`: injected into system and compaction context so OpenCode follows the engine-selected protocol without user-invoked workflow names.
 - `tool.execute.before`: auto-prepares and claims a mission before the first mutating/shell tool when message context is available.
 - `tool.execute.after`: records useful shell, test, and file-change evidence, then runs the evidence-gated advance loop.
 - `event`: on `session.idle`, prepares the first mission from chat context when possible, then runs Runeweave automatically so recovery, proof, Review, Seal, and stop-condition reporting use the same OS loop as `runesmith_os_run`.

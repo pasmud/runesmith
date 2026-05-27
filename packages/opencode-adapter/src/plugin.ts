@@ -5,6 +5,7 @@ import {
   buildLoopPulsePrompt,
   buildMissionMemoryPrompt,
   buildProofPlanPrompt,
+  buildRunicProtocolPrompt,
   buildRunebookPrompt,
   createCovenantTaskPlan,
   createRuntime,
@@ -14,6 +15,7 @@ import {
   deriveLoopPulse,
   deriveMissionMemory,
   deriveProofPlan,
+  deriveRunicProtocolDeck,
   deriveRunebook,
   loadRuntimeCapsule,
   resolveRunicRisk,
@@ -334,6 +336,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           const missionMemory = deriveMissionMemory(snapshot, covenant)
           const proofPlan = deriveProofPlan(snapshot, proofPlanOptions)
           const runebook = deriveRunebook(snapshot, { proofPlanOptions, covenant })
+          const protocolDeck = deriveRunicProtocolDeck(snapshot, { proofPlanOptions, covenant })
 
           return formatValue("Runic Covenant active", {
             name: covenant.name,
@@ -366,6 +369,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             missionMemory,
             proofPlan,
             runebook,
+            protocolDeck,
             activeRunes: controlBrief.runes,
           })
         },
@@ -532,6 +536,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             prompt = upsertPromptSection(prompt, buildCovenantControlBrief(snapshot, covenant))
             prompt = upsertPromptSection(prompt, buildLoopPulsePrompt(snapshot, covenant))
             prompt = upsertPromptSection(prompt, buildRunebookPrompt(snapshot, { proofPlanOptions, covenant }))
+            prompt = upsertPromptSection(prompt, buildRunicProtocolPrompt(snapshot, { proofPlanOptions, covenant }))
             prompt = upsertPromptSection(prompt, buildMissionMemoryPrompt(snapshot, covenant))
             return upsertPromptSection(prompt, buildProofPlanPrompt(snapshot, proofPlanOptions, covenant))
           },
@@ -544,6 +549,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       upsertSystemSection(output, buildCovenantControlBrief(snapshot, covenant))
       upsertSystemSection(output, buildLoopPulsePrompt(snapshot, covenant))
       upsertSystemSection(output, buildRunebookPrompt(snapshot, { proofPlanOptions, covenant }))
+      upsertSystemSection(output, buildRunicProtocolPrompt(snapshot, { proofPlanOptions, covenant }))
       upsertSystemSection(output, buildMissionMemoryPrompt(snapshot, covenant))
       upsertSystemSection(output, buildProofPlanPrompt(snapshot, proofPlanOptions, covenant))
     },
@@ -1397,6 +1403,7 @@ function appendCompactionContext(
   upsertTextListSection(context, buildCovenantControlBrief(snapshot))
   upsertTextListSection(context, buildLoopPulsePrompt(snapshot))
   upsertTextListSection(context, buildRunebookPrompt(snapshot, { proofPlanOptions }))
+  upsertTextListSection(context, buildRunicProtocolPrompt(snapshot, { proofPlanOptions }))
   upsertTextListSection(context, buildMissionMemoryPrompt(snapshot))
   upsertTextListSection(context, buildProofPlanPrompt(snapshot, proofPlanOptions))
   output.context = context

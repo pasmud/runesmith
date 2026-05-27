@@ -11,6 +11,7 @@ import {
   deriveLoopPulse,
   deriveMissionMemory,
   deriveProofPlan,
+  deriveRunicProtocolDeck,
   deriveRunebook,
   loadRuntimeCapsule,
   resolveRunicRisk,
@@ -26,6 +27,7 @@ import {
   type ProofCommandExecution,
   type ProofRunCommandResult,
   type ProofPlanOptions,
+  type RunicProtocolDeck,
   type Runebook,
   type RiskResolutionVerdict,
   type RuntimeSnapshot,
@@ -240,6 +242,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     const memory = deriveMissionMemory(snapshot.value)
     const proofPlan = deriveProofPlan(snapshot.value, proofOptions)
     const runebook = deriveRunebook(snapshot.value, { proofPlanOptions: proofOptions })
+    const protocolDeck = deriveRunicProtocolDeck(snapshot.value, { proofPlanOptions: proofOptions })
     const taskLines = Object.values(graph.tasks).map((task) => {
       return `- ${task.id} ${task.status} ${task.assignedAgentId ?? "unassigned"} ${task.title}`
     })
@@ -265,6 +268,9 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
       `Active card: ${formatRunebookCard(runebook)}`,
       `Commands: ${formatRunebookCommands(runebook)}`,
       `Tool hints: ${formatList(runebook.activeCard.toolHints)}`,
+      "Protocol:",
+      `Active protocol: ${formatRunicProtocol(protocolDeck)}`,
+      `Forbidden moves: ${formatList(protocolDeck.active.forbiddenMoves)}`,
       "Tasks:",
       ...taskLines,
       "Evidence:",
@@ -395,6 +401,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
   const memory = deriveMissionMemory(snapshot)
   const proofPlan = deriveProofPlan(snapshot, proofOptions)
   const runebook = deriveRunebook(snapshot, { proofPlanOptions: proofOptions })
+  const protocolDeck = deriveRunicProtocolDeck(snapshot, { proofPlanOptions: proofOptions })
   const mission = pulse.missionId ? snapshot.graphs[pulse.missionId]?.mission : undefined
   const task = mission && pulse.taskId ? snapshot.graphs[mission.id]?.tasks[pulse.taskId] : undefined
   const state = selectInstallState(Boolean(configFound), Boolean(capsule.value), Boolean(openCodeCli))
@@ -415,6 +422,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     `active runes: ${formatList(pulse.runes.map((rune) => rune.name))}`,
     `runebook: ${formatRunebookCard(runebook)}`,
     `runebook commands: ${formatRunebookCommands(runebook)}`,
+    `protocol: ${formatRunicProtocol(protocolDeck)}`,
     "dashboard: bun run dev:dashboard",
     "launch: runesmith launch -- <opencode args>",
     "",
@@ -1085,6 +1093,10 @@ function formatRunebookCommands(runebook: Runebook): string {
   return runebook.activeCard.commands.length > 0
     ? runebook.activeCard.commands.map((command) => command.command).join(" -> ")
     : "none"
+}
+
+function formatRunicProtocol(deck: RunicProtocolDeck): string {
+  return `${deck.active.name} [${deck.active.mode}]`
 }
 
 function formatProofRunLines(commands: ProofRunCommandResult[]): string[] {

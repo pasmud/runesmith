@@ -149,6 +149,13 @@ describe("opencode adapter", () => {
             autonomy: "auto",
           },
         },
+        protocolDeck: {
+          active: {
+            id: "forge-trace-protocol",
+            name: "Forge Trace Protocol",
+            mode: "auto",
+          },
+        },
         activeRunes: [
           {
             name: "Forge Trace",
@@ -198,6 +205,7 @@ describe("opencode adapter", () => {
     expect(systemOutput.system.join("\n")).toContain("Runesmith Mission Memory")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Proof Plan")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Runebook")
+    expect(systemOutput.system.join("\n")).toContain("Runesmith Protocol Deck")
 
     await plugin.tool.runesmith_mission_start.execute({
       goal: "Carry state through compaction",
@@ -212,6 +220,7 @@ describe("opencode adapter", () => {
     expect(compactOutput.context.join("\n")).toContain("Runesmith Mission Memory")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Proof Plan")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Runebook")
+    expect(compactOutput.context.join("\n")).toContain("Runesmith Protocol Deck")
     expect(compactOutput.context.join("\n")).toContain("Handoff:")
   })
 
@@ -270,6 +279,9 @@ describe("opencode adapter", () => {
     expect(prompt).toContain("Next action: Continue forge")
     expect(prompt).toContain("Runesmith Runebook")
     expect(prompt).toContain("Active card: Forge Trace implementation loop [auto]")
+    expect(prompt).toContain("Runesmith Protocol Deck")
+    expect(prompt).toContain("Active protocol: Forge Trace Protocol [auto]")
+    expect(prompt).toContain("Engine-selected protocol; do not ask the user to invoke a workflow by name.")
   })
 
   test("autopilot prepares and claims a mission from the latest user message once", async () => {
