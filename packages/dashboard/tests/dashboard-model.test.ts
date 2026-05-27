@@ -340,6 +340,17 @@ describe("dashboard model", () => {
       taskCount: 2,
       nextTaskId: "task_live",
     })
+    expect(model.reviewLens).toMatchObject({
+      status: "waiting-for-proof",
+      missionId: "mission_live",
+      implementationTaskId: "task_live",
+      findings: [
+        {
+          severity: "warning",
+          summary: "Missing test-result evidence for task_live.",
+        },
+      ],
+    })
     expect(model.runebook.activeCard.commands.map((command) => command.command)).toEqual(["bun test"])
     expect(model.missionMemory.status).toBe("needs-proof")
     expect(model.missionMemory.handoff).toBe(

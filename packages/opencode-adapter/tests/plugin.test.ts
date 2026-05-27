@@ -170,6 +170,12 @@ describe("opencode adapter", () => {
             label: "Continue forge",
           },
         },
+        reviewLens: {
+          status: "waiting-for-proof",
+          missionId: "mission_alpha",
+          implementationTaskId: "task_alpha",
+          reviewTaskId: "task_alpha_review",
+        },
         runebook: {
           activeCard: {
             id: "forge-trace",
@@ -300,6 +306,7 @@ describe("opencode adapter", () => {
     expect(systemOutput.system.join("\n")).toContain("Runesmith Autopilot")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Mission Memory")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Mission Map")
+    expect(systemOutput.system.join("\n")).toContain("Runesmith Review Lens")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Proof Plan")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Runebook")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Protocol Deck")
@@ -316,6 +323,7 @@ describe("opencode adapter", () => {
     expect(compactOutput.context.join("\n")).toContain("Runesmith Control Brief")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Mission Memory")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Mission Map")
+    expect(compactOutput.context.join("\n")).toContain("Runesmith Review Lens")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Proof Plan")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Runebook")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Protocol Deck")
@@ -457,6 +465,8 @@ describe("opencode adapter", () => {
     expect(prompt).toContain("Active protocol: Forge Trace Protocol [auto]")
     expect(prompt).toContain("Runesmith Mission Map")
     expect(prompt).toContain("Next task: task_alpha")
+    expect(prompt).toContain("Runesmith Review Lens")
+    expect(prompt).toContain("Status: waiting-for-proof")
     expect(prompt).toContain("Engine-selected protocol; do not ask the user to invoke a workflow by name.")
   })
 

@@ -683,6 +683,7 @@ function RightRail({ dispatch, model }: { dispatch: DashboardDispatch; model: Da
     <aside className="right-rail">
       <LoopPulsePanel model={model} />
       <MissionMapPanel model={model} />
+      <ReviewLensPanel model={model} />
       <ProtocolDeckPanel model={model} />
       <MissionMemoryPanel model={model} />
 
@@ -833,6 +834,62 @@ function ProtocolDeckPanel({ model }: { model: DashboardModel }) {
         </div>
       ) : null}
       {forbiddenMove ? <p className="protocol-forbidden">{forbiddenMove}</p> : null}
+    </section>
+  )
+}
+
+function ReviewLensPanel({ model }: { model: DashboardModel }) {
+  const lens = model.reviewLens
+  const blockedChecks = lens.checklist.filter((item) => item.status === "blocked")
+  const checks = blockedChecks.length > 0 ? blockedChecks.slice(0, 3) : lens.checklist.slice(0, 3)
+  const tone: MissionStatus =
+    lens.status === "blocked"
+      ? "blocked"
+      : lens.status === "waiting-for-proof"
+        ? "stale"
+        : lens.status === "idle"
+          ? "stale"
+          : "verified"
+
+  return (
+    <section className="review-lens-panel" aria-label="Runesmith review lens">
+      <div className="inspector-header">
+        <p className="eyebrow">Review Lens</p>
+        <Badge tone={tone}>{lens.status}</Badge>
+      </div>
+      <div className="review-lens-head">
+        <span className={`tile-icon tile-icon-${tone}`}><AlertTriangle aria-hidden="true" /></span>
+        <div>
+          <h2>{lens.implementationTaskId ?? "No review target"}</h2>
+          <p>{lens.summary}</p>
+        </div>
+      </div>
+      <div className="review-lens-facts">
+        <span>{lens.findings.length} findings</span>
+        <span>{lens.reviewTaskId ?? "no review task"}</span>
+      </div>
+      <div className="review-lens-checks" aria-label="Review checklist">
+        {checks.length > 0 ? checks.map((item) => (
+          <span data-status={item.status} key={item.id}>
+            <strong>{item.label}</strong>
+            <small>{item.detail}</small>
+          </span>
+        )) : (
+          <span data-status="attention">
+            <strong>Awaiting proof</strong>
+            <small>{lens.nextAction}</small>
+          </span>
+        )}
+      </div>
+      {lens.findings.length > 0 ? (
+        <div className="review-lens-findings" aria-label="Review findings">
+          {lens.findings.slice(0, 2).map((finding) => (
+            <p data-severity={finding.severity} key={`${finding.severity}-${finding.summary}`}>
+              {finding.summary}
+            </p>
+          ))}
+        </div>
+      ) : null}
     </section>
   )
 }

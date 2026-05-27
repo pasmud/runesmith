@@ -4,6 +4,7 @@ import {
   deriveMissionMemory,
   deriveLoopPulse,
   deriveProofPlan,
+  deriveReviewLens,
   deriveRunicProtocolDeck,
   deriveRunebook,
   getNextCovenantStage,
@@ -17,6 +18,7 @@ import {
   type MissionGraph,
   type MissionMap,
   type ProofPlan,
+  type ReviewLens,
   type RunicProtocolDeck,
   type Runebook,
   type RiskResolutionVerdict,
@@ -104,6 +106,7 @@ export type DashboardModel = {
   missionMemory: MissionMemory
   proofPlan: ProofPlan
   protocolDeck: RunicProtocolDeck
+  reviewLens: ReviewLens
   runebook: Runebook
   metrics: Record<MissionStatus, number>
   mode: OsMode
@@ -674,6 +677,9 @@ function deriveDashboardModel(input: {
   const proofPlan = input.runtimeSnapshot
     ? deriveProofPlan(input.runtimeSnapshot)
     : buildSeededProofPlan(input.tasks)
+  const reviewLens = input.runtimeSnapshot
+    ? deriveReviewLens(input.runtimeSnapshot)
+    : buildSeededReviewLens(input.tasks)
   const runebook = input.runtimeSnapshot
     ? deriveRunebook(input.runtimeSnapshot)
     : buildSeededRunebook(input.tasks)
@@ -690,6 +696,7 @@ function deriveDashboardModel(input: {
     missionMemory,
     proofPlan,
     protocolDeck,
+    reviewLens,
     runebook,
     metrics,
     operationalScore: buildOperationalScore(input.tasks, metrics, input.policies),
@@ -706,6 +713,14 @@ function buildSeededMissionMap(tasks: TaskCard[]): MissionMap {
   }
 
   return deriveMissionMap(buildSeededRuntimeSnapshot(tasks))
+}
+
+function buildSeededReviewLens(tasks: TaskCard[]): ReviewLens {
+  if (tasks.length === 0) {
+    return deriveReviewLens(emptyRuntimeSnapshot())
+  }
+
+  return deriveReviewLens(buildSeededRuntimeSnapshot(tasks))
 }
 
 function buildSeededLoopPulse(tasks: TaskCard[], activeStage: CovenantStage): LoopPulse {

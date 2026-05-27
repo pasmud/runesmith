@@ -12,6 +12,7 @@ import {
   deriveMissionMap,
   deriveMissionMemory,
   deriveProofPlan,
+  deriveReviewLens,
   deriveRunicProtocolDeck,
   deriveRunebook,
   loadRuntimeCapsule,
@@ -29,6 +30,7 @@ import {
   type ProofCommandExecution,
   type ProofRunCommandResult,
   type ProofPlanOptions,
+  type ReviewLens,
   type RunicProtocolDeck,
   type Runebook,
   type RiskResolutionVerdict,
@@ -242,6 +244,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     const proofOptions = await readProofPlanOptions(host)
     const pulse = deriveLoopPulse(snapshot.value)
     const missionMap = deriveMissionMap(snapshot.value)
+    const reviewLens = deriveReviewLens(snapshot.value)
     const memory = deriveMissionMemory(snapshot.value)
     const proofPlan = deriveProofPlan(snapshot.value, proofOptions)
     const runebook = deriveRunebook(snapshot.value, { proofPlanOptions: proofOptions })
@@ -266,6 +269,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
       "Mission map:",
       `Summary: ${missionMap.summary}`,
       ...formatMissionMapTaskLines(missionMap),
+      "Review lens:",
+      `Summary: ${reviewLens.summary}`,
+      ...formatReviewLensBlockedLines(reviewLens),
+      `Findings: ${formatReviewLensFindings(reviewLens)}`,
       `Required evidence: ${formatList(pulse.requiredEvidence)}`,
       `Missing evidence: ${formatList(pulse.missingEvidence)}`,
       ...formatPulseDiagnostics(pulse, "Diagnostics"),
@@ -405,6 +412,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
   const proofOptions = await readProofPlanOptions(host)
   const pulse = deriveLoopPulse(snapshot)
   const missionMap = deriveMissionMap(snapshot)
+  const reviewLens = deriveReviewLens(snapshot)
   const memory = deriveMissionMemory(snapshot)
   const proofPlan = deriveProofPlan(snapshot, proofOptions)
   const runebook = deriveRunebook(snapshot, { proofPlanOptions: proofOptions })
@@ -423,6 +431,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     `handoff: ${memory.handoff}`,
     `proof plan: ${formatProofPlanCommands(proofPlan)}`,
     `mission map: ${formatMissionMapSummary(missionMap)}`,
+    `review lens: ${formatReviewLensSummary(reviewLens)}`,
     `mission: ${mission ? `${mission.id} ${mission.status} ${mission.goal}` : "none"}`,
     `task: ${task ? `${task.id} ${task.status} ${task.title}` : "none"}`,
     `missing evidence: ${formatList(pulse.missingEvidence)}`,
@@ -1106,6 +1115,23 @@ function formatMissionMapTaskLines(map: MissionMap): string[] {
   return map.tasks.map((task) => {
     return `- ${task.status} ${task.key} ${task.id}: ${task.title}; ready: ${task.ready ? "yes" : "no"}; blocked by: ${formatList(task.blockedBy)}; required evidence: ${formatList(task.requiredEvidence)}`
   })
+}
+
+function formatReviewLensSummary(lens: ReviewLens): string {
+  const label = lens.findings.length === 1 ? "finding" : "findings"
+  return `${lens.status}; ${lens.findings.length} ${label}`
+}
+
+function formatReviewLensBlockedLines(lens: ReviewLens): string[] {
+  const rootBlocked = lens.checklist.filter((item) => item.status === "blocked" && item.id !== "review-decision")
+  const blocked = rootBlocked.length > 0 ? rootBlocked : lens.checklist.filter((item) => item.status === "blocked")
+  if (blocked.length === 0) return ["- none"]
+
+  return blocked.map((item) => `- ${item.id}: ${item.status} - ${item.detail}`)
+}
+
+function formatReviewLensFindings(lens: ReviewLens): string {
+  return lens.findings.length > 0 ? lens.findings.map((finding) => finding.summary).join("; ") : "none"
 }
 
 function formatRunebookCard(runebook: Runebook): string {

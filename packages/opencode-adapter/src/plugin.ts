@@ -6,6 +6,7 @@ import {
   buildMissionMapPrompt,
   buildMissionMemoryPrompt,
   buildProofPlanPrompt,
+  buildReviewLensPrompt,
   buildRunicProtocolPrompt,
   buildRunebookPrompt,
   createCovenantTaskPlan,
@@ -17,6 +18,7 @@ import {
   deriveMissionMap,
   deriveMissionMemory,
   deriveProofPlan,
+  deriveReviewLens,
   deriveRunicProtocolDeck,
   deriveRunebook,
   loadRuntimeCapsule,
@@ -358,6 +360,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           const controlBrief = deriveCovenantControlBrief(snapshot, covenant)
           const loopPulse = deriveLoopPulse(snapshot, covenant)
           const missionMap = deriveMissionMap(snapshot)
+          const reviewLens = deriveReviewLens(snapshot)
           const missionMemory = deriveMissionMemory(snapshot, covenant)
           const proofPlan = deriveProofPlan(snapshot, proofPlanOptions)
           const runebook = deriveRunebook(snapshot, { proofPlanOptions, covenant })
@@ -392,6 +395,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             },
             loopPulse,
             missionMap,
+            reviewLens,
             missionMemory,
             proofPlan,
             runebook,
@@ -562,6 +566,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             prompt = upsertPromptSection(prompt, buildCovenantControlBrief(snapshot, covenant))
             prompt = upsertPromptSection(prompt, buildLoopPulsePrompt(snapshot, covenant))
             prompt = upsertPromptSection(prompt, buildMissionMapPrompt(snapshot))
+            prompt = upsertPromptSection(prompt, buildReviewLensPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildRunebookPrompt(snapshot, { proofPlanOptions, covenant }))
             prompt = upsertPromptSection(prompt, buildRunicProtocolPrompt(snapshot, { proofPlanOptions, covenant }))
             prompt = upsertPromptSection(prompt, buildMissionMemoryPrompt(snapshot, covenant))
@@ -576,6 +581,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       upsertSystemSection(output, buildCovenantControlBrief(snapshot, covenant))
       upsertSystemSection(output, buildLoopPulsePrompt(snapshot, covenant))
       upsertSystemSection(output, buildMissionMapPrompt(snapshot))
+      upsertSystemSection(output, buildReviewLensPrompt(snapshot))
       upsertSystemSection(output, buildRunebookPrompt(snapshot, { proofPlanOptions, covenant }))
       upsertSystemSection(output, buildRunicProtocolPrompt(snapshot, { proofPlanOptions, covenant }))
       upsertSystemSection(output, buildMissionMemoryPrompt(snapshot, covenant))
@@ -1519,6 +1525,7 @@ function appendCompactionContext(
   upsertTextListSection(context, buildCovenantControlBrief(snapshot))
   upsertTextListSection(context, buildLoopPulsePrompt(snapshot))
   upsertTextListSection(context, buildMissionMapPrompt(snapshot))
+  upsertTextListSection(context, buildReviewLensPrompt(snapshot))
   upsertTextListSection(context, buildRunebookPrompt(snapshot, { proofPlanOptions }))
   upsertTextListSection(context, buildRunicProtocolPrompt(snapshot, { proofPlanOptions }))
   upsertTextListSection(context, buildMissionMemoryPrompt(snapshot))
