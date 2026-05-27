@@ -1,5 +1,6 @@
 import { getRequiredEvidenceForTask } from "./contracts.js"
 import { createCovenantDecisionDraft } from "./covenant.js"
+import { selectDispatchAgentForTask } from "./dispatch-matrix.js"
 import { missingRequiredEvidence } from "./evidence-ledger.js"
 import { runtimeError } from "./errors.js"
 import { deriveLoopPulse } from "./loop-pulse.js"
@@ -116,7 +117,7 @@ export function advanceRunicMissionLoop(
   const task = graph?.tasks[target.taskId]
   if (!graph || !task) return ok({ status: "idle" })
 
-  const contractId = task.assignedAgentId ?? options.contract.id
+  const contractId = selectRunicTaskContractId(snapshot, task, options.contract.id)
   const contract = snapshot.contracts[contractId] ?? options.contract
 
   if (task.status === "queued") {
@@ -193,7 +194,7 @@ export function advanceRunicMissionLoop(
     const claimed = claimRunicTask(runtime, options, {
       missionId: target.missionId,
       task: nextTask,
-      contractId: options.contract.id,
+      contractId: selectRunicTaskContractId(nextSnapshot, nextTask, options.contract.id),
     })
     if (!claimed.ok) return claimed
 
@@ -421,7 +422,7 @@ function recoverRunicStaleWork(
       ? claimRunicTask(runtime, options, {
           missionId: target!.missionId,
           task,
-          contractId: options.contract.id,
+          contractId: selectRunicTaskContractId(recoveredSnapshot, task, options.contract.id),
         })
       : undefined
     if (claimed && !claimed.ok) return claimed
@@ -435,6 +436,12 @@ function recoverRunicStaleWork(
   }
 
   return ok({ status: "idle" })
+}
+
+function selectRunicTaskContractId(snapshot: RuntimeSnapshot, task: MissionTask, fallbackContractId: string): string {
+  if (task.assignedAgentId && snapshot.contracts[task.assignedAgentId]) return task.assignedAgentId
+
+  return selectDispatchAgentForTask(snapshot, task.id, fallbackContractId)
 }
 
 function claimRunicTask(

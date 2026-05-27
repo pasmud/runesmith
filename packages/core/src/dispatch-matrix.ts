@@ -103,6 +103,15 @@ export function buildDispatchMatrixPrompt(snapshot: RuntimeSnapshot): string {
   ].join("\n")
 }
 
+export function selectDispatchAgentForTask(
+  snapshot: RuntimeSnapshot,
+  taskId: string,
+  fallbackAgentId: string,
+): string {
+  return deriveDispatchMatrix(snapshot).slots.find((slot) => slot.taskId === taskId)?.recommendedAgentId
+    ?? fallbackAgentId
+}
+
 function buildDispatchSlot(task: MissionMapTask, snapshot: RuntimeSnapshot, activeLease: ActiveLease | undefined): DispatchSlot {
   const effectiveLease = task.status === "complete" ? undefined : activeLease
   const candidateAgentIds = findCandidateAgents(task, snapshot.contracts)
@@ -138,9 +147,7 @@ function assignReadyAgents(slots: DispatchSlot[], snapshot: RuntimeSnapshot): Di
   const recommendations = new Map<string, string>()
 
   for (const slot of readySlots) {
-    const agentId = [...slot.candidateAgentIds].sort((left, right) => {
-      return (activeCounts.get(left) ?? 0) - (activeCounts.get(right) ?? 0) || left.localeCompare(right)
-    })[0]
+    const agentId = selectBestCandidateAgent(slot, snapshot, activeCounts)
     if (!agentId) continue
 
     recommendations.set(slot.taskId, agentId)
@@ -189,10 +196,39 @@ function selectRecommendedAgent(
   if (task.assignedAgentId && candidateAgentIds.includes(task.assignedAgentId)) return task.assignedAgentId
   if (candidateAgentIds.length === 0) return undefined
 
-  const activeCounts = countActiveAssignments(snapshot)
-  return [...candidateAgentIds].sort((left, right) => {
-    return (activeCounts.get(left) ?? 0) - (activeCounts.get(right) ?? 0) || left.localeCompare(right)
+  return selectBestCandidateAgent({ ...task, candidateAgentIds }, snapshot, countActiveAssignments(snapshot))
+}
+
+function selectBestCandidateAgent(
+  task: Pick<DispatchSlot, "candidateAgentIds" | "requiredCapabilities" | "requiredEvidence">,
+  snapshot: RuntimeSnapshot,
+  activeCounts: Map<string, number>,
+): string | undefined {
+  return [...task.candidateAgentIds].sort((left, right) => {
+    const leftContract = snapshot.contracts[left]
+    const rightContract = snapshot.contracts[right]
+    const evidenceDelta = scoreContractFit(task, rightContract) - scoreContractFit(task, leftContract)
+    if (evidenceDelta !== 0) return evidenceDelta
+
+    const activeDelta = (activeCounts.get(left) ?? 0) - (activeCounts.get(right) ?? 0)
+    if (activeDelta !== 0) return activeDelta
+
+    return left.localeCompare(right)
   })[0]
+}
+
+function scoreContractFit(
+  task: Pick<DispatchSlot, "requiredCapabilities" | "requiredEvidence">,
+  contract: AgentContract | undefined,
+): number {
+  if (!contract) return 0
+
+  const evidenceScore = task.requiredEvidence.filter((evidence) => contract.requiredEvidence.includes(evidence)).length * 100
+  const capabilityScore = task.requiredCapabilities.length > 0
+    ? Math.round((task.requiredCapabilities.length / contract.capabilities.length) * 10)
+    : 0
+
+  return evidenceScore + capabilityScore
 }
 
 function collectActiveTaskLeases(snapshot: RuntimeSnapshot): Map<string, ActiveLease> {

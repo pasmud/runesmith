@@ -39,9 +39,9 @@ The first production slice includes:
 - A Runesmith Loop Pulse that derives one authoritative next action, compact execution plan, health signal, priority, blockers, required evidence, and active runes from the runtime capsule.
 - A Runesmith Runebook that turns the live Loop Pulse into one active procedure card with autonomy mode, trigger, intent, steps, required evidence, commands, tool hints, and stop conditions.
 - A Runesmith Protocol Deck that turns Loop Pulse state into engine-selected protocols with objective, procedure, verification, forbidden moves, and tool hints, giving Runesmith its own install-once workflow layer instead of relying on external skill names.
-- A Runesmith Agent Mesh that ships default Atlas, Oracle, Artificer, Scout, and Steward contracts so routing works without user-authored setup.
+- A Runesmith Agent Mesh that ships default Atlas, Oracle, Artificer, Scout, and Steward contracts and feeds Dispatch Matrix task-claim routing so Covenant Review and Seal work can move to the right built-in role without user-authored setup.
 - A Runesmith Plan Contract that classifies the active Mission Map as thin, ready, blocked, or idle; it surfaces concrete execution slices, detects missing proof obligations, and inherits evidence requirements from assigned agent contracts for older capsules.
-- A Runesmith Dispatch Matrix that derives serial, parallel, blocked, drained, and idle dispatch state from Mission Map readiness, active leases, and registered agent contracts, then recommends matching agents for claimable slots.
+- A Runesmith Dispatch Matrix that derives serial, parallel, blocked, drained, and idle dispatch state from Mission Map readiness, active leases, evidence requirements, and registered agent contracts, then recommends matching agents for claimable slots and supplies the shared task-claim routing decision.
 - A Runesmith Proof Plan that turns missing proof, stale proof, failed diagnostics, and changed-file impact into exact verification commands across OpenCode, CLI, and dashboard surfaces, including impacted tests and lint when a repository exposes them.
 - A Runesmith Proof Runner that executes the active Proof Plan, records passing proof or failing diagnostics, and advances the shared mission loop when proof passes.
 - A Runesmith Redline Proof signal that checks whether focused failing proof or proof-file evidence preceded implementation edits, surfaces missing discipline in OpenCode, CLI, dashboard, Review Lens, and Seal Audit, and keeps the user path install-once instead of workflow-name driven.
@@ -76,9 +76,9 @@ Responsibilities:
 - Evidence ledger.
 - Recovery policy evaluation.
 - Protocol Deck derivation from Loop Pulse, Runebook, and Proof Plan.
-- Default Agent Mesh contract construction and cloning.
+- Default Agent Mesh contract construction, cloning, and evidence-aware claim routing through Dispatch Matrix recommendations.
 - Plan Contract derivation from Mission Map, task evidence requirements, and assigned agent contracts.
-- Dispatch Matrix derivation from Mission Map, leases, dependencies, and agent contracts.
+- Dispatch Matrix derivation from Mission Map, leases, dependencies, evidence requirements, and agent contracts.
 - Repair Contract derivation from diagnostic, proof, and file-change evidence.
 - Serialization to and from JSON snapshots.
 
@@ -91,7 +91,7 @@ Responsibilities:
 - Export an OpenCode plugin module.
 - Register mission tools.
 - Inject the Runic Covenant and Runesmith Autopilot through OpenCode's system transform hook.
-- Register the default Agent Mesh and inject a mission capsule summary, Mission Map, Plan Contract, and Dispatch Matrix through OpenCode's system and compaction hooks.
+- Register the default Agent Mesh and inject a mission capsule summary, Mission Map, Plan Contract, and Dispatch Matrix through OpenCode's system and compaction hooks; the shared loop uses the same matrix to claim queued Covenant tasks with the best matching built-in contract.
 - Record evidence from OpenCode tool execution hooks without requiring the agent to call evidence tools manually for routine shell, test, and file-change proof.
 - Advance the active mission from idle events through Runeweave and the runtime evidence gate, with automatic Proof Plan execution gated by implementation or repair evidence and stop reasons recorded on the mission graph.
 - Translate OpenCode events into core runtime events.

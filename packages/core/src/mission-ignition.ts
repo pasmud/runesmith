@@ -1,4 +1,5 @@
 import { createCovenantTaskPlan } from "./covenant.js"
+import { selectDispatchAgentForTask } from "./dispatch-matrix.js"
 import { deriveLoopPulse, type LoopPulse } from "./loop-pulse.js"
 import { selectRunicLoopTask } from "./runic-loop.js"
 import type { RunesmithRuntime, RuntimeSnapshot } from "./runtime.js"
@@ -52,10 +53,11 @@ export function prepareRunicMission(
     missionCreated = true
   }
 
+  const claimSnapshot = runtime.snapshot()
   const claimed = runtime.claimTask({
     missionId,
     taskId,
-    contractId: options.contract.id,
+    contractId: selectDispatchAgentForTask(claimSnapshot, taskId, options.contract.id),
     holder: options.holder,
     idempotencyKey: `${options.idempotencyScope}:${missionId}:${taskId}`,
     ttlMs: options.ttlMs,
