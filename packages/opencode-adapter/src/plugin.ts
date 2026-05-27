@@ -1,6 +1,7 @@
 import {
   buildCovenantControlBrief,
   buildCovenantPrompt,
+  createCovenantDecisionDraft,
   createCovenantTaskPlan,
   createRuntime,
   createRunicCovenant,
@@ -604,6 +605,24 @@ async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<T
     taskId: target.taskId,
     requiredEvidence: getRequiredEvidenceForTask(task, contract),
   })
+  const decisionDraft = createCovenantDecisionDraft(task)
+  if (decisionDraft && missingEvidence.length === 1 && missingEvidence[0] === "decision") {
+    const recorded = input.runtime.addTaskEvidence({
+      missionId: target.missionId,
+      evidence: {
+        id: `evidence_auto_decision_${fingerprint(`${target.missionId}:${target.taskId}:${decisionDraft.stage}`)}`,
+        taskId: target.taskId,
+        type: "decision",
+        summary: decisionDraft.summary,
+        payload: decisionDraft.payload,
+        createdAt: new Date().toISOString(),
+      },
+    })
+    if (!recorded.ok) return formatError("Autopilot decision evidence rejected", recorded.error)
+
+    await persistRuntime(input.runtimeStore, input.runtime)
+    return advanceAutopilotLoop(input)
+  }
 
   if (missingEvidence.length > 0) {
     return formatValue("Autopilot tick held", {
@@ -634,14 +653,16 @@ async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<T
 
   await persistRuntime(input.runtimeStore, input.runtime)
 
+  if (nextClaimed?.ok) {
+    return advanceAutopilotLoop(input)
+  }
+
   return formatValue("Autopilot tick completed", {
     status: "completed",
     missionId: target.missionId,
     taskId: target.taskId,
     taskStatus: completed.value.task.status,
     missionStatus: input.runtime.snapshot().graphs[target.missionId]?.mission.status ?? completed.value.graph.mission.status,
-    nextTaskId: nextClaimed?.ok ? nextClaimed.value.task.id : undefined,
-    nextTaskStatus: nextClaimed?.ok ? nextClaimed.value.task.status : undefined,
   })
 }
 
@@ -884,8 +905,8 @@ function buildAutopilotPrompt(): string {
     "## Runesmith Autopilot",
     "Runesmith is installed as the orchestration engine for this OpenCode session.",
     "When the user asks for coding, repo, debugging, UI, or research-to-implementation work, call `runesmith_autopilot_prepare` with the latest user goal or message list before starting edits.",
-    "Continue under the returned mission, task, and lease. New autopilot missions are planned as Forge, Review, and Seal tasks. Runesmith records shell, test, and file-change tool evidence automatically; use `runesmith_task_evidence` for decisions, risks, diagnostics, or external proof the tool hooks cannot see.",
-    "When the active task has required evidence, call `runesmith_autopilot_tick` or let session-idle events advance it. The tick may complete the task only after the evidence gate is satisfied, then claim the next dependency-ready task.",
+    "Continue under the returned mission, task, and lease. New autopilot missions are planned as Forge, Review, and Seal tasks. Runesmith records shell, test, file-change, and safe Covenant decision evidence automatically; use `runesmith_task_evidence` for risks, diagnostics, external proof, or decisions the tool hooks cannot infer.",
+    "When the active task has required evidence, call `runesmith_autopilot_tick` or let session-idle events advance it. The tick may complete the task only after the evidence gate is satisfied, synthesize Review and Seal decisions when safe, then claim the next dependency-ready task.",
     "Do not ask the user to invoke Runesmith, skills, or a workflow by name. Keep the user experience install-once and direct.",
     "Before claiming completion, attach required evidence and use `runesmith_task_complete`; if state looks stale or conflicting, run `runesmith_recover` first.",
   ].join("\n")

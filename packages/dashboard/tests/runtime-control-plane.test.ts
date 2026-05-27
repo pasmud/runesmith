@@ -94,15 +94,36 @@ describe("dashboard runtime control plane", () => {
         action: "run-autopilot-cycle",
         status: "completed",
         missionId: "mission_alpha",
-        taskId: "task_alpha",
-        nextTaskId: "task_alpha_review",
-        nextTaskStatus: "running",
+        taskId: "task_alpha_seal",
       },
     })
     if (!result.ok) return
 
-    expect(result.value.snapshot.graphs.mission_alpha.mission.status).toBe("running")
-    expect(result.value.snapshot.graphs.mission_alpha.tasks.task_alpha.status).toBe("complete")
-    expect(result.value.snapshot.graphs.mission_alpha.tasks.task_alpha_review.status).toBe("running")
+    const graph = result.value.snapshot.graphs.mission_alpha
+    const evidence = Object.values(result.value.snapshot.ledgers.mission_alpha.evidence)
+    expect(graph.mission.status).toBe("complete")
+    expect(graph.tasks.task_alpha.status).toBe("complete")
+    expect(graph.tasks.task_alpha_review.status).toBe("complete")
+    expect(graph.tasks.task_alpha_seal.status).toBe("complete")
+    expect(evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task_alpha_review",
+          type: "decision",
+          payload: expect.objectContaining({
+            stage: "review",
+            verdict: "approved",
+          }),
+        }),
+        expect.objectContaining({
+          taskId: "task_alpha_seal",
+          type: "decision",
+          payload: expect.objectContaining({
+            stage: "seal",
+            verdict: "sealed",
+          }),
+        }),
+      ]),
+    )
   })
 })

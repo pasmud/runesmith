@@ -1,4 +1,5 @@
 import {
+  createCovenantDecisionDraft,
   createCovenantTaskPlan,
   createRuntime,
   getRequiredEvidenceForTask,
@@ -185,6 +186,23 @@ function runDashboardAutopilotCycle(
     taskId: target.taskId,
     requiredEvidence: getRequiredEvidenceForTask(task, contract),
   })
+  const decisionDraft = createCovenantDecisionDraft(task)
+  if (decisionDraft && missingEvidence.length === 1 && missingEvidence[0] === "decision") {
+    const recorded = runtime.addTaskEvidence({
+      missionId: target.missionId,
+      evidence: {
+        id: `evidence_auto_decision_${fingerprint(`${target.missionId}:${target.taskId}:${decisionDraft.stage}`)}`,
+        taskId: target.taskId,
+        type: "decision",
+        summary: decisionDraft.summary,
+        payload: decisionDraft.payload,
+        createdAt: new Date().toISOString(),
+      },
+    })
+    if (!recorded.ok) return { ok: false, error: recorded.error }
+
+    return runDashboardAutopilotCycle(runtime, options)
+  }
 
   if (missingEvidence.length > 0) {
     return {
@@ -217,14 +235,16 @@ function runDashboardAutopilotCycle(
     : undefined
   if (nextClaimed && !nextClaimed.ok) return { ok: false, error: nextClaimed.error }
 
+  if (nextClaimed?.ok) {
+    return runDashboardAutopilotCycle(runtime, options)
+  }
+
   return {
     ok: true,
     value: {
       action: "run-autopilot-cycle",
       missionId: target.missionId,
       taskId: target.taskId,
-      nextTaskId: nextClaimed?.ok ? nextClaimed.value.task.id : undefined,
-      nextTaskStatus: nextClaimed?.ok ? nextClaimed.value.task.status : undefined,
       status: "completed",
       snapshot: runtime.snapshot(),
     },

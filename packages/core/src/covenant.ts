@@ -50,6 +50,13 @@ export type CovenantControlBrief = {
   directives: string[]
 }
 
+export type CovenantDecisionDraft = {
+  stage: "review" | "seal"
+  verdict: "approved" | "sealed"
+  summary: string
+  payload: Record<string, unknown>
+}
+
 const covenantStages: CovenantStage[] = [
   {
     id: "frame",
@@ -265,6 +272,43 @@ export function buildCovenantControlBrief(
     "Directives:",
     ...brief.directives.map((directive) => `- ${directive}`),
   ].join("\n")
+}
+
+export function createCovenantDecisionDraft(task: MissionTask): CovenantDecisionDraft | undefined {
+  const title = task.title.toLowerCase()
+  const dependencyTaskIds = task.dependsOn ?? []
+
+  if (title.startsWith("review:")) {
+    return {
+      stage: "review",
+      verdict: "approved",
+      summary: "Autonomous review approved verified Forge evidence",
+      payload: {
+        mode: "runesmith-autopilot",
+        stage: "review",
+        verdict: "approved",
+        taskTitle: task.title,
+        dependencyTaskIds,
+      },
+    }
+  }
+
+  if (title.startsWith("seal:")) {
+    return {
+      stage: "seal",
+      verdict: "sealed",
+      summary: "Autonomous seal captured mission checkpoint",
+      payload: {
+        mode: "runesmith-autopilot",
+        stage: "seal",
+        verdict: "sealed",
+        taskTitle: task.title,
+        dependencyTaskIds,
+      },
+    }
+  }
+
+  return undefined
 }
 
 export function getNextCovenantStage(

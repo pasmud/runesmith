@@ -224,8 +224,8 @@ The runtime also derives a live Runesmith Control Brief from the current snapsho
 The default Covenant task plan is:
 
 - Forge: implementation work requiring `file-change` and passing `test-result` evidence.
-- Review: dependent review work requiring `decision` evidence.
-- Seal: dependent checkpoint and handoff work requiring `decision` evidence.
+- Review: dependent review work requiring `decision` evidence, generated automatically when verified Forge proof exists.
+- Seal: dependent checkpoint and handoff work requiring `decision` evidence, generated automatically after Review completes.
 
 ### Runesmith Autopilot
 
@@ -240,9 +240,9 @@ Runesmith Autopilot is the install-once bridge between OpenCode chat and the run
 
 For zero-touch operation, the adapter also uses `tool.execute.before`. When the first mutating or shell tool is about to run, and no active task exists, Runesmith infers the latest user goal from message context and runs the same prepare path. Read-only tools and Runesmith's own tools are ignored to avoid creating noisy missions.
 
-After a mission is prepared, the `tool.execute.after` hook records routine proof automatically. Shell commands become `command-output` evidence, recognized passing test commands become `test-result` evidence, failed test commands become `diagnostic` evidence, and file mutation tools become `file-change` evidence on the active non-terminal task. After recording evidence, the hook runs the evidence-gated advance loop so a task can seal immediately when the required proof exists. If the mission has another dependency-ready task, autopilot claims it immediately so the agent continues the loop instead of stopping after implementation proof. Runesmith ignores read-only tools and its own tools to avoid noisy ledgers and feedback loops.
+After a mission is prepared, the `tool.execute.after` hook records routine proof automatically. Shell commands become `command-output` evidence, recognized passing test commands become `test-result` evidence, failed test commands become `diagnostic` evidence, and file mutation tools become `file-change` evidence on the active non-terminal task. After recording evidence, the hook runs the evidence-gated advance loop so a task can seal immediately when the required proof exists. If the mission has another dependency-ready task, autopilot claims it immediately so the agent continues the loop instead of stopping after implementation proof. Covenant Review and Seal stages synthesize `decision` evidence from the verified mission state, allowing routine missions to finish without the user invoking workflow tools. Runesmith ignores read-only tools and its own tools to avoid noisy ledgers and feedback loops.
 
-The `runesmith_autopilot_tick` tool, and the same loop on OpenCode `session.idle` events, checks the active task's assigned contract and task-level evidence requirements. If required evidence is missing, it holds with a missing-evidence list. If proof is present, it calls the runtime completion gate, claims the next dependency-ready task when one exists, and persists the capsule. This keeps the agent loop automatic while preserving evidence-gated completion.
+The `runesmith_autopilot_tick` tool, and the same loop on OpenCode `session.idle` events, checks the active task's assigned contract and task-level evidence requirements. If required evidence is missing, it holds with a missing-evidence list. If proof is present, it calls the runtime completion gate, synthesizes safe Covenant decisions for Review and Seal, claims the next dependency-ready task when one exists, and persists the capsule. This keeps the agent loop automatic while preserving evidence-gated completion.
 
 The compaction hook appends a mission capsule summary containing active missions, tasks, leases, and evidence counts. This gives continuation sessions enough orchestration state to recover or keep working before starting a new loop.
 
@@ -299,7 +299,7 @@ Runtime-backed controls:
 - `/api/runtime-capsule` reads the local runtime capsule.
 - `/api/runtime-control` accepts dashboard actions and persists the resulting capsule.
 - Command Forge starts a planned Covenant mission from the dashboard directive, registers the default Atlas contract, claims the first task, and saves the capsule.
-- Guarded Autopilot runs an evidence-gated cycle over the persisted mission. It recovers stale work first, holds if proof is missing, completes through the runtime gate once required evidence exists, and claims the next dependency-ready task.
+- Guarded Autopilot runs an evidence-gated cycle over the persisted mission. It recovers stale work first, holds if proof is missing, completes through the runtime gate once required evidence exists, synthesizes Review and Seal decisions, and claims the next dependency-ready task.
 
 Visual rules:
 

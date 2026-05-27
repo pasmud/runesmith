@@ -299,7 +299,7 @@ describe("opencode adapter", () => {
     )
 
     const evidence = Object.values(runtime.snapshot().ledgers.mission_alpha.evidence)
-    expect(evidence).toHaveLength(2)
+    expect(evidence).toHaveLength(4)
     expect(evidence).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -357,11 +357,33 @@ describe("opencode adapter", () => {
       },
     )
 
-    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.status).toBe("complete")
-    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_review.status).toBe("running")
-    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_review.assignedAgentId).toBe("agent_atlas")
-    expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("running")
-    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.tasks.task_alpha_review.status).toBe("running")
+    const graph = runtime.snapshot().graphs.mission_alpha
+    const evidence = Object.values(runtime.snapshot().ledgers.mission_alpha.evidence)
+    expect(graph.tasks.task_alpha.status).toBe("complete")
+    expect(graph.tasks.task_alpha_review.status).toBe("complete")
+    expect(graph.tasks.task_alpha_seal.status).toBe("complete")
+    expect(graph.mission.status).toBe("complete")
+    expect(evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task_alpha_review",
+          type: "decision",
+          payload: expect.objectContaining({
+            stage: "review",
+            verdict: "approved",
+          }),
+        }),
+        expect.objectContaining({
+          taskId: "task_alpha_seal",
+          type: "decision",
+          payload: expect.objectContaining({
+            stage: "seal",
+            verdict: "sealed",
+          }),
+        }),
+      ]),
+    )
+    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.mission.status).toBe("complete")
   })
 
   test("does not seal the active task when captured tests fail", async () => {
@@ -446,8 +468,9 @@ describe("opencode adapter", () => {
     await plugin.event?.({ event: { type: "session.idle" } })
 
     expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.status).toBe("complete")
-    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_review.status).toBe("running")
-    expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("running")
-    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.tasks.task_alpha_review.status).toBe("running")
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_review.status).toBe("complete")
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_seal.status).toBe("complete")
+    expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("complete")
+    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.mission.status).toBe("complete")
   })
 })
