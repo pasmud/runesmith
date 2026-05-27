@@ -6,6 +6,16 @@ const fixedNow = () => new Date("2026-05-27T00:00:00.000Z")
 const later = () => new Date("2026-05-27T00:02:00.000Z")
 const ids = (prefix: string) => `${prefix}_alpha`
 
+function deterministicIds() {
+  const counts = new Map<string, number>()
+
+  return (prefix: string) => {
+    const next = (counts.get(prefix) ?? 0) + 1
+    counts.set(prefix, next)
+    return `${prefix}_${next}`
+  }
+}
+
 const atlas: AgentContract = {
   id: "agent_atlas",
   displayName: "Atlas",
@@ -48,6 +58,100 @@ describe("runesmith runtime", () => {
     expect(claimed.value.task.status).toBe("running")
     expect(claimed.value.task.assignedAgentId).toBe("agent_atlas")
     expect(claimed.value.lease.id).toBe("lease_alpha")
+  })
+
+  test("refines a fresh planned mission while preserving the active root lease", () => {
+    const runtime = createRuntime({ idFactory: deterministicIds(), now: fixedNow })
+    runtime.registerContract(atlas)
+    const started = runtime.startMission({
+      goal: "Refine thin plan",
+      taskPlan: [
+        {
+          key: "forge",
+          title: "Forge: Refine thin plan",
+          description: "Default thin implementation task.",
+          requiredCapabilities: ["typescript", "testing"],
+          requiredEvidence: ["file-change", "test-result"],
+        },
+        {
+          key: "review",
+          title: "Review: Refine thin plan",
+          description: "Review default task.",
+          requiredCapabilities: ["testing"],
+          requiredEvidence: ["decision"],
+          dependsOn: ["forge"],
+        },
+        {
+          key: "seal",
+          title: "Seal: Refine thin plan",
+          description: "Seal default task.",
+          requiredCapabilities: ["typescript"],
+          requiredEvidence: ["decision"],
+          dependsOn: ["review"],
+        },
+      ],
+    })
+    expect(started.ok).toBe(true)
+    if (!started.ok) return
+    runtime.claimTask({
+      missionId: started.value.missionId,
+      taskId: started.value.rootTaskId,
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-root",
+      ttlMs: 30_000,
+    })
+
+    const refined = runtime.refineMissionPlan({
+      missionId: started.value.missionId,
+      taskPlan: [
+        {
+          key: "plan",
+          title: "Plan: Refine thin plan",
+          description: "Record the refined execution plan.",
+          requiredCapabilities: ["typescript"],
+          requiredEvidence: ["decision"],
+        },
+        {
+          key: "api",
+          title: "Forge: API slice",
+          description: "Implement the API slice.",
+          requiredCapabilities: ["typescript", "testing"],
+          requiredEvidence: ["file-change", "test-result"],
+          dependsOn: ["plan"],
+        },
+        {
+          key: "review",
+          title: "Review: refined plan",
+          description: "Review the refined plan.",
+          requiredCapabilities: ["testing"],
+          requiredEvidence: ["decision"],
+          dependsOn: ["api"],
+        },
+      ],
+    })
+
+    expect(refined.ok).toBe(true)
+    if (!refined.ok) return
+    expect(refined.value.rootTask).toMatchObject({
+      id: started.value.rootTaskId,
+      title: "Plan: Refine thin plan",
+      status: "running",
+      assignedAgentId: "agent_atlas",
+    })
+    expect(Object.keys(refined.value.graph.tasks)).toEqual([
+      "task_1",
+      "task_1_api",
+      "task_1_review",
+    ])
+    expect(refined.value.graph.events.at(-1)).toMatchObject({
+      type: "mission.mapped",
+      message: "Mission plan refined",
+      data: {
+        taskCount: 3,
+        previousTaskCount: 3,
+      },
+    })
   })
 
   test("reports idempotent task claims as replayed", () => {

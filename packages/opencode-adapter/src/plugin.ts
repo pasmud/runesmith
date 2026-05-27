@@ -37,6 +37,7 @@ import {
   prepareRunicMission,
   repairProjectConfig,
   repairRuntimeCapsule,
+  refineRunicMissionPlan,
   resolveRunicFaultline,
   resolveRunicRisk,
   runRuneweave,
@@ -49,6 +50,7 @@ import {
   type EvidenceType,
   type IdFactory,
   type MissionEvent,
+  type MissionTaskPlanItem,
   type ProofCommandExecution,
   type ProofCommandRunner,
   type ProofPlan,
@@ -84,6 +86,7 @@ export type RunesmithPlugin = {
   name: "runesmith"
   tool: {
     runesmith_autopilot_prepare: ToolDefinition<AutopilotPrepareArgs>
+    runesmith_plan_refine: ToolDefinition<PlanRefineArgs>
     runesmith_next: ToolDefinition<NextArgs>
     runesmith_os_run: ToolDefinition<OsRunArgs>
     runesmith_autopilot_tick: ToolDefinition<AutopilotTickArgs>
@@ -137,6 +140,12 @@ type CovenantStatusArgs = Record<string, never>
 type AutopilotPrepareArgs = {
   goal?: string
   messages?: unknown[]
+}
+
+type PlanRefineArgs = {
+  missionId?: string
+  tasks?: unknown[]
+  evidenceId?: string
 }
 
 type NextArgs = {
@@ -270,6 +279,24 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           return prepareAutopilotMission({
             runtime,
             runtimeStore: options.runtimeStore,
+            args,
+          })
+        },
+      },
+      runesmith_plan_refine: {
+        description:
+          "Refine the active thin Runesmith mission into proof-backed task slices, record the planning decision, and advance the shared orchestration loop.",
+        parameters: objectSchema({
+          missionId: stringSchema("Optional mission id. If omitted, Runesmith refines the active mission."),
+          tasks: taskPlanSchema("Ordered proof-backed task slices. The first task must be the planning decision task."),
+          evidenceId: stringSchema("Optional stable decision evidence id for the plan refinement"),
+        }),
+        async execute(args) {
+          return refinePlanFromOpenCode({
+            runtime,
+            proofPlanOptions,
+            runtimeStore: options.runtimeStore,
+            now: options.now,
             args,
           })
         },
@@ -741,6 +768,14 @@ type PrepareAutopilotMissionInput = {
   args: AutopilotPrepareArgs
 }
 
+type RefinePlanFromOpenCodeInput = {
+  runtime: RunesmithRuntime
+  proofPlanOptions?: ProofPlanOptions
+  runtimeStore?: PluginRuntimeStore
+  now?: () => Date
+  args: PlanRefineArgs
+}
+
 async function prepareAutopilotMission(input: PrepareAutopilotMissionInput): Promise<ToolResponse> {
   const goal = normalizeGoal(input.args.goal) ?? extractLatestUserGoal(input.args.messages)
   if (!goal) {
@@ -770,6 +805,33 @@ async function prepareAutopilotMission(input: PrepareAutopilotMissionInput): Pro
     replayed: prepared.value.replayed,
     missionCreated: prepared.value.missionCreated,
   })
+}
+
+async function refinePlanFromOpenCode(input: RefinePlanFromOpenCodeInput): Promise<ToolResponse> {
+  const taskPlan = parseTaskPlan(input.args.tasks)
+  if (!taskPlan.ok) return formatError("Plan refinement rejected", taskPlan.error)
+
+  const refined = refineRunicMissionPlan(input.runtime, {
+    missionId: normalizeGoal(input.args.missionId),
+    taskPlan: taskPlan.value,
+    contract: defaultAtlasContract,
+    holder: "runesmith-autopilot",
+    idempotencyScope: "plan-refine",
+    ttlMs: 30_000,
+    evidenceId: normalizeGoal(input.args.evidenceId),
+    now: input.now,
+  })
+  if (!refined.ok) return formatError("Plan refinement rejected", refined.error)
+
+  await persistRuntime(input.runtimeStore, input.runtime)
+  const snapshot = input.runtime.snapshot()
+
+  return formatValue("Plan refined", {
+    ...refined.value,
+    missionMap: deriveMissionMap(snapshot),
+    proofPlan: deriveProofPlan(snapshot, input.proofPlanOptions),
+    runebook: deriveRunebook(snapshot, { proofPlanOptions: input.proofPlanOptions }),
+  } as unknown as Record<string, unknown>)
 }
 
 type PrepareBeforeToolExecutionInput = {
@@ -1529,12 +1591,13 @@ function buildAutopilotPrompt(): string {
     "If you reach a session-idle point before preparation, Runesmith can infer the latest user goal from chat context and prepare the mission automatically.",
     "Continue under the returned mission, task, and lease. New autopilot missions are planned as Forge, Review, and Seal tasks. Runesmith records shell, test, file-change, and safe Covenant decision evidence automatically; use `runesmith_task_evidence` for risks, diagnostics, external proof, or decisions the tool hooks cannot infer.",
     "Follow the active Runesmith Runebook card and Active runes as automatic procedure, not as user-invoked workflows.",
-    "Use Runesmith Plan Contract as the plan-quality signal: if the map is thin, decompose Forge into concrete proof-backed execution slices before broad autonomous work.",
+    "Use Runesmith Plan Contract as the plan-quality signal: if the map is thin, call `runesmith_plan_refine` with concrete proof-backed execution slices before broad autonomous work. That records the planning decision, remaps the mission, and lets the shared loop claim independent ready slices.",
     "Use Runesmith Dispatch Matrix as the agent-routing signal: claim only ready slots, respect active leases, and parallelize only independent ready work with matching contracts.",
     "Use Runesmith Redline Proof as the test-first/review-discipline signal: prefer focused failing proof or proof-file evidence before implementation edits when behavior is testable.",
     "Use Runesmith Repair Contract during failed proof: keep the repair hypothesis-linked, one-variable, and tied to the exact failing command before broad proof.",
     "Prefer `runesmith_os_run` when you need Runesmith to keep executing engine-owned Runebook cards until the mission is sealed or a real stop condition appears.",
     "Prefer `runesmith_next` when you need Runesmith to execute the current Runebook card without choosing a lower-level tool.",
+    "Prefer `runesmith_plan_refine` when Plan Contract is thin and you can express the work as concrete tasks with dependencies and required evidence.",
     "When proof is missing, call `runesmith_proof_run` to execute the live Runesmith Proof Plan before asking for completion. When Faultline is active, follow the architecture breakpoint before rerunning proof.",
     "When Loop Pulse says `Resolve risk`, call `runesmith_risk_resolve` with a short decision summary instead of asking the user to find mission ids or manually attach decision evidence.",
     "When Loop Pulse says `Review faultline`, call `runesmith_faultline_resolve` with the architecture path, redesign, revert, scope split, or new hypothesis before another proof run.",
@@ -1618,7 +1681,8 @@ function buildMessageBootstrap(
     `Redline Proof: ${redlineProof.status}; ${redlineProof.summary}`,
     "Let Runesmith choose the procedure from runtime state.",
     "Before mutating coding work, use Runesmith to prepare or resume the active mission.",
-    "Prefer runesmith_os_run, runesmith_next, runesmith_proof_run, runesmith_risk_resolve, or runesmith_faultline_resolve when Loop Pulse makes them the next engine-owned action.",
+    "If Plan Contract is thin, call runesmith_plan_refine with concrete proof-backed slices before broad implementation.",
+    "Prefer runesmith_os_run, runesmith_next, runesmith_plan_refine, runesmith_proof_run, runesmith_risk_resolve, or runesmith_faultline_resolve when runtime state makes them the next engine-owned action.",
     "Do not ask the user to load skills or invoke workflows by name.",
     "</RUNESMITH_BOOTSTRAP>",
   ].join("\n")
@@ -1798,6 +1862,86 @@ function parseMaxSteps(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isInteger(value)) return undefined
 
   return value
+}
+
+type ParsedTaskPlan =
+  | { ok: true; value: MissionTaskPlanItem[] }
+  | { ok: false; error: Record<string, unknown> }
+
+function parseTaskPlan(value: unknown): ParsedTaskPlan {
+  if (!Array.isArray(value) || value.length === 0) {
+    return planParseError("Plan refinement requires a non-empty tasks array")
+  }
+
+  const tasks: MissionTaskPlanItem[] = []
+  for (const [index, item] of value.entries()) {
+    const record = asRecord(item)
+    if (!record) {
+      return planParseError("Plan refinement tasks must be objects", { index })
+    }
+
+    const key = normalizeGoal(record.key)
+    const title = normalizeGoal(record.title)
+    const description = normalizeGoal(record.description)
+    if (!key || !title || !description) {
+      return planParseError("Plan refinement tasks require key, title, and description", { index })
+    }
+
+    const requiredCapabilities = parseStringArray(record.requiredCapabilities)
+    const requiredEvidence = parseEvidenceTypes(record.requiredEvidence)
+    const dependsOn = parseStringArray(record.dependsOn)
+    if (record.requiredCapabilities !== undefined && !requiredCapabilities) {
+      return planParseError("Task requiredCapabilities must be an array of strings", { index, key })
+    }
+    if (!requiredEvidence) {
+      return planParseError("Task requiredEvidence must be an array of supported evidence types", { index, key })
+    }
+    if (record.dependsOn !== undefined && !dependsOn) {
+      return planParseError("Task dependsOn must be an array of strings", { index, key })
+    }
+
+    tasks.push({
+      key,
+      title,
+      description,
+      requiredCapabilities,
+      requiredEvidence,
+      dependsOn,
+    })
+  }
+
+  return { ok: true, value: tasks }
+}
+
+function parseStringArray(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value)) return undefined
+
+  const values = value.map(normalizeGoal)
+  return values.every((entry): entry is string => Boolean(entry)) ? values : undefined
+}
+
+function parseEvidenceTypes(value: unknown): EvidenceType[] | undefined {
+  const values = parseStringArray(value)
+  if (!values) return undefined
+  if (!values.every(isEvidenceType)) return undefined
+
+  return values
+}
+
+function isEvidenceType(value: string): value is EvidenceType {
+  return ["file-change", "command-output", "test-result", "diagnostic", "decision", "risk"].includes(value)
+}
+
+function planParseError(message: string, details?: Record<string, unknown>): ParsedTaskPlan {
+  return {
+    ok: false,
+    error: {
+      code: "PLAN_REFINE_INVALID",
+      message,
+      details,
+    },
+  }
 }
 
 function fingerprint(value: string): string {
@@ -2049,6 +2193,50 @@ function arraySchema(description: string): Record<string, unknown> {
     description,
     items: {
       type: "string",
+    },
+  }
+}
+
+function taskPlanSchema(description: string): Record<string, unknown> {
+  return {
+    type: "array",
+    description,
+    items: {
+      type: "object",
+      properties: {
+        key: {
+          type: "string",
+          description: "Stable task key used by dependencies",
+        },
+        title: {
+          type: "string",
+          description: "Short task title",
+        },
+        description: {
+          type: "string",
+          description: "Concrete task description",
+        },
+        requiredCapabilities: {
+          type: "array",
+          description: "Capabilities required for this task",
+          items: { type: "string" },
+        },
+        requiredEvidence: {
+          type: "array",
+          description: "Evidence required before the task can complete",
+          items: {
+            type: "string",
+            enum: ["file-change", "command-output", "test-result", "diagnostic", "decision", "risk"],
+          },
+        },
+        dependsOn: {
+          type: "array",
+          description: "Task keys this task depends on",
+          items: { type: "string" },
+        },
+      },
+      required: ["key", "title", "description", "requiredEvidence"],
+      additionalProperties: false,
     },
   }
 }

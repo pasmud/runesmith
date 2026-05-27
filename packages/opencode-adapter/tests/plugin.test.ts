@@ -19,6 +19,16 @@ import {
 const fixedNow = () => new Date("2026-05-27T00:00:00.000Z")
 const ids = (prefix: string) => `${prefix}_alpha`
 
+function countingIds() {
+  const counts = new Map<string, number>()
+
+  return (prefix: string) => {
+    const next = (counts.get(prefix) ?? 0) + 1
+    counts.set(prefix, next)
+    return `${prefix}_${next}`
+  }
+}
+
 function createMemoryRuntimeHost(
   initialFiles: Record<string, string> = {},
 ): RuntimeStoreHost & { files: Map<string, string> } {
@@ -705,6 +715,110 @@ describe("opencode adapter", () => {
       "task_alpha_seal",
     ])
     expect(writes.length).toBeGreaterThanOrEqual(2)
+  })
+
+  test("refines a thin autopilot mission into proof-backed parallel slices", async () => {
+    const runtime = createRuntime({ idFactory: countingIds(), now: fixedNow })
+    const writes: string[] = []
+    const plugin = createRunesmithPlugin({
+      runtime,
+      runtimeStore: {
+        save(snapshot) {
+          writes.push(JSON.stringify(snapshot))
+        },
+      },
+    })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Ship install-direct orchestration planning",
+    })
+
+    const response = await plugin.tool.runesmith_plan_refine.execute({
+      tasks: [
+        {
+          key: "plan",
+          title: "Plan: install-direct orchestration planning",
+          description: "Record proof-backed execution slices before implementation starts.",
+          requiredCapabilities: ["repository-maintenance"],
+          requiredEvidence: ["decision"],
+        },
+        {
+          key: "adapter-forge",
+          title: "Forge: OpenCode plan refinement tool",
+          description: "Expose a direct tool that refines thin missions into concrete task slices.",
+          requiredCapabilities: ["typescript", "testing"],
+          requiredEvidence: ["file-change", "test-result"],
+          dependsOn: ["plan"],
+        },
+        {
+          key: "dashboard-forge",
+          title: "Forge: dashboard plan refinement signal",
+          description: "Surface the refined plan and next orchestration state in mission control.",
+          requiredCapabilities: ["typescript", "ui"],
+          requiredEvidence: ["file-change", "test-result"],
+          dependsOn: ["plan"],
+        },
+        {
+          key: "review",
+          title: "Review: install-direct orchestration planning",
+          description: "Review proof, routing, and residual risk for the refined plan.",
+          requiredCapabilities: ["testing", "review"],
+          requiredEvidence: ["decision"],
+          dependsOn: ["adapter-forge", "dashboard-forge"],
+        },
+        {
+          key: "seal",
+          title: "Seal: install-direct orchestration planning",
+          description: "Capture the final checkpoint and handoff.",
+          requiredCapabilities: ["repository-maintenance", "release"],
+          requiredEvidence: ["decision"],
+          dependsOn: ["review"],
+        },
+      ],
+      evidenceId: "evidence_plan_refined",
+    })
+
+    const parsed = JSON.parse(response.output)
+    expect(parsed).toMatchObject({
+      ok: true,
+      value: {
+        missionId: "mission_1",
+        rootTaskId: "task_1",
+        taskCount: 5,
+        status: "waiting-for-evidence",
+        planContract: {
+          status: "ready",
+          implementationTaskCount: 2,
+        },
+        dispatchMatrix: {
+          activeSlotCount: 2,
+          readySlotCount: 0,
+        },
+      },
+    })
+    const snapshot = runtime.snapshot()
+    const tasks = snapshot.graphs.mission_1.tasks
+    expect(Object.keys(tasks)).toEqual([
+      "task_1",
+      "task_1_adapter_forge",
+      "task_1_dashboard_forge",
+      "task_1_review",
+      "task_1_seal",
+    ])
+    expect(tasks.task_1.status).toBe("complete")
+    expect(tasks.task_1_adapter_forge).toMatchObject({
+      status: "running",
+      assignedAgentId: "agent_atlas",
+    })
+    expect(tasks.task_1_dashboard_forge).toMatchObject({
+      status: "running",
+      assignedAgentId: "agent_artificer",
+    })
+    expect(snapshot.ledgers.mission_1.evidence.evidence_plan_refined).toMatchObject({
+      taskId: "task_1",
+      type: "decision",
+    })
+    expect(writes.at(-1)).toContain("adapter-forge")
   })
 
   test("auto-prepares a mission before the first mutating OpenCode tool executes", async () => {

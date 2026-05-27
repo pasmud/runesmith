@@ -1,7 +1,13 @@
 import { getRequiredEvidenceForTask, validateAgentForTask } from "./contracts.js"
 import { addEvidence, assertRequiredEvidence, createEvidenceLedger, sameEvidence, type EvidenceLedger } from "./evidence-ledger.js"
 import { acquireLease, createLeaseBook, type LeaseBook } from "./lease-scheduler.js"
-import { createMissionGraph, taskDependenciesComplete, transitionTask, type MissionTaskPlanItem } from "./mission-graph.js"
+import {
+  createMissionGraph,
+  remapMissionGraph,
+  taskDependenciesComplete,
+  transitionTask,
+  type MissionTaskPlanItem,
+} from "./mission-graph.js"
 import { recoverStaleTasks } from "./recovery.js"
 import {
   err,
@@ -80,6 +86,17 @@ export type RecoverMissionInput = {
   now?: Clock
   staleAfterMs: number
   requeueStale?: boolean
+}
+
+export type RefineMissionPlanInput = {
+  missionId: string
+  taskPlan: MissionTaskPlanItem[]
+}
+
+export type RefineMissionPlanValue = {
+  graph: MissionGraph
+  rootTask: MissionTask
+  taskCount: number
 }
 
 export type RuntimeSnapshot = {
@@ -331,6 +348,45 @@ export class RunesmithRuntime {
     return ok({
       graph: transitioned.value,
       task: transitioned.value.tasks[input.taskId]!,
+    })
+  }
+
+  refineMissionPlan(input: RefineMissionPlanInput): Result<RefineMissionPlanValue> {
+    const graph = this.graphs.get(input.missionId)
+    if (!graph) {
+      return err(runtimeError("MISSION_NOT_FOUND", "Mission does not exist", { missionId: input.missionId }))
+    }
+
+    if (["complete", "failed", "cancelled"].includes(graph.mission.status)) {
+      return err(runtimeError("INVALID_TRANSITION", "Terminal missions cannot be refined", {
+        missionId: input.missionId,
+        status: graph.mission.status,
+      }))
+    }
+
+    const ledger = this.ledgers.get(input.missionId) ?? createEvidenceLedger()
+    const evidenceCount = Object.keys(ledger.evidence).length
+    if (evidenceCount > 0) {
+      return err(runtimeError("INVALID_TRANSITION", "Mission plan cannot be refined after task evidence is recorded", {
+        missionId: input.missionId,
+        evidenceCount,
+      }))
+    }
+
+    const refined = remapMissionGraph(graph, {
+      taskPlan: input.taskPlan,
+      now: this.options.now,
+      eventId: this.options.idFactory?.("event"),
+      preserveRootTaskState: true,
+    })
+    if (!refined.ok) return refined
+
+    this.graphs.set(input.missionId, refined.value)
+
+    return ok({
+      graph: refined.value,
+      rootTask: refined.value.tasks[refined.value.mission.rootTaskId]!,
+      taskCount: input.taskPlan.length,
     })
   }
 

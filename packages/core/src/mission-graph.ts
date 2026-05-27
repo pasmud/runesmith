@@ -36,6 +36,13 @@ export type TransitionTaskInput = {
   eventId?: string
 }
 
+export type RemapMissionGraphInput = {
+  taskPlan: MissionTaskPlanItem[]
+  now?: Clock
+  eventId?: string
+  preserveRootTaskState?: boolean
+}
+
 const terminalStatuses = new Set<TaskStatus>(["complete", "failed", "cancelled"])
 
 const allowedTransitions: Record<TaskStatus, TaskStatus[]> = {
@@ -185,8 +192,115 @@ export function transitionTask(graph: MissionGraph, input: TransitionTaskInput) 
   return ok(nextGraph)
 }
 
+export function remapMissionGraph(graph: MissionGraph, input: RemapMissionGraphInput) {
+  const valid = validateMissionTaskPlan(input.taskPlan)
+  if (!valid.ok) return valid
+
+  const now = (input.now ?? defaultClock)().toISOString()
+  const taskIds = buildPlannedTaskIds(input.taskPlan, graph.mission.rootTaskId)
+  let tasks = buildPlannedTasks({
+    missionId: graph.mission.id,
+    rootTaskId: graph.mission.rootTaskId,
+    now,
+    defaultCapabilities: [],
+    taskPlan: input.taskPlan,
+    taskIds,
+  })
+
+  if (input.preserveRootTaskState) {
+    const previousRoot = graph.tasks[graph.mission.rootTaskId]
+    const nextRoot = tasks[graph.mission.rootTaskId]
+    if (previousRoot && nextRoot && !terminalStatuses.has(previousRoot.status)) {
+      tasks = {
+        ...tasks,
+        [graph.mission.rootTaskId]: {
+          ...nextRoot,
+          status: previousRoot.status,
+          assignedAgentId: previousRoot.assignedAgentId,
+          createdAt: previousRoot.createdAt,
+          updatedAt: now,
+          lastHeartbeatAt: previousRoot.lastHeartbeatAt,
+        },
+      }
+    }
+  }
+
+  return ok<MissionGraph>({
+    mission: {
+      ...graph.mission,
+      updatedAt: now,
+    },
+    tasks,
+    events: [
+      ...graph.events,
+      {
+        id: input.eventId ?? defaultIdFactory("event"),
+        type: "mission.mapped",
+        at: now,
+        targetId: graph.mission.id,
+        message: "Mission plan refined",
+        data: {
+          rootTaskId: graph.mission.rootTaskId,
+          taskCount: input.taskPlan.length,
+          previousTaskCount: Object.keys(graph.tasks).length,
+          tasks: buildMissionMapTasks({
+            taskPlan: input.taskPlan,
+            taskIds,
+            tasks,
+          }),
+        },
+      },
+    ],
+  })
+}
+
 export function taskDependenciesComplete(graph: MissionGraph, task: MissionTask): boolean {
   return (task.dependsOn ?? []).every((dependencyId) => graph.tasks[dependencyId]?.status === "complete")
+}
+
+export function validateMissionTaskPlan(taskPlan: MissionTaskPlanItem[]) {
+  if (taskPlan.length === 0) {
+    return err(runtimeError("INVALID_TRANSITION", "Mission task plan must contain at least one task"))
+  }
+
+  const keys = new Set<string>()
+  for (const item of taskPlan) {
+    const key = item.key.trim()
+    if (!key) {
+      return err(runtimeError("INVALID_TRANSITION", "Mission task plan contains an empty task key"))
+    }
+    if (keys.has(key)) {
+      return err(runtimeError("INVALID_TRANSITION", "Mission task plan contains duplicate task keys", { key }))
+    }
+    if (!item.title.trim()) {
+      return err(runtimeError("INVALID_TRANSITION", "Mission task plan contains an empty title", { key }))
+    }
+    if (!item.description.trim()) {
+      return err(runtimeError("INVALID_TRANSITION", "Mission task plan contains an empty description", { key }))
+    }
+    keys.add(key)
+  }
+
+  for (const item of taskPlan) {
+    for (const dependency of item.dependsOn ?? []) {
+      if (dependency === item.key) {
+        return err(runtimeError("INVALID_TRANSITION", "Mission task cannot depend on itself", { key: item.key }))
+      }
+      if (!keys.has(dependency)) {
+        return err(runtimeError("INVALID_TRANSITION", "Mission task dependency does not exist", {
+          key: item.key,
+          dependency,
+        }))
+      }
+    }
+  }
+
+  const cycle = findPlanCycle(taskPlan)
+  if (cycle) {
+    return err(runtimeError("INVALID_TRANSITION", "Mission task plan contains a dependency cycle", { cycle }))
+  }
+
+  return ok(undefined)
 }
 
 function buildPlannedTasks(input: {
@@ -251,6 +365,39 @@ function buildMissionMapTasks(input: {
 function normalizePlanKey(key: string): string {
   const normalized = key.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
   return normalized || "task"
+}
+
+function findPlanCycle(taskPlan: MissionTaskPlanItem[]): string[] | undefined {
+  const dependencies = new Map(taskPlan.map((item) => [item.key, item.dependsOn ?? []]))
+  const visiting = new Set<string>()
+  const visited = new Set<string>()
+  const path: string[] = []
+
+  const visit = (key: string): string[] | undefined => {
+    if (visiting.has(key)) {
+      return [...path.slice(path.indexOf(key)), key]
+    }
+    if (visited.has(key)) return undefined
+
+    visiting.add(key)
+    path.push(key)
+    for (const dependency of dependencies.get(key) ?? []) {
+      const cycle = visit(dependency)
+      if (cycle) return cycle
+    }
+    path.pop()
+    visiting.delete(key)
+    visited.add(key)
+
+    return undefined
+  }
+
+  for (const item of taskPlan) {
+    const cycle = visit(item.key)
+    if (cycle) return cycle
+  }
+
+  return undefined
 }
 
 function resolveMissionStatus(
