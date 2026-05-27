@@ -16,6 +16,7 @@ import {
   type MissionTask,
   type RunicCovenant,
   type RunesmithRuntime,
+  type RuntimeError,
   type RuntimeOptions,
   type RuntimeSnapshot,
 } from "@runesmith/core"
@@ -159,6 +160,8 @@ const defaultAtlasContract: AgentContract = {
   requiredEvidence: ["file-change", "test-result"],
   fallbacks: ["agent_oracle"],
 }
+
+const autopilotStaleAfterMs = 120_000
 
 export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlugin {
   const runtime = options.runtime ?? createRuntime(options)
@@ -345,9 +348,11 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           staleAfterMs: numberSchema("Heartbeat threshold in milliseconds"),
         }),
         async execute(args) {
+          const before = runtime.snapshot().graphs[args.missionId]
           const result = runtime.recover({
             missionId: args.missionId,
-            staleAfterMs: args.staleAfterMs ?? 120_000,
+            staleAfterMs: args.staleAfterMs ?? autopilotStaleAfterMs,
+            requeueStale: true,
           })
           if (!result.ok) return formatError("Recovery rejected", result.error)
 
@@ -356,6 +361,12 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             status: result.value.graph.mission.status,
             staleTasks: Object.values(result.value.graph.tasks)
               .filter((task) => task.status === "stale")
+              .map((task) => task.id),
+            requeuedTasks: Object.values(result.value.graph.tasks)
+              .filter((task) => {
+                const previous = before?.tasks[task.id]
+                return task.status === "queued" && previous && ["running", "stale"].includes(previous.status)
+              })
               .map((task) => task.id),
           })
         },
@@ -398,6 +409,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       await advanceAutopilotLoop({
         runtime,
         runtimeStore: options.runtimeStore,
+        recoverStale: false,
       })
     },
     async event(input) {
@@ -559,9 +571,41 @@ async function recordToolExecutionEvidence(input: RecordToolExecutionEvidenceInp
 type AdvanceAutopilotLoopInput = {
   runtime: RunesmithRuntime
   runtimeStore?: PluginRuntimeStore
+  recoverStale?: boolean
 }
 
 async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<ToolResponse> {
+  if (input.recoverStale ?? true) {
+    const recovered = recoverAutopilotStaleWork(input.runtime)
+    if (!recovered.ok) return formatError("Autopilot recovery rejected", recovered.error)
+
+    if (recovered.value.recovered) {
+      const recoveredSnapshot = input.runtime.snapshot()
+      const target = selectActiveTask(recoveredSnapshot, recovered.value.missionId)
+      const task = target ? recoveredSnapshot.graphs[target.missionId]?.tasks[target.taskId] : undefined
+      const claimed = task?.status === "queued"
+        ? claimAutopilotTask(input.runtime, {
+            missionId: target!.missionId,
+            task,
+            contractId: task.assignedAgentId ?? defaultAtlasContract.id,
+          })
+        : undefined
+      if (claimed && !claimed.ok) return formatError("Autopilot recovery claim rejected", claimed.error)
+
+      await persistRuntime(input.runtimeStore, input.runtime)
+
+      return formatValue("Autopilot recovered stale work", {
+        status: "recovered",
+        missionId: recovered.value.missionId,
+        taskId: claimed?.ok ? claimed.value.task.id : target?.taskId,
+        taskStatus: claimed?.ok ? claimed.value.task.status : task?.status,
+        leaseId: claimed?.ok ? claimed.value.lease.id : undefined,
+        agentId: claimed?.ok ? claimed.value.task.assignedAgentId : task?.assignedAgentId,
+        recoveredTasks: recovered.value.taskIds,
+      })
+    }
+  }
+
   const snapshot = input.runtime.snapshot()
   const target = selectActiveTask(snapshot)
   if (!target) {
@@ -664,6 +708,62 @@ async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<T
     taskStatus: completed.value.task.status,
     missionStatus: input.runtime.snapshot().graphs[target.missionId]?.mission.status ?? completed.value.graph.mission.status,
   })
+}
+
+type AutopilotRecoveryResult =
+  | {
+      ok: true
+      value: {
+        recovered: boolean
+        missionId?: string
+        taskIds: string[]
+      }
+    }
+  | {
+      ok: false
+      error: RuntimeError
+    }
+
+function recoverAutopilotStaleWork(runtime: RunesmithRuntime): AutopilotRecoveryResult {
+  const terminalMissionStatuses = new Set(["complete", "failed", "cancelled"])
+  const snapshot = runtime.snapshot()
+
+  for (const graph of Object.values(snapshot.graphs)) {
+    if (terminalMissionStatuses.has(graph.mission.status)) continue
+
+    const recovered = runtime.recover({
+      missionId: graph.mission.id,
+      staleAfterMs: autopilotStaleAfterMs,
+      requeueStale: true,
+    })
+    if (!recovered.ok) return recovered
+
+    const taskIds = Object.values(recovered.value.graph.tasks)
+      .filter((task) => {
+        const previous = graph.tasks[task.id]
+        return previous && previous.status !== task.status && ["running", "stale"].includes(previous.status)
+      })
+      .map((task) => task.id)
+
+    if (taskIds.length > 0 || recovered.value.graph.events.length > graph.events.length) {
+      return {
+        ok: true,
+        value: {
+          recovered: true,
+          missionId: graph.mission.id,
+          taskIds,
+        },
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    value: {
+      recovered: false,
+      taskIds: [],
+    },
+  }
 }
 
 function claimAutopilotTask(

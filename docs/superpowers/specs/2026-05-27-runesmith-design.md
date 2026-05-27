@@ -244,6 +244,8 @@ After a mission is prepared, the `tool.execute.after` hook records routine proof
 
 The `runesmith_autopilot_tick` tool, and the same loop on OpenCode `session.idle` events, checks the active task's assigned contract and task-level evidence requirements. If required evidence is missing, it holds with a missing-evidence list. If proof is present, it calls the runtime completion gate, synthesizes safe Covenant decisions for Review and Seal, claims the next dependency-ready task when one exists, and persists the capsule. This keeps the agent loop automatic while preserving evidence-gated completion.
 
+Before an idle or explicit autopilot tick checks proof, it runs the recovery policy in reclaim mode. A running task with an expired heartbeat is marked stale, dependency-ready stale work is requeued with stale ownership cleared, and the adapter claims a fresh lease for the task. Tool-execution evidence hooks skip this recovery pass so proof captured from a long-running command can complete the task instead of being treated as silence.
+
 The compaction hook appends a mission capsule summary containing active missions, tasks, leases, and evidence counts. This gives continuation sessions enough orchestration state to recover or keep working before starting a new loop.
 
 The same compaction path appends the live Runesmith Control Brief, so resumed sessions keep the next stage and proof obligations without requiring the user to install or invoke an external workflow.
@@ -255,7 +257,7 @@ Recovery policies are pure functions that inspect graph state and events.
 Initial policies:
 
 - A running task with no event heartbeat past its stale threshold becomes `stale`.
-- A stale task with a valid fallback contract becomes `queued` for reassignment.
+- A stale task whose dependencies are complete becomes `queued` for reassignment; stale ownership is cleared and the next lease claim validates the agent contract before work resumes.
 - A completion attempt without required evidence is rejected and moves the task to `verifying`.
 - A duplicate prompt attempt with the same idempotency key returns the existing lease.
 

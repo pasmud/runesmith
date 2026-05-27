@@ -473,4 +473,34 @@ describe("opencode adapter", () => {
     expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("complete")
     expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.mission.status).toBe("complete")
   })
+
+  test("session idle recovers and reclaims stale autopilot work automatically", async () => {
+    let now = new Date("2026-05-27T00:00:00.000Z")
+    const runtime = createRuntime({ idFactory: ids, now: () => now })
+    const writes: string[] = []
+    const plugin = createRunesmithPlugin({
+      runtime,
+      runtimeStore: {
+        save(snapshot) {
+          writes.push(JSON.stringify(snapshot))
+        },
+      },
+    })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Recover silent autopilot work",
+    })
+
+    now = new Date("2026-05-27T00:03:00.000Z")
+    await plugin.event?.({ event: { type: "session.idle" } })
+
+    const snapshot = runtime.snapshot()
+    const task = snapshot.graphs.mission_alpha.tasks.task_alpha
+    expect(task.status).toBe("running")
+    expect(task.assignedAgentId).toBe("agent_atlas")
+    expect(snapshot.graphs.mission_alpha.events.map((event) => event.type)).toEqual(
+      expect.arrayContaining(["task.stale", "task.requeued", "task.transitioned"]),
+    )
+    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.tasks.task_alpha.status).toBe("running")
+  })
 })

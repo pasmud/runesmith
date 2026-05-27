@@ -193,4 +193,113 @@ describe("recovery", () => {
       },
     })
   })
+
+  test("requeues safe stale tasks when recovery is allowed to reclaim work", () => {
+    const created = createMissionGraph({
+      goal: "Recover and reassign implementation",
+      idFactory: ids,
+      now: fixedNow,
+      taskPlan: [
+        {
+          key: "forge",
+          title: "Forge recovery",
+          description: "Implement the change.",
+        },
+        {
+          key: "review",
+          title: "Review recovery",
+          description: "Review the change.",
+          dependsOn: ["forge"],
+        },
+      ],
+    })
+    if (!created.ok) throw new Error("mission creation failed")
+
+    const running = transitionTask(created.value, {
+      taskId: "task_alpha",
+      nextStatus: "running",
+      now: fixedNow,
+      reason: "Agent claimed task",
+      eventId: "event_running",
+    })
+    if (!running.ok) throw new Error("transition failed")
+
+    const recovered = recoverStaleTasks(running.value, {
+      now: later,
+      staleAfterMs: 60_000,
+      requeueStale: true,
+      eventIdFactory: (taskId, type) => `event_${type}_${taskId}`,
+    })
+
+    expect(recovered.tasks.task_alpha?.status).toBe("queued")
+    expect(recovered.tasks.task_alpha?.assignedAgentId).toBeUndefined()
+    expect(recovered.tasks.task_alpha_review?.status).toBe("queued")
+    expect(recovered.events.slice(-2)).toEqual([
+      {
+        id: "event_task.stale_task_alpha",
+        type: "task.stale",
+        at: "2026-05-27T00:02:00.000Z",
+        targetId: "task_alpha",
+        message: "Task marked stale after missing heartbeat",
+        data: {
+          staleAfterMs: 60000,
+        },
+      },
+      {
+        id: "event_task.requeued_task_alpha",
+        type: "task.requeued",
+        at: "2026-05-27T00:02:00.000Z",
+        targetId: "task_alpha",
+        message: "Stale task requeued for reassignment",
+        data: {
+          staleAfterMs: 60000,
+        },
+      },
+    ])
+  })
+
+  test("does not requeue stale tasks whose dependencies are still incomplete", () => {
+    const created = createMissionGraph({
+      goal: "Wait for dependency before recovery",
+      idFactory: ids,
+      now: fixedNow,
+      taskPlan: [
+        {
+          key: "forge",
+          title: "Forge dependency",
+          description: "Implement the change.",
+        },
+        {
+          key: "review",
+          title: "Review dependency",
+          description: "Review the change.",
+          dependsOn: ["forge"],
+        },
+      ],
+    })
+    if (!created.ok) throw new Error("mission creation failed")
+
+    const graph = {
+      ...created.value,
+      tasks: {
+        ...created.value.tasks,
+        task_alpha_review: {
+          ...created.value.tasks.task_alpha_review!,
+          status: "stale" as const,
+          assignedAgentId: "agent_atlas",
+        },
+      },
+    }
+
+    const recovered = recoverStaleTasks(graph, {
+      now: later,
+      staleAfterMs: 60_000,
+      requeueStale: true,
+      eventIdFactory: (taskId, type) => `event_${type}_${taskId}`,
+    })
+
+    expect(recovered.tasks.task_alpha_review?.status).toBe("stale")
+    expect(recovered.tasks.task_alpha_review?.assignedAgentId).toBe("agent_atlas")
+    expect(recovered.events.at(-1)?.type).not.toBe("task.requeued")
+  })
 })

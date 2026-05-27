@@ -48,6 +48,24 @@ export type DashboardRuntimeActionResult =
 
 type DashboardRuntimeActionOptions = Pick<RuntimeOptions, "idFactory" | "now">
 
+type DashboardRecoveryResult =
+  | {
+      ok: true
+      value: {
+        recovered: boolean
+        missionId?: string
+        taskIds: string[]
+      }
+    }
+  | {
+      ok: false
+      error: {
+        code: string
+        message: string
+        details?: Record<string, unknown>
+      }
+    }
+
 const dashboardAtlasContract: AgentContract = {
   id: "agent_atlas",
   displayName: "Atlas",
@@ -63,6 +81,8 @@ const dashboardAtlasContract: AgentContract = {
   requiredEvidence: ["file-change", "test-result"],
   fallbacks: ["agent_oracle"],
 }
+
+const dashboardStaleAfterMs = 120_000
 
 export async function applyDashboardRuntimeAction(
   snapshot: RuntimeSnapshot,
@@ -130,30 +150,36 @@ function runDashboardAutopilotCycle(
   runtime: ReturnType<typeof createRuntime>,
   options: DashboardRuntimeActionOptions,
 ): DashboardRuntimeActionResult {
-  const snapshot = runtime.snapshot()
-  const staleMission = Object.values(snapshot.graphs).find((graph) => {
-    return Object.values(graph.tasks).some((task) => task.status === "stale")
-  })
+  const recovered = recoverDashboardStaleWork(runtime, options)
+  if (!recovered.ok) return { ok: false, error: recovered.error }
+  if (recovered.value.recovered) {
+    const recoveredSnapshot = runtime.snapshot()
+    const target = selectActiveTask(recoveredSnapshot, recovered.value.missionId)
+    const task = target ? recoveredSnapshot.graphs[target.missionId]?.tasks[target.taskId] : undefined
+    const claimed = task?.status === "queued"
+      ? claimDashboardTask(runtime, {
+          missionId: target!.missionId,
+          task,
+        })
+      : undefined
+    if (claimed && !claimed.ok) return { ok: false, error: claimed.error }
 
-  if (staleMission) {
-    const recovered = runtime.recover({
-      missionId: staleMission.mission.id,
-      staleAfterMs: 120_000,
-      now: options.now,
-    })
-    if (!recovered.ok) return { ok: false, error: recovered.error }
-
+    const taskId = claimed?.ok ? claimed.value.task.id : target?.taskId
+    const nextTaskStatus = claimed?.ok ? claimed.value.task.status : task?.status
     return {
       ok: true,
       value: {
         action: "run-autopilot-cycle",
-        missionId: staleMission.mission.id,
+        missionId: recovered.value.missionId,
+        taskId,
+        nextTaskStatus,
         status: "recovered",
         snapshot: runtime.snapshot(),
       },
     }
   }
 
+  const snapshot = runtime.snapshot()
   const target = selectActiveTask(snapshot)
   if (!target) {
     return {
@@ -247,6 +273,52 @@ function runDashboardAutopilotCycle(
       taskId: target.taskId,
       status: "completed",
       snapshot: runtime.snapshot(),
+    },
+  }
+}
+
+function recoverDashboardStaleWork(
+  runtime: ReturnType<typeof createRuntime>,
+  options: DashboardRuntimeActionOptions,
+): DashboardRecoveryResult {
+  const terminalMissionStatuses = new Set(["complete", "failed", "cancelled"])
+  const snapshot = runtime.snapshot()
+
+  for (const graph of Object.values(snapshot.graphs)) {
+    if (terminalMissionStatuses.has(graph.mission.status)) continue
+
+    const recovered = runtime.recover({
+      missionId: graph.mission.id,
+      staleAfterMs: dashboardStaleAfterMs,
+      requeueStale: true,
+      now: options.now,
+    })
+    if (!recovered.ok) return { ok: false, error: recovered.error }
+
+    const taskIds = Object.values(recovered.value.graph.tasks)
+      .filter((task) => {
+        const previous = graph.tasks[task.id]
+        return previous && previous.status !== task.status && ["running", "stale"].includes(previous.status)
+      })
+      .map((task) => task.id)
+
+    if (taskIds.length > 0 || recovered.value.graph.events.length > graph.events.length) {
+      return {
+        ok: true,
+        value: {
+          recovered: true,
+          missionId: graph.mission.id,
+          taskIds,
+        },
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    value: {
+      recovered: false,
+      taskIds: [],
     },
   }
 }

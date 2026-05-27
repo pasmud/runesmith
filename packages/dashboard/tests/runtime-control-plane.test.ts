@@ -4,6 +4,7 @@ import { createRuntime, type RuntimeSnapshot } from "@runesmith/core"
 import { applyDashboardRuntimeAction } from "../src/runtime-control-plane"
 
 const fixedNow = () => new Date("2026-05-27T00:00:00.000Z")
+const later = () => new Date("2026-05-27T00:03:00.000Z")
 const ids = (prefix: string) => `${prefix}_alpha`
 
 const emptySnapshot: RuntimeSnapshot = {
@@ -124,6 +125,43 @@ describe("dashboard runtime control plane", () => {
           }),
         }),
       ]),
+    )
+  })
+
+  test("recovers and reclaims stale dashboard work before checking evidence", async () => {
+    const forged = await applyDashboardRuntimeAction(emptySnapshot, {
+      type: "forge-directive",
+      prompt: "Recover from dashboard autopilot",
+    }, {
+      idFactory: ids,
+      now: fixedNow,
+    })
+    if (!forged.ok) throw new Error("forge failed")
+
+    const result = await applyDashboardRuntimeAction(forged.value.snapshot, {
+      type: "run-autopilot-cycle",
+    }, {
+      idFactory: ids,
+      now: later,
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        action: "run-autopilot-cycle",
+        status: "recovered",
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        nextTaskStatus: "running",
+      },
+    })
+    if (!result.ok) return
+
+    const graph = result.value.snapshot.graphs.mission_alpha
+    expect(graph.tasks.task_alpha.status).toBe("running")
+    expect(graph.tasks.task_alpha.assignedAgentId).toBe("agent_atlas")
+    expect(graph.events.map((event) => event.type)).toEqual(
+      expect.arrayContaining(["task.stale", "task.requeued", "task.transitioned"]),
     )
   })
 })

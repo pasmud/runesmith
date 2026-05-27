@@ -298,6 +298,40 @@ describe("runesmith runtime", () => {
     expect(recovered.value.graph.tasks.task_alpha?.status).toBe("stale")
   })
 
+  test("requeues stale work through the runtime when reclaim is enabled", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    const mission = runtime.startMission({
+      goal: "Reclaim stale task",
+      requiredCapabilities: ["typescript"],
+    })
+    if (!mission.ok) throw new Error("mission start failed")
+    const claimed = runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    if (!claimed.ok) throw new Error("claim failed")
+
+    const recovered = runtime.recover({
+      missionId: "mission_alpha",
+      now: later,
+      staleAfterMs: 60_000,
+      requeueStale: true,
+    })
+
+    expect(recovered.ok).toBe(true)
+    if (!recovered.ok) return
+    expect(recovered.value.graph.tasks.task_alpha?.status).toBe("queued")
+    expect(recovered.value.graph.tasks.task_alpha?.assignedAgentId).toBeUndefined()
+    expect(recovered.value.graph.events.map((event) => event.type)).toEqual(
+      expect.arrayContaining(["task.stale", "task.requeued"]),
+    )
+  })
+
   test("hydrates mission state, evidence, leases, and contracts from a snapshot", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

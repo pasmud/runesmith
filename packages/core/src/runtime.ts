@@ -65,6 +65,7 @@ export type RecoverMissionInput = {
   missionId: string
   now?: Clock
   staleAfterMs: number
+  requeueStale?: boolean
 }
 
 export type RuntimeSnapshot = {
@@ -250,6 +251,7 @@ export class RunesmithRuntime {
     const recovered = recoverStaleTasks(graph, {
       now: input.now ?? this.options.now ?? (() => new Date()),
       staleAfterMs: input.staleAfterMs,
+      requeueStale: input.requeueStale,
       eventIdFactory: (taskId) => this.options.idFactory?.("event") ?? `event_stale_${taskId}`,
     })
 
