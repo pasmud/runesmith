@@ -1219,11 +1219,11 @@ function classifyToolEvidence(
   }
 
   if (isShellTool(lowerTool)) {
-    const isTest = command ? isTestCommand(command) : false
-    const testPassed = isTest && isPassingExecution(result)
+    const isVerification = command ? isVerificationCommand(command) : false
+    const verificationPassed = isVerification && isPassingExecution(result)
 
     return {
-      type: testPassed ? "test-result" : isTest ? "diagnostic" : "command-output",
+      type: verificationPassed ? "test-result" : isVerification ? "diagnostic" : "command-output",
       summary: command ? `${tool} ran ${command}` : `${tool} executed`,
       payload: {
         command,
@@ -1282,23 +1282,75 @@ function isPassingExecution(result: Record<string, unknown> | undefined): boolea
   return ["ok", "pass", "passed", "success", "successful"].includes(status.toLowerCase())
 }
 
-function isTestCommand(command: string): boolean {
-  const normalized = command.toLowerCase()
-  return [
-    " test",
-    "bun test",
-    "npm test",
-    "pnpm test",
-    "yarn test",
+function isVerificationCommand(command: string): boolean {
+  const tokens = tokenizeShellCommand(command)
+  const first = tokens[0]
+  if (!first) return false
+
+  if (["bun", "npm", "pnpm", "yarn"].includes(first)) {
+    return tokens.some(isVerificationScriptToken)
+  }
+
+  if (first === "npx" || first === "pnpx" || first === "bunx") {
+    return isVerificationToolCommand(tokens.slice(1))
+      || tokens.slice(1).some(isVerificationScriptToken)
+  }
+
+  if (["cargo", "go"].includes(first)) {
+    return tokens[1] === "test"
+  }
+
+  return isVerificationToolCommand(tokens)
+}
+
+function tokenizeShellCommand(command: string): string[] {
+  return command
+    .toLowerCase()
+    .replace(/["']/g, "")
+    .split(/[\s;&|()]+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+}
+
+function isVerificationScriptToken(token: string): boolean {
+  const normalized = token.replace(/^run:/, "")
+  return ["test", "typecheck", "lint", "build"].some((script) => {
+    return normalized === script
+      || normalized.startsWith(`${script}:`)
+      || normalized.startsWith(`${script}-`)
+  })
+}
+
+function isVerificationToolCommand(tokens: string[]): boolean {
+  const [tool, ...args] = tokens
+  if (!tool) return false
+
+  if ([
     "vitest",
     "jest",
     "playwright",
     "cypress",
-    "cargo test",
-    "go test",
     "pytest",
     "rspec",
-  ].some((needle) => normalized.includes(needle.trim()))
+    "tsc",
+    "eslint",
+  ].includes(tool)) {
+    return true
+  }
+
+  if (tool === "biome") {
+    return args.some((arg) => ["check", "ci", "lint"].includes(arg))
+  }
+
+  if (tool === "prettier") {
+    return args.some((arg) => ["--check", "--list-different"].includes(arg))
+  }
+
+  if (tool === "vite" || tool === "next") {
+    return args.some((arg) => arg === "build" || arg === "lint")
+  }
+
+  return false
 }
 
 function extractFilePath(args: Record<string, unknown>): string | undefined {

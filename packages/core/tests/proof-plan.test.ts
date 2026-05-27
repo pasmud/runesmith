@@ -32,6 +32,11 @@ const scripts = {
   typecheck: "tsc -b packages/core packages/opencode-adapter packages/cli packages/testbench packages/dashboard",
 }
 
+const scriptsWithLint = {
+  ...scripts,
+  lint: "eslint .",
+}
+
 describe("proof plan", () => {
   test("stays idle when no mission exists", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
@@ -91,6 +96,45 @@ describe("proof plan", () => {
     ])
     expect(plan.commands.map((command) => command.kind)).toEqual(["typecheck", "test", "build"])
     expect(plan.commands.every((command) => command.evidenceType === "test-result")).toBe(true)
+  })
+
+  test("includes lint when the repository exposes a lint proof script", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Prove lint inside the proof ladder",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed proof planner",
+        payload: { files: ["packages/core/src/proof-plan.ts"] },
+        createdAt: fixedNow().toISOString(),
+      },
+    })
+
+    const plan = deriveProofPlan(runtime.snapshot(), { packageManager: "bun@1.3.13", scripts: scriptsWithLint })
+
+    expect(plan.commands.map((command) => command.command)).toEqual([
+      "bun run typecheck",
+      "bun run lint",
+      "bun test",
+      "bun run build",
+    ])
+    expect(plan.commands.map((command) => command.kind)).toEqual(["typecheck", "lint", "test", "build"])
+    expect(plan.handoff).toBe("Run proof for task_alpha: bun run typecheck -> bun run lint -> bun test -> bun run build.")
   })
 
   test("starts with the latest failing command during repair", () => {

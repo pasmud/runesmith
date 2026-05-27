@@ -4,7 +4,13 @@ import type { RuntimeSnapshot } from "./runtime"
 import type { Evidence, EvidenceType, MissionGraph, MissionTask } from "./types"
 
 export type ProofPlanStatus = "idle" | "not-needed" | "needs-proof" | "needs-repair"
-export type ProofPlanCommandKind = "rerun-diagnostic" | "rerun-stale-proof" | "typecheck" | "test" | "build"
+export type ProofPlanCommandKind =
+  | "rerun-diagnostic"
+  | "rerun-stale-proof"
+  | "typecheck"
+  | "lint"
+  | "test"
+  | "build"
 
 export type ProofPlanCommand = {
   id: string
@@ -161,6 +167,7 @@ function scriptProofCommands(options: ProofPlanOptions): ProofPlanCommand[] {
   const scripts = options.scripts ?? {}
   const commands: ProofPlanCommand[] = []
   const typecheck = scriptCommand("typecheck", options.packageManager, scripts)
+  const lint = scriptCommand("lint", options.packageManager, scripts)
   const test = scriptCommand("test", options.packageManager, scripts) ?? "bun test"
   const build = scriptCommand("build", options.packageManager, scripts)
 
@@ -171,6 +178,17 @@ function scriptProofCommands(options: ProofPlanOptions): ProofPlanCommand[] {
       label: "Run typecheck",
       command: typecheck,
       reason: "Catch contract and API drift before completion proof.",
+      evidenceType: "test-result",
+    })
+  }
+
+  if (lint) {
+    commands.push({
+      id: "lint",
+      kind: "lint",
+      label: "Run lint",
+      command: lint,
+      reason: "Catch style, safety, and static-analysis drift before completion proof.",
       evidenceType: "test-result",
     })
   }
@@ -199,7 +217,7 @@ function scriptProofCommands(options: ProofPlanOptions): ProofPlanCommand[] {
 }
 
 function scriptCommand(
-  scriptName: "typecheck" | "test" | "build",
+  scriptName: "typecheck" | "lint" | "test" | "build",
   packageManager: string | undefined,
   scripts: Record<string, string>,
 ): string | undefined {

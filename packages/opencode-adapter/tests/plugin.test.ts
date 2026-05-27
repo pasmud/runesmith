@@ -752,6 +752,98 @@ describe("opencode adapter", () => {
     expect(JSON.parse(writes.at(-1) ?? "{}").ledgers.mission_alpha.evidence).toBeDefined()
   })
 
+  test("classifies verification shell commands as proof or diagnostic evidence automatically", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({ runtime })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Classify OpenCode verification signals",
+    })
+
+    await plugin["tool.execute.after"]?.(
+      { tool: "bash" },
+      {
+        args: { command: "bun run typecheck" },
+        result: { exitCode: 0, stdout: "", stderr: "" },
+      },
+    )
+    await plugin["tool.execute.after"]?.(
+      { tool: "bash" },
+      {
+        args: { command: "bun run lint" },
+        result: { exitCode: 0, stdout: "", stderr: "" },
+      },
+    )
+    await plugin["tool.execute.after"]?.(
+      { tool: "bash" },
+      {
+        args: { command: "bun run build" },
+        result: { exitCode: 1, stdout: "", stderr: "build failed" },
+      },
+    )
+    await plugin["tool.execute.after"]?.(
+      { tool: "bash" },
+      {
+        args: { command: "mkdir build" },
+        result: { exitCode: 0, stdout: "", stderr: "" },
+      },
+    )
+    await plugin["tool.execute.after"]?.(
+      { tool: "bash" },
+      {
+        args: { command: "next dev" },
+        result: { exitCode: 0, stdout: "ready", stderr: "" },
+      },
+    )
+
+    const evidence = Object.values(runtime.snapshot().ledgers.mission_alpha.evidence)
+    expect(evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task_alpha",
+          type: "test-result",
+          payload: expect.objectContaining({
+            command: "bun run typecheck",
+            exitCode: 0,
+          }),
+        }),
+        expect.objectContaining({
+          taskId: "task_alpha",
+          type: "test-result",
+          payload: expect.objectContaining({
+            command: "bun run lint",
+            exitCode: 0,
+          }),
+        }),
+        expect.objectContaining({
+          taskId: "task_alpha",
+          type: "diagnostic",
+          payload: expect.objectContaining({
+            command: "bun run build",
+            exitCode: 1,
+          }),
+        }),
+        expect.objectContaining({
+          taskId: "task_alpha",
+          type: "command-output",
+          payload: expect.objectContaining({
+            command: "mkdir build",
+            exitCode: 0,
+          }),
+        }),
+        expect.objectContaining({
+          taskId: "task_alpha",
+          type: "command-output",
+          payload: expect.objectContaining({
+            command: "next dev",
+            exitCode: 0,
+          }),
+        }),
+      ]),
+    )
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.status).toBe("running")
+  })
+
   test("advances immediately after captured evidence satisfies the active task", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const writes: string[] = []
