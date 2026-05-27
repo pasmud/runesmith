@@ -124,6 +124,63 @@ describe("loop pulse", () => {
     expect(pulse.runes.map((rune) => rune.name)).toContain("Proofwright")
   })
 
+  test("prioritizes diagnostic repair when verification failed", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Repair failed verification",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed loop pulse",
+        payload: { filePath: "packages/core/src/loop-pulse.ts" },
+        createdAt: fixedNow().toISOString(),
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_diagnostic",
+        taskId: "task_alpha",
+        type: "diagnostic",
+        summary: "bun test packages/core/tests failed",
+        payload: { command: "bun test packages/core/tests", exitCode: 1 },
+        createdAt: fixedNow().toISOString(),
+      },
+    })
+
+    const pulse = deriveLoopPulse(runtime.snapshot())
+    const prompt = buildLoopPulsePrompt(runtime.snapshot())
+
+    expect(pulse).toMatchObject({
+      status: "active",
+      health: "attention",
+      nextAction: {
+        id: "repair-diagnostic",
+        label: "Repair diagnostic",
+        priority: "high",
+      },
+      missingEvidence: ["test-result"],
+    })
+    expect(pulse.runes.map((rune) => rune.name)).toContain("Faultwright")
+    expect(pulse.blockers).toContain("diagnostic: bun test packages/core/tests failed")
+    expect(prompt).toContain("Next action: Repair diagnostic")
+    expect(prompt).toContain("Active runes: Faultwright, Proofwright")
+  })
+
   test("prioritizes stale recovery before blocked work", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

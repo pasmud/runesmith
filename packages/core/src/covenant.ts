@@ -1,8 +1,8 @@
-import { createEvidenceLedger, missingRequiredEvidence } from "./evidence-ledger"
+import { createEvidenceLedger, evidenceForTask, missingRequiredEvidence } from "./evidence-ledger"
 import { getRequiredEvidenceForTask } from "./contracts"
 import { taskDependenciesComplete, type MissionTaskPlanItem } from "./mission-graph"
 import type { RuntimeSnapshot } from "./runtime"
-import type { EvidenceType, MissionGraph, MissionTask } from "./types"
+import type { Evidence, EvidenceType, MissionGraph, MissionTask } from "./types"
 
 export type CovenantStageId =
   | "frame"
@@ -10,6 +10,7 @@ export type CovenantStageId =
   | "claim"
   | "forge"
   | "prove"
+  | "repair"
   | "review"
   | "seal"
   | "recover"
@@ -31,6 +32,7 @@ export type CovenantRuneId =
   | "claim-ward"
   | "forge-trace"
   | "proofwright"
+  | "faultwright"
   | "mirrorglass"
   | "sealmark"
   | "recovery-loom"
@@ -63,6 +65,7 @@ export type CovenantControlBrief = {
   assignedAgentId?: string
   requiredEvidence: EvidenceType[]
   missingEvidence: EvidenceType[]
+  diagnostics: string[]
   runes: CovenantRune[]
   directives: string[]
 }
@@ -119,6 +122,15 @@ const covenantStages: CovenantStage[] = [
     behavior: "Run the strongest practical verification and attach required evidence to the task ledger.",
     gates: ["Required evidence exists", "Failures are surfaced", "Checks match the task scope"],
     evidence: ["test-result", "diagnostic"],
+  },
+  {
+    id: "repair",
+    name: "Repair Gate",
+    purpose: "Turn failed verification into focused repair work before another proof attempt.",
+    trigger: "The active task has diagnostic evidence or a failed test result and still lacks passing test proof.",
+    behavior: "Use the latest diagnostic to make the smallest likely fix, then rerun the exact failing command.",
+    gates: ["Diagnostic is acknowledged", "Repair is scoped", "The failing command is rerun after the fix"],
+    evidence: ["diagnostic", "file-change", "test-result"],
   },
   {
     id: "review",
@@ -185,6 +197,16 @@ const covenantRunes: Record<CovenantRuneId, CovenantRune> = {
       "Run the strongest practical verification before completion.",
       "Treat failed or unknown test runs as diagnostics, not proof.",
       "Attach missing evidence before calling the completion gate.",
+    ],
+  },
+  faultwright: {
+    id: "faultwright",
+    name: "Faultwright",
+    reason: "Treat failed verification as repair input instead of asking the user to restart the workflow.",
+    steps: [
+      "Read the latest diagnostic and identify the smallest likely cause.",
+      "Repair the smallest likely cause, then rerun the exact failing command.",
+      "Attach a passing test-result before asking the completion gate to advance.",
     ],
   },
   mirrorglass: {
@@ -299,6 +321,7 @@ export function deriveCovenantControlBrief(
       stage: covenant.stages.find((stage) => stage.id === "frame") ?? covenant.stages[0]!,
       requiredEvidence: [],
       missingEvidence: [],
+      diagnostics: [],
       runes: selectControlRunes("frame", []),
       directives: [
         "Wait for a concrete user goal before creating work.",
@@ -314,7 +337,9 @@ export function deriveCovenantControlBrief(
     taskId: active.task.id,
     requiredEvidence,
   })
-  const stageId = selectStageId(active.graph, active.task, missingEvidence)
+  const taskEvidence = evidenceForTask(ledger, active.task.id)
+  const diagnostics = missingEvidence.includes("test-result") ? collectDiagnosticSummaries(taskEvidence) : []
+  const stageId = selectStageId(active.graph, active.task, missingEvidence, diagnostics)
   const stage = covenant.stages.find((candidate) => candidate.id === stageId) ?? covenant.stages[0]!
 
   return {
@@ -328,8 +353,9 @@ export function deriveCovenantControlBrief(
     assignedAgentId: active.task.assignedAgentId,
     requiredEvidence,
     missingEvidence,
+    diagnostics,
     runes: selectControlRunes(stage.id, missingEvidence),
-    directives: buildControlDirectives(stage.id, missingEvidence),
+    directives: buildControlDirectives(stage.id, missingEvidence, diagnostics),
   }
 }
 
@@ -340,6 +366,9 @@ export function buildCovenantControlBrief(
   const brief = deriveCovenantControlBrief(snapshot, covenant)
   const requiredEvidence = brief.requiredEvidence.length > 0 ? brief.requiredEvidence.join(", ") : "none"
   const missingEvidence = brief.missingEvidence.length > 0 ? brief.missingEvidence.join(", ") : "none"
+  const diagnosticLines = brief.diagnostics.length > 0
+    ? ["Diagnostics:", ...brief.diagnostics.map((diagnostic) => `- ${diagnostic}`)]
+    : ["Diagnostics: none"]
   const runeLines = brief.runes.length > 0
     ? brief.runes.flatMap((rune) => {
         return [
@@ -363,6 +392,7 @@ export function buildCovenantControlBrief(
     ...missionLines,
     `required evidence: ${requiredEvidence}`,
     `missing evidence: ${missingEvidence}`,
+    ...diagnosticLines,
     "Active runes:",
     ...runeLines,
     "Directives:",
@@ -449,12 +479,14 @@ function selectStageId(
   graph: MissionGraph,
   task: MissionTask,
   missingEvidence: EvidenceType[],
+  diagnostics: string[],
 ): CovenantStageId {
   if (graph.mission.status === "blocked" || task.status === "blocked" || task.status === "stale") {
     return "recover"
   }
 
   if (task.status === "queued") return "claim"
+  if (diagnostics.length > 0 && missingEvidence.includes("test-result")) return "repair"
   if (task.status === "verifying") return "review"
   if (missingEvidence.length === 0) return "review"
   if (missingEvidence.includes("file-change")) return "forge"
@@ -464,7 +496,7 @@ function selectStageId(
   return "prove"
 }
 
-function buildControlDirectives(stageId: CovenantStageId, missingEvidence: EvidenceType[]): string[] {
+function buildControlDirectives(stageId: CovenantStageId, missingEvidence: EvidenceType[], diagnostics: string[]): string[] {
   if (stageId === "forge") {
     return [
       "Continue the active task before starting duplicate work.",
@@ -477,6 +509,15 @@ function buildControlDirectives(stageId: CovenantStageId, missingEvidence: Evide
       "Run the strongest practical verification for the current change.",
       "Failed or unknown test runs do not satisfy completion proof.",
       `Attach or capture missing evidence before completion: ${missingEvidence.join(", ")}.`,
+    ]
+  }
+
+  if (stageId === "repair") {
+    const latestDiagnostic = diagnostics[diagnostics.length - 1] ?? "the latest diagnostic"
+    return [
+      `Treat this diagnostic as the active repair target: ${latestDiagnostic}.`,
+      "Repair the smallest likely cause, then rerun the exact failing command.",
+      "Do not call the completion gate until a passing test-result is attached.",
     ]
   }
 
@@ -525,6 +566,8 @@ function selectControlRunes(stageId: CovenantStageId, missingEvidence: EvidenceT
     runeIds.push("forge-trace")
   } else if (stageId === "prove") {
     runeIds.push("proofwright")
+  } else if (stageId === "repair") {
+    runeIds.push("faultwright")
   } else if (stageId === "review") {
     runeIds.push("mirrorglass")
   } else if (stageId === "seal") {
@@ -538,6 +581,35 @@ function selectControlRunes(stageId: CovenantStageId, missingEvidence: EvidenceT
   }
 
   return unique(runeIds).map((runeId) => cloneRune(covenantRunes[runeId]))
+}
+
+function collectDiagnosticSummaries(taskEvidence: Evidence[]): string[] {
+  return taskEvidence
+    .filter(isDiagnosticEvidence)
+    .sort(compareEvidenceCreatedAt)
+    .map((evidence) => evidence.summary.trim())
+    .filter((summary) => summary.length > 0)
+}
+
+function isDiagnosticEvidence(evidence: Evidence): boolean {
+  if (evidence.type === "diagnostic") return true
+  if (evidence.type !== "test-result") return false
+
+  return !isPassingTestResult(evidence)
+}
+
+function isPassingTestResult(evidence: Evidence): boolean {
+  const exitCode = evidence.payload.exitCode
+  if (typeof exitCode === "number") return exitCode === 0
+
+  const status = evidence.payload.status ?? evidence.payload.outcome ?? evidence.payload.verdict
+  if (typeof status !== "string") return false
+
+  return ["ok", "pass", "passed", "success", "successful"].includes(status.toLowerCase())
+}
+
+function compareEvidenceCreatedAt(left: Evidence, right: Evidence): number {
+  return left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
 }
 
 function cloneRune(rune: CovenantRune): CovenantRune {

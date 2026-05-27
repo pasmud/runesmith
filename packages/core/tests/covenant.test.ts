@@ -39,6 +39,7 @@ describe("runic covenant", () => {
       "claim",
       "forge",
       "prove",
+      "repair",
       "review",
       "seal",
       "recover",
@@ -107,11 +108,13 @@ describe("runic covenant", () => {
 
     expect(brief).toContain("## Runesmith Control Brief")
     expect(brief).toContain("Active mission: mission_alpha")
-    expect(brief).toContain("Next stage: Proof Gate")
+    expect(brief).toContain("Next stage: Repair Gate")
     expect(brief).toContain("missing evidence: test-result")
+    expect(brief).toContain("Diagnostics:")
+    expect(brief).toContain("Core tests failed")
     expect(brief).toContain("Active runes:")
-    expect(brief).toContain("Proofwright")
-    expect(brief).toContain("Failed or unknown test runs do not satisfy completion proof.")
+    expect(brief).toContain("Faultwright")
+    expect(brief).toContain("Repair the smallest likely cause, then rerun the exact failing command.")
   })
 
   test("selects a recovery rune when the active task is stale", () => {

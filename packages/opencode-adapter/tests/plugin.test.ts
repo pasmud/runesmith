@@ -88,13 +88,19 @@ describe("opencode adapter", () => {
     const plugin = createRunesmithPlugin()
 
     const status = await plugin.tool.runesmith_covenant_status.execute({})
-    expect(JSON.parse(status.output)).toMatchObject({
+    const parsed = JSON.parse(status.output)
+    expect(parsed).toMatchObject({
       ok: true,
       value: {
         name: "Runic Covenant",
         installMode: "automatic",
-        stageCount: 8,
+        stageCount: 9,
       },
+    })
+    expect(parsed.value.stages.map((stage: any) => stage.id)).toContain("repair")
+    expect(parsed.value.stages.find((stage: any) => stage.id === "repair")).toMatchObject({
+      id: "repair",
+      name: "Repair Gate",
     })
 
     const transform = plugin.experimental.chat.system.transform

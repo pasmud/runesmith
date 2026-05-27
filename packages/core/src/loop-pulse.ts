@@ -18,6 +18,7 @@ export type LoopPulseActionId =
   | "claim-task"
   | "continue-forge"
   | "capture-proof"
+  | "repair-diagnostic"
   | "review-change"
   | "seal-mission"
 
@@ -38,6 +39,7 @@ export type LoopPulse = {
   taskStatus?: string
   requiredEvidence: EvidenceType[]
   missingEvidence: EvidenceType[]
+  diagnostics: string[]
   runes: CovenantRune[]
   blockers: string[]
   nextAction: LoopPulseAction
@@ -57,6 +59,7 @@ export function deriveLoopPulse(
       stage: brief.stage,
       requiredEvidence: [],
       missingEvidence: [],
+      diagnostics: [],
       runes: brief.runes,
       blockers: [],
       nextAction: {
@@ -68,7 +71,7 @@ export function deriveLoopPulse(
     }
   }
 
-  const blockers = buildBlockers(brief.taskId, brief.taskStatus, brief.missingEvidence)
+  const blockers = buildBlockers(brief.taskId, brief.taskStatus, brief.missingEvidence, brief.diagnostics)
   const nextAction = selectNextAction(brief)
 
   return {
@@ -81,6 +84,7 @@ export function deriveLoopPulse(
     taskStatus: brief.taskStatus,
     requiredEvidence: brief.requiredEvidence,
     missingEvidence: brief.missingEvidence,
+    diagnostics: brief.diagnostics,
     runes: brief.runes,
     blockers,
     nextAction,
@@ -94,6 +98,7 @@ export function buildLoopPulsePrompt(
   const pulse = deriveLoopPulse(snapshot, covenant)
   const requiredEvidence = pulse.requiredEvidence.length > 0 ? pulse.requiredEvidence.join(", ") : "none"
   const missingEvidence = pulse.missingEvidence.length > 0 ? pulse.missingEvidence.join(", ") : "none"
+  const diagnostics = pulse.diagnostics.length > 0 ? pulse.diagnostics.join("; ") : "none"
   const blockers = pulse.blockers.length > 0 ? pulse.blockers.join("; ") : "none"
   const runes = pulse.runes.length > 0 ? pulse.runes.map((rune) => rune.name).join(", ") : "none"
   const missionLine = pulse.missionId ? `Mission: ${pulse.missionId}` : "Mission: none"
@@ -110,6 +115,7 @@ export function buildLoopPulsePrompt(
     taskLine,
     `Required evidence: ${requiredEvidence}`,
     `Missing evidence: ${missingEvidence}`,
+    `Diagnostics: ${diagnostics}`,
     `Blockers: ${blockers}`,
     `Active runes: ${runes}`,
   ].join("\n")
@@ -119,6 +125,7 @@ function buildBlockers(
   taskId: string | undefined,
   taskStatus: string | undefined,
   missingEvidence: EvidenceType[],
+  diagnostics: string[],
 ): string[] {
   const blockers: string[] = []
 
@@ -128,6 +135,10 @@ function buildBlockers(
 
   if (taskId && taskStatus === "blocked") {
     blockers.push(`${taskId} is blocked`)
+  }
+
+  for (const diagnostic of diagnostics) {
+    blockers.push(`diagnostic: ${diagnostic}`)
   }
 
   if (missingEvidence.length > 0) {
@@ -180,6 +191,15 @@ function selectNextAction(brief: ReturnType<typeof deriveCovenantControlBrief>):
       label: "Capture proof",
       priority: "high",
       reason: "The active task cannot complete until missing verification evidence is captured.",
+    }
+  }
+
+  if (brief.stage.id === "repair") {
+    return {
+      id: "repair-diagnostic",
+      label: "Repair diagnostic",
+      priority: "high",
+      reason: "Failed verification must be repaired before proof can satisfy the active task.",
     }
   }
 

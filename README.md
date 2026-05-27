@@ -9,12 +9,13 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - Internal prompt/continuation work is protected by leases and idempotency keys.
 - Tasks cannot complete without evidence.
 - Recovery policies can detect stale or unsafe work before it silently disappears.
-- The Runic Covenant is injected automatically so agents frame, map, claim, forge, prove, review, seal, and recover work without the user babysitting the loop.
+- The Runic Covenant is injected automatically so agents frame, map, claim, forge, prove, repair, review, seal, and recover work without the user babysitting the loop.
 - Runesmith Autopilot prepares a mission from the latest OpenCode user request, creates a Forge -> Review -> Seal task plan, claims the next ready task with a stable lease, and replays the same claim instead of duplicating work.
 - The first mutating OpenCode tool can auto-start orchestration, so the agent does not have to remember a manual mission-start step before editing.
 - Tool execution evidence is captured automatically from OpenCode shell, test, and file-edit hooks.
 - Evidence is validated against real mission tasks and refreshes task heartbeat state, so recovery does not reclaim active work just because the agent is producing proof instead of chat.
 - Captured proof immediately triggers the evidence gate, so tasks can seal as soon as file-change evidence and passing test-result evidence satisfy the active task contract.
+- Failed verification enters Repair Gate with the `Faultwright` rune, turning diagnostic output into a focused repair target before another proof attempt.
 - The Runic mission loop is a shared core kernel used by OpenCode, the CLI, and the dashboard, so recovery, decision synthesis, task claiming, and evidence gates cannot drift between surfaces.
 - Idle recovery requeues dependency-ready stale tasks, clears stale ownership, and claims a fresh lease so work can continue without a manual reset.
 - Runtime state is stored in a local capsule so missions survive OpenCode restarts.
@@ -42,17 +43,18 @@ Once the OpenCode plugin is installed, Runesmith injects the Covenant into the c
 3. Lease Claim
 4. Forge
 5. Proof Gate
-6. Mirror Review
-7. Seal
-8. Recovery Sweep
+6. Repair Gate
+7. Mirror Review
+8. Seal
+9. Recovery Sweep
 
 Each stage has gates and evidence requirements. The point is simple: install once, then let the engine drive end-to-end work through leases, proof, review, snapshots, and recovery.
 
-The static Covenant is paired with a live `Runesmith Control Brief`. That brief is derived from the runtime capsule and tells the agent the active mission, active task, next Covenant stage, required evidence, and missing evidence. Failed or unknown test runs stay diagnostic and keep the next stage at Proof Gate until passing proof exists.
+The static Covenant is paired with a live `Runesmith Control Brief`. That brief is derived from the runtime capsule and tells the agent the active mission, active task, next Covenant stage, required evidence, and missing evidence. Failed or unknown test runs stay diagnostic, enter Repair Gate, and keep the loop focused on the latest failing command until passing proof exists.
 
-The Control Brief also carries active Runebook runes. These are Runesmith-native procedure cards such as `Forge Trace`, `Proofwright`, and `Recovery Loom`. They apply the useful discipline of workflow skills without making the user install, remember, or invoke separate workflows.
+The Control Brief also carries active Runebook runes. These are Runesmith-native procedure cards such as `Forge Trace`, `Proofwright`, `Faultwright`, and `Recovery Loom`. They apply the useful discipline of workflow skills without making the user install, remember, or invoke separate workflows.
 
-The Loop Pulse is the runtime's heartbeat for agentic work. It derives the next OS action from the same mission capsule, including `Wait for goal`, `Continue forge`, `Capture proof`, `Recover stale work`, `Review change`, and `Seal mission`. This keeps OpenCode prompts, compaction context, and dashboard status aligned around one loop decision instead of separate prompt-side heuristics.
+The Loop Pulse is the runtime's heartbeat for agentic work. It derives the next OS action from the same mission capsule, including `Wait for goal`, `Continue forge`, `Capture proof`, `Repair diagnostic`, `Recover stale work`, `Review change`, and `Seal mission`. This keeps OpenCode prompts, compaction context, and dashboard status aligned around one loop decision instead of separate prompt-side heuristics.
 
 Runesmith Autopilot is the OpenCode-facing part of that loop. The plugin injects a short bootstrap that tells the coding agent to call `runesmith_autopilot_prepare` when a real coding goal appears. That tool reads the latest user message when no explicit goal is provided, starts or resumes the matching active mission, creates the default Covenant task graph, claims the next ready task through the lease scheduler, and saves the runtime capsule.
 

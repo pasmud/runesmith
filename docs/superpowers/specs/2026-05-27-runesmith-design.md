@@ -20,7 +20,7 @@ The first production slice includes:
 - A CLI package with `init`, `doctor`, and mission inspection commands.
 - A dashboard package using shadcn/ui conventions and an OpenClaw OS-inspired layout for mission visibility.
 - A testbench package with deterministic simulations for duplicate prompt leases, stale tasks, missing capabilities, and evidence verification.
-- A native Runic Covenant workflow layer that installs automatically with the OpenCode plugin and drives frame, map, claim, forge, prove, review, seal, and recovery behavior without manual workflow invocation.
+- A native Runic Covenant workflow layer that installs automatically with the OpenCode plugin and drives frame, map, claim, forge, prove, repair, review, seal, and recovery behavior without manual workflow invocation.
 - A default runtime capsule at `.runesmith/runtime/capsule.json` so mission state survives OpenCode restarts and CLI inspection works without requiring a manual snapshot flag.
 - Runesmith Autopilot hooks for OpenCode system bootstrap and compaction continuity, so the engine can prepare and resume missions without the user loading separate workflow skills.
 - Zero-touch mission preparation from OpenCode `tool.execute.before` when a mutating or shell tool is about to run and no active mission exists.
@@ -220,17 +220,18 @@ Stages:
 - Lease Claim: claim work with a contract, idempotency key, and minimal tool scope.
 - Forge: make scoped implementation changes.
 - Proof Gate: attach required evidence before completion.
+- Repair Gate: turn failed verification diagnostics into focused repair work before another proof attempt.
 - Mirror Review: inspect diff and behavior for gaps.
 - Seal: capture a replayable checkpoint.
 - Recovery Sweep: recover stale or blocked work before drift.
 
 Every stage carries gates and evidence signals. The covenant is a workflow policy layer; the runtime remains the source of truth for mission state, leases, and evidence.
 
-The runtime also derives a live Runesmith Control Brief from the current snapshot. This brief does not ask the user to run a skill. It tells the coding agent what stage comes next, which mission and task are active, what proof is required, and which evidence is still missing. Failed or unknown test runs are treated as diagnostics, so the brief keeps the task in Proof Gate until passing test proof exists.
+The runtime also derives a live Runesmith Control Brief from the current snapshot. This brief does not ask the user to run a skill. It tells the coding agent what stage comes next, which mission and task are active, what proof is required, and which evidence is still missing. Failed or unknown test runs are treated as diagnostics, so the brief moves the task into Repair Gate and keeps the agent focused on the latest failing command until passing test proof exists.
 
-The Control Brief also includes Runesmith-native Runebook runes. A rune is a small procedure card selected from runtime state, such as `Forge Trace` during scoped edits, `Proofwright` when evidence is missing, or `Recovery Loom` when work is stale. This borrows the useful discipline of explicit workflows while keeping the user experience install-once and automatic; users should not need to invoke external skills or remember process names.
+The Control Brief also includes Runesmith-native Runebook runes. A rune is a small procedure card selected from runtime state, such as `Forge Trace` during scoped edits, `Proofwright` when evidence is missing, `Faultwright` when verification fails, or `Recovery Loom` when work is stale. This borrows the useful discipline of explicit workflows while keeping the user experience install-once and automatic; users should not need to invoke external skills or remember process names.
 
-The Loop Pulse sits beside the Control Brief. It converts the live runtime state into one next action such as `Wait for goal`, `Continue forge`, `Capture proof`, `Recover stale work`, `Review change`, or `Seal mission`. OpenCode prompt injection, compaction context, and the dashboard should all show this same pulse so the OS has one source of truth for what the agentic loop should do next.
+The Loop Pulse sits beside the Control Brief. It converts the live runtime state into one next action such as `Wait for goal`, `Continue forge`, `Capture proof`, `Repair diagnostic`, `Recover stale work`, `Review change`, or `Seal mission`. OpenCode prompt injection, compaction context, and the dashboard should all show this same pulse so the OS has one source of truth for what the agentic loop should do next.
 
 The default Covenant task plan is:
 
