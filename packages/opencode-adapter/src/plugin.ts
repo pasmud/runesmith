@@ -84,6 +84,7 @@ export type RunesmithPlugin = {
     }
   }
   "experimental.chat.system.transform": (input: unknown, output: OpenCodeSystemOutput) => Promise<void> | void
+  "experimental.chat.messages.transform": (input: unknown, output: OpenCodeMessagesOutput) => Promise<void> | void
   "experimental.session.compacting": (input: unknown, output: OpenCodeCompactionOutput) => Promise<void> | void
   "tool.execute.before": (input: OpenCodeToolInput, output: OpenCodeToolOutput) => Promise<void> | void
   "tool.execute.after": (input: OpenCodeToolInput, output: OpenCodeToolOutput) => Promise<void> | void
@@ -175,6 +176,10 @@ type RecoverArgs = {
 
 type OpenCodeSystemOutput = {
   system?: string[] | string
+}
+
+type OpenCodeMessagesOutput = {
+  messages?: unknown[]
 }
 
 type OpenCodeCompactionOutput = {
@@ -558,6 +563,9 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       upsertSystemSection(output, buildRunicProtocolPrompt(snapshot, { proofPlanOptions, covenant }))
       upsertSystemSection(output, buildMissionMemoryPrompt(snapshot, covenant))
       upsertSystemSection(output, buildProofPlanPrompt(snapshot, proofPlanOptions, covenant))
+    },
+    "experimental.chat.messages.transform"(_input, output) {
+      injectMessageBootstrap(output, runtime.snapshot(), covenant, proofPlanOptions)
     },
     "experimental.session.compacting"(_input, output) {
       appendCompactionContext(output, runtime.snapshot(), proofPlanOptions)
@@ -1379,6 +1387,55 @@ function appendSystemSections(output: OpenCodeSystemOutput, sections: string[]):
   }
 
   output.system = system
+}
+
+function injectMessageBootstrap(
+  output: OpenCodeMessagesOutput,
+  snapshot: RuntimeSnapshot,
+  covenant: RunicCovenant,
+  proofPlanOptions: ProofPlanOptions,
+): void {
+  if (!Array.isArray(output.messages)) return
+
+  const firstUserMessage = output.messages.map(asRecord).find((message) => getMessageRole(message) === "user")
+  if (!firstUserMessage) return
+
+  const parts = Array.isArray(firstUserMessage.parts) ? firstUserMessage.parts : []
+  if (parts.some((part) => extractTextValue(part).includes("<RUNESMITH_BOOTSTRAP>"))) return
+
+  const firstPart = asRecord(parts[0])
+  const bootstrapPart = firstPart
+    ? { ...firstPart, type: "text", text: buildMessageBootstrap(snapshot, covenant, proofPlanOptions) }
+    : { type: "text", text: buildMessageBootstrap(snapshot, covenant, proofPlanOptions) }
+
+  firstUserMessage.parts = [bootstrapPart, ...parts]
+}
+
+function buildMessageBootstrap(
+  snapshot: RuntimeSnapshot,
+  covenant: RunicCovenant,
+  proofPlanOptions: ProofPlanOptions,
+): string {
+  const pulse = deriveLoopPulse(snapshot, covenant)
+  const protocolDeck = deriveRunicProtocolDeck(snapshot, { proofPlanOptions, covenant })
+
+  return [
+    "<RUNESMITH_BOOTSTRAP>",
+    "Runesmith is installed as the OpenCode orchestration OS.",
+    `Current next action: ${pulse.nextAction.label} (${pulse.nextAction.id}).`,
+    `Active protocol: ${protocolDeck.active.name} [${protocolDeck.active.mode}].`,
+    "Let Runesmith choose the procedure from runtime state.",
+    "Before mutating coding work, use Runesmith to prepare or resume the active mission.",
+    "Prefer runesmith_os_run, runesmith_next, runesmith_proof_run, or runesmith_risk_resolve when Loop Pulse makes them the next engine-owned action.",
+    "Do not ask the user to load skills or invoke workflows by name.",
+    "</RUNESMITH_BOOTSTRAP>",
+  ].join("\n")
+}
+
+function getMessageRole(message: Record<string, unknown> | undefined): string | undefined {
+  if (!message) return undefined
+
+  return stringValue(message.role) ?? stringValue(asRecord(message.info)?.role)
 }
 
 function upsertSystemSection(output: OpenCodeSystemOutput, section: string): void {

@@ -314,6 +314,35 @@ describe("opencode adapter", () => {
     expect(compactOutput.context.join("\n")).toContain("Handoff:")
   })
 
+  test("injects a compact Runesmith bootstrap into the first OpenCode user message once", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({ runtime })
+    const output = {
+      messages: [
+        {
+          info: { role: "system" },
+          parts: [{ type: "text", text: "Base system message" }],
+        },
+        {
+          info: { role: "user" },
+          parts: [{ type: "text", text: "Build a self-driving OpenCode harness" }],
+        },
+      ],
+    }
+
+    await plugin["experimental.chat.messages.transform"]?.({}, output)
+    await plugin["experimental.chat.messages.transform"]?.({}, output)
+
+    const userParts = output.messages[1].parts
+    expect(userParts[0].text).toContain("<RUNESMITH_BOOTSTRAP>")
+    expect(userParts[0].text).toContain("Runesmith is installed as the OpenCode orchestration OS.")
+    expect(userParts[0].text).toContain("Current next action: Wait for goal")
+    expect(userParts[0].text).toContain("Active protocol: Pathfinder Intake Protocol")
+    expect(userParts[0].text).toContain("Do not ask the user to load skills or invoke workflows by name.")
+    expect(userParts.filter((part) => part.text.includes("<RUNESMITH_BOOTSTRAP>"))).toHaveLength(1)
+    expect(userParts[1].text).toBe("Build a self-driving OpenCode harness")
+  })
+
   test("injects repository proof commands into OpenCode prompts and tool status", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const plugin = createRunesmithPlugin({
