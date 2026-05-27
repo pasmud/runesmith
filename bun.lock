@@ -4,6 +4,10 @@
   "workspaces": {
     "": {
       "name": "runesmith",
+      "dependencies": {
+        "@runesmith/core": "file:packages/core",
+        "jsonc-parser": "^3.3.1",
+      },
       "devDependencies": {
         "@types/bun": "^1.3.1",
         "typescript": "^5.9.3",
@@ -215,6 +219,8 @@
     "@runesmith/cli": ["@runesmith/cli@workspace:packages/cli"],
 
     "@runesmith/core": ["@runesmith/core@workspace:packages/core"],
+
+    "@runesmith/core": ["@runesmith/core@file:packages/core", {}],
 
     "@runesmith/dashboard": ["@runesmith/dashboard@workspace:packages/dashboard"],
 

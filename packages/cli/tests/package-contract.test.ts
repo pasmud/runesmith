@@ -31,6 +31,9 @@ describe("package publish contracts", () => {
 
     expect(pkg.name).toBe("runesmith")
     expect(pkg.main).toBe("./packages/opencode-adapter/dist/plugin.js")
+    expect(pkg.bin).toEqual({
+      runesmith: "./packages/cli/dist/index.js",
+    })
     expect(pkg.exports?.["."]).toEqual({
       types: "./packages/opencode-adapter/dist/plugin.d.ts",
       bun: "./packages/opencode-adapter/src/plugin.ts",
@@ -38,9 +41,13 @@ describe("package publish contracts", () => {
     })
     expect(pkg.scripts?.prepare).toBe("bun run build:packages")
     expect(pkg.dependencies?.["@runesmith/core"]).toBe("file:packages/core")
+    expect(pkg.dependencies?.["jsonc-parser"]).toBe("^3.3.1")
     expect(pkg.files).toEqual([
       ".opencode/INSTALL.md",
       ".opencode/skills",
+      "packages/cli/dist",
+      "packages/cli/src",
+      "packages/cli/package.json",
       "packages/core/dist",
       "packages/core/src",
       "packages/core/package.json",

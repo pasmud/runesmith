@@ -21,6 +21,7 @@ The first production slice includes:
 - A dashboard package using shadcn/ui conventions and an OpenClaw OS-inspired layout for mission visibility.
 - A testbench package with deterministic simulations for duplicate prompt leases, stale tasks, missing capabilities, and evidence verification.
 - A root OpenCode package entrypoint so users can install Runesmith with one `opencode.json` plugin line: `runesmith@git+https://github.com/pasmud/runesmith.git`.
+- A root `runesmith` package binary that points at the built CLI, so the same direct install can expose setup, status, proof, run, doctor, and launch commands without requiring users to know the monorepo layout.
 - A native Runic Covenant workflow layer that installs automatically with the OpenCode plugin and drives frame, map, claim, forge, prove, repair, review, seal, and recovery behavior without manual workflow invocation.
 - A default runtime capsule at `.runesmith/runtime/capsule.json` so mission state survives OpenCode restarts and CLI inspection works without requiring a manual snapshot flag.
 - Runesmith Autopilot hooks for OpenCode system bootstrap and compaction continuity, so the engine can prepare and resume missions without the user loading separate workflow skills.
