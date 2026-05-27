@@ -1,5 +1,6 @@
 import { deriveProofPlan, type ProofPlan, type ProofPlanOptions } from "./proof-plan.js"
 import { deriveRedlineProof, type RedlineProof } from "./redline-proof.js"
+import { deriveRepairContract, type RepairContract } from "./repair-contract.js"
 import { deriveReviewLens, type ReviewLens } from "./review-lens.js"
 import { deriveScopeSentinel, type ScopeSentinel } from "./scope-sentinel.js"
 import type { RuntimeSnapshot } from "./runtime.js"
@@ -13,6 +14,7 @@ export type SealAuditCheckId =
   | "mission-state"
   | "proof-gate"
   | "redline-gate"
+  | "repair-gate"
   | "scope-gate"
   | "review-gate"
   | "seal-decision"
@@ -61,18 +63,20 @@ export function deriveSealAudit(snapshot: RuntimeSnapshot, proofPlanOptions: Pro
   const sealDecision = sealTask ? selectSealDecision(evidence, sealTask.id) : undefined
   const proofPlan = deriveProofPlan(snapshot, proofPlanOptions)
   const redlineProof = deriveRedlineProof(snapshot)
+  const repairContract = deriveRepairContract(snapshot)
   const scopeSentinel = deriveScopeSentinel(snapshot)
   const reviewLens = deriveReviewLens(snapshot)
   const checks = buildChecks({
     graph,
     proofPlan,
     redlineProof,
+    repairContract,
     reviewLens,
     scopeSentinel,
     sealDecision,
     sealTask,
   })
-  const findings = buildFindings({ checks, proofPlan, redlineProof, reviewLens, scopeSentinel })
+  const findings = buildFindings({ checks, proofPlan, redlineProof, repairContract, reviewLens, scopeSentinel })
   const status = selectStatus(graph, checks)
 
   return {
@@ -164,6 +168,7 @@ function buildChecks(input: {
   graph: MissionGraph
   proofPlan: ProofPlan
   redlineProof: RedlineProof
+  repairContract: RepairContract
   reviewLens: ReviewLens
   scopeSentinel: ScopeSentinel
   sealDecision: Evidence | undefined
@@ -173,6 +178,7 @@ function buildChecks(input: {
     buildMissionStateCheck(input.graph),
     buildProofGateCheck(input.graph, input.proofPlan),
     buildRedlineGateCheck(input.graph, input.redlineProof),
+    buildRepairGateCheck(input.graph, input.repairContract),
     buildScopeGateCheck(input.graph, input.scopeSentinel),
     buildReviewGateCheck(input.graph, input.reviewLens),
     buildSealDecisionCheck(input.graph, input.reviewLens, input.sealDecision, input.sealTask),
@@ -222,6 +228,22 @@ function buildRedlineGateCheck(graph: MissionGraph, redlineProof: RedlineProof):
   }
 
   return check("redline-gate", "Redline Proof", "passed", redlineProof.summary)
+}
+
+function buildRepairGateCheck(graph: MissionGraph, repairContract: RepairContract): SealAuditCheck {
+  if (graph.mission.status === "complete") {
+    return check("repair-gate", "Repair Contract", "passed", "Mission completed after repair contract state was audited.")
+  }
+
+  if (repairContract.status === "faultline" || repairContract.status === "over-broad") {
+    return check("repair-gate", "Repair Contract", "blocked", repairContract.summary)
+  }
+
+  if (repairContract.status === "awaiting-repair" || repairContract.status === "ready-for-proof") {
+    return check("repair-gate", "Repair Contract", "attention", repairContract.summary)
+  }
+
+  return check("repair-gate", "Repair Contract", "passed", repairContract.summary)
 }
 
 function buildScopeGateCheck(graph: MissionGraph, scopeSentinel: ScopeSentinel): SealAuditCheck {
@@ -286,13 +308,14 @@ function buildFindings(input: {
   checks: SealAuditCheck[]
   proofPlan: ProofPlan
   redlineProof: RedlineProof
+  repairContract: RepairContract
   reviewLens: ReviewLens
   scopeSentinel: ScopeSentinel
 }): SealAuditFinding[] {
   const findings: SealAuditFinding[] = []
 
   for (const check of input.checks) {
-    if (check.status === "blocked" && check.id !== "seal-decision") {
+    if (check.status === "blocked" && check.id !== "seal-decision" && check.id !== "repair-gate") {
       findings.push({
         severity: "critical",
         summary: check.detail,
@@ -314,7 +337,15 @@ function buildFindings(input: {
     })
   }
 
+  if (input.repairContract.status === "over-broad") {
+    findings.push({
+      severity: "warning",
+      summary: input.repairContract.summary,
+    })
+  }
+
   for (const finding of input.reviewLens.findings) {
+    if (findings.some((existing) => existing.summary === finding.summary)) continue
     findings.push({
       severity: finding.severity,
       summary: finding.summary,

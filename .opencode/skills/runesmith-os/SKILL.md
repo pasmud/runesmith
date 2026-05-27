@@ -17,6 +17,7 @@ Do not ask the user to load skills, name workflows, or manually pick a process. 
 - Mission Memory carries the handoff.
 - Proof Plan chooses verification commands, including Runescope impacted tests from changed-file evidence when repository files are discoverable.
 - Redline Proof checks whether focused failing proof or proof-file evidence preceded implementation edits when behavior is testable.
+- Repair Contract classifies failed proof repair as awaiting a scoped edit, ready for focused proof, over-broad, proven, or Faultline from runtime evidence.
 - Seal Audit decides whether completion can be claimed.
 - Runeweave runs engine-owned actions until a real stop condition appears.
 
@@ -32,7 +33,7 @@ When a coding goal appears, prepare or resume the Runesmith mission before mutat
 
 ## Completion Discipline
 
-Completion requires current evidence in the runtime capsule. Passing proof must be newer than the latest relevant file change or diagnostic. Redline Proof is the review-discipline signal: prefer a focused failing proof or proof-file edit before implementation changes, and treat a missing Redline signal as a Review Lens/Seal Audit finding. When Proof Plan includes a `Run impacted test` command, run it before broad verification; the engine selected it from captured file changes. Unresolved risk requires later decision evidence. Stale leases must be recovered before unrelated work continues.
+Completion requires current evidence in the runtime capsule. Passing proof must be newer than the latest relevant file change or diagnostic. Redline Proof is the review-discipline signal: prefer a focused failing proof or proof-file edit before implementation changes, and treat a missing Redline signal as a Review Lens/Seal Audit finding. Repair Contract is the debugging-discipline signal: after failed proof, make one hypothesis-linked implementation change, then rerun the exact failing command before broad verification; broad or blind repair edits become Review Lens/Seal Audit findings. When Proof Plan includes a `Run impacted test` command, run it before broad verification; the engine selected it from captured file changes. Unresolved risk requires later decision evidence. Stale leases must be recovered before unrelated work continues.
 
 If Loop Pulse selects `Review faultline`, stop ordinary patching. Compare the repeated diagnostics, name the architecture or assumption that made local fixes ineffective, choose a redesign/revert/scope split/new hypothesis, call `runesmith_faultline_resolve` with that path, then rerun the focused proof command only after that breakpoint is resolved.
 

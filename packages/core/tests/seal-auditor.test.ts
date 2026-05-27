@@ -100,6 +100,7 @@ describe("seal audit", () => {
       ["mission-state", "passed"],
       ["proof-gate", "attention"],
       ["redline-gate", "attention"],
+      ["repair-gate", "passed"],
       ["scope-gate", "passed"],
       ["review-gate", "attention"],
       ["seal-decision", "blocked"],
@@ -161,6 +162,7 @@ describe("seal audit", () => {
       ["mission-state", "passed"],
       ["proof-gate", "passed"],
       ["redline-gate", "attention"],
+      ["repair-gate", "passed"],
       ["scope-gate", "passed"],
       ["review-gate", "passed"],
       ["seal-decision", "attention"],
@@ -224,6 +226,58 @@ describe("seal audit", () => {
       ]),
     )
     expect(prompt).toContain("redline-gate: passed")
+  })
+
+  test("carries over-broad Faultwright repair edits into seal findings", () => {
+    const runtime = createClaimedRuntime()
+    addFileChange(runtime, "packages/core/src/runebook.ts")
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_diagnostic",
+        taskId: "task_alpha",
+        type: "diagnostic",
+        summary: "Runebook tests failed",
+        payload: { command: "bun test packages/core/tests/runebook.test.ts", exitCode: 1 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_broad_repair",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed two repair surfaces",
+        payload: {
+          files: [
+            "packages/core/src/runebook.ts",
+            "packages/core/src/protocol-deck.ts",
+          ],
+        },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+
+    const audit = deriveSealAudit(runtime.snapshot())
+
+    expect(audit.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "repair-gate",
+          status: "blocked",
+          detail: "Repair contract over-broad for task_alpha: 2 implementation files changed before proof reran.",
+        }),
+      ]),
+    )
+    expect(audit.findings).toEqual(
+      expect.arrayContaining([
+        {
+          severity: "warning",
+          summary: "Repair contract over-broad for task_alpha: 2 implementation files changed before proof reran.",
+        },
+      ]),
+    )
   })
 
   test("reports sealed missions as finished after the shared loop completes", () => {

@@ -7,6 +7,7 @@ import {
   buildMissionMemoryPrompt,
   buildProofPlanPrompt,
   buildRedlineProofPrompt,
+  buildRepairContractPrompt,
   buildReviewLensPrompt,
   buildRunicProtocolPrompt,
   buildRunebookPrompt,
@@ -21,6 +22,7 @@ import {
   deriveMissionMemory,
   deriveProofPlan,
   deriveRedlineProof,
+  deriveRepairContract,
   deriveReviewLens,
   deriveRunicProtocolDeck,
   deriveRunebook,
@@ -397,6 +399,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           const missionMap = deriveMissionMap(snapshot)
           const scopeSentinel = deriveScopeSentinel(snapshot)
           const redlineProof = deriveRedlineProof(snapshot)
+          const repairContract = deriveRepairContract(snapshot)
           const reviewLens = deriveReviewLens(snapshot)
           const sealAudit = deriveSealAudit(snapshot, proofPlanOptions)
           const missionMemory = deriveMissionMemory(snapshot, covenant)
@@ -435,6 +438,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             missionMap,
             scopeSentinel,
             redlineProof,
+            repairContract,
             reviewLens,
             sealAudit,
             missionMemory,
@@ -609,6 +613,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             prompt = upsertPromptSection(prompt, buildMissionMapPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildScopeSentinelPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildRedlineProofPrompt(snapshot))
+            prompt = upsertPromptSection(prompt, buildRepairContractPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildReviewLensPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildSealAuditPrompt(snapshot, proofPlanOptions))
             prompt = upsertPromptSection(prompt, buildRunebookPrompt(snapshot, { proofPlanOptions, covenant }))
@@ -627,6 +632,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       upsertSystemSection(output, buildMissionMapPrompt(snapshot))
       upsertSystemSection(output, buildScopeSentinelPrompt(snapshot))
       upsertSystemSection(output, buildRedlineProofPrompt(snapshot))
+      upsertSystemSection(output, buildRepairContractPrompt(snapshot))
       upsertSystemSection(output, buildReviewLensPrompt(snapshot))
       upsertSystemSection(output, buildSealAuditPrompt(snapshot, proofPlanOptions))
       upsertSystemSection(output, buildRunebookPrompt(snapshot, { proofPlanOptions, covenant }))
@@ -1524,6 +1530,7 @@ function buildAutopilotPrompt(): string {
     "Continue under the returned mission, task, and lease. New autopilot missions are planned as Forge, Review, and Seal tasks. Runesmith records shell, test, file-change, and safe Covenant decision evidence automatically; use `runesmith_task_evidence` for risks, diagnostics, external proof, or decisions the tool hooks cannot infer.",
     "Follow the active Runesmith Runebook card and Active runes as automatic procedure, not as user-invoked workflows.",
     "Use Runesmith Redline Proof as the test-first/review-discipline signal: prefer focused failing proof or proof-file evidence before implementation edits when behavior is testable.",
+    "Use Runesmith Repair Contract during failed proof: keep the repair hypothesis-linked, one-variable, and tied to the exact failing command before broad proof.",
     "Prefer `runesmith_os_run` when you need Runesmith to keep executing engine-owned Runebook cards until the mission is sealed or a real stop condition appears.",
     "Prefer `runesmith_next` when you need Runesmith to execute the current Runebook card without choosing a lower-level tool.",
     "When proof is missing, call `runesmith_proof_run` to execute the live Runesmith Proof Plan before asking for completion. When Faultline is active, follow the architecture breakpoint before rerunning proof.",
@@ -1680,6 +1687,7 @@ function appendCompactionContext(
   upsertTextListSection(context, buildMissionMapPrompt(snapshot))
   upsertTextListSection(context, buildScopeSentinelPrompt(snapshot))
   upsertTextListSection(context, buildRedlineProofPrompt(snapshot))
+  upsertTextListSection(context, buildRepairContractPrompt(snapshot))
   upsertTextListSection(context, buildReviewLensPrompt(snapshot))
   upsertTextListSection(context, buildSealAuditPrompt(snapshot, proofPlanOptions))
   upsertTextListSection(context, buildRunebookPrompt(snapshot, { proofPlanOptions }))

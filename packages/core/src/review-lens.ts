@@ -1,6 +1,7 @@
 import { missingRequiredEvidence } from "./evidence-ledger.js"
 import { getRequiredEvidenceForTask } from "./contracts.js"
 import { deriveRedlineProof, type RedlineProof } from "./redline-proof.js"
+import { deriveRepairContract, type RepairContract } from "./repair-contract.js"
 import { deriveScopeSentinel, type ScopeSentinel } from "./scope-sentinel.js"
 import type { RuntimeSnapshot } from "./runtime.js"
 import type { Evidence, EvidenceType, MissionGraph, MissionTask } from "./types.js"
@@ -72,8 +73,9 @@ export function deriveReviewLens(snapshot: RuntimeSnapshot): ReviewLens {
   const unresolvedRisks = collectUnresolvedRiskSummaries(taskEvidence)
   const reviewDecision = reviewEvidence.find((entry) => entry.type === "decision")
   const redlineProof = deriveRedlineProof(snapshot)
+  const repairContract = deriveRepairContract(snapshot)
   const status = selectReviewStatus(graph, missingEvidence, unresolvedRisks, reviewDecision, scopeSentinel)
-  const findings = buildFindings(implementationTask, missingEvidence, unresolvedRisks, taskEvidence, scopeSentinel, redlineProof)
+  const findings = buildFindings(implementationTask, missingEvidence, unresolvedRisks, taskEvidence, scopeSentinel, redlineProof, repairContract)
   const checklist = buildChecklist({
     implementationTask,
     missingEvidence,
@@ -251,6 +253,7 @@ function buildFindings(
   taskEvidence: Evidence[],
   scopeSentinel: ScopeSentinel,
   redlineProof: RedlineProof,
+  repairContract: RepairContract,
 ): ReviewLensFinding[] {
   const findings: ReviewLensFinding[] = []
 
@@ -280,6 +283,13 @@ function buildFindings(
     findings.push({
       severity: "warning",
       summary: redlineProof.summary,
+    })
+  }
+
+  if (repairContract.status === "over-broad") {
+    findings.push({
+      severity: "warning",
+      summary: repairContract.summary,
     })
   }
 

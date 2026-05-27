@@ -703,6 +703,7 @@ function RightRail({ dispatch, model }: { dispatch: DashboardDispatch; model: Da
       <MissionMapPanel model={model} />
       <ScopeSentinelPanel model={model} />
       <RedlineProofPanel model={model} />
+      <RepairContractPanel model={model} />
       <ReviewLensPanel model={model} />
       <SealAuditPanel model={model} />
       <ProtocolDeckPanel model={model} />
@@ -959,6 +960,52 @@ function RedlineProofPanel({ model }: { model: DashboardModel }) {
             <small>{signal}</small>
           </span>
         )) : null}
+      </div>
+    </section>
+  )
+}
+
+function RepairContractPanel({ model }: { model: DashboardModel }) {
+  const contract = model.repairContract
+  const tone: MissionStatus =
+    contract.status === "faultline" || contract.status === "over-broad"
+      ? "blocked"
+      : contract.status === "awaiting-repair"
+        ? "stale"
+        : contract.status === "idle"
+          ? "stale"
+          : "verified"
+  const changes = contract.repairChanges.slice(0, 3)
+
+  return (
+    <section className="repair-contract-panel" aria-label="Runesmith repair contract">
+      <div className="inspector-header">
+        <p className="eyebrow">Repair Contract</p>
+        <Badge tone={tone}>{contract.status}</Badge>
+      </div>
+      <div className="repair-contract-head">
+        <span className={`tile-icon tile-icon-${tone}`}><Hammer aria-hidden="true" /></span>
+        <div>
+          <h2>{contract.taskId ?? "No repair target"}</h2>
+          <p>{contract.summary}</p>
+        </div>
+      </div>
+      <div className="repair-contract-facts">
+        <span>{contract.failedAttempts} failed attempts</span>
+        <span>{contract.failingCommand ?? "no failing command"}</span>
+      </div>
+      <div className="repair-contract-signals" aria-label="Repair contract signals">
+        {changes.length > 0 ? changes.map((path) => (
+          <span data-status={contract.status} key={`repair-${path}`}>
+            <strong>Repair change</strong>
+            <small>{path}</small>
+          </span>
+        )) : (
+          <span data-status={contract.status}>
+            <strong>{contract.diagnostic ?? "No diagnostic"}</strong>
+            <small>{contract.warnings[0] ?? "Runesmith is waiting for failed proof before arming Faultwright."}</small>
+          </span>
+        )}
       </div>
     </section>
   )

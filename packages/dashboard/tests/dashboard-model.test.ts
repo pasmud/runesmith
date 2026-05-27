@@ -360,6 +360,13 @@ describe("dashboard model", () => {
       summary: "Redline Proof missing for task_live: implementation changed before focused failing proof was captured.",
       implementationChanges: ["packages/dashboard/src/dashboard-model.ts"],
     })
+    expect(model.repairContract).toMatchObject({
+      status: "idle",
+      missionId: "mission_live",
+      taskId: "task_live",
+      summary: "No active failed diagnostic is waiting for repair on task_live.",
+      repairChanges: [],
+    })
     expect(model.reviewLens).toMatchObject({
       status: "waiting-for-proof",
       missionId: "mission_live",
@@ -385,6 +392,7 @@ describe("dashboard model", () => {
       ["mission-state", "passed"],
       ["proof-gate", "attention"],
       ["redline-gate", "attention"],
+      ["repair-gate", "passed"],
       ["scope-gate", "passed"],
       ["review-gate", "attention"],
       ["seal-decision", "blocked"],

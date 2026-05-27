@@ -399,6 +399,7 @@ svg {
   .mission-map-panel,
   .scope-sentinel-panel,
   .redline-proof-panel,
+  .repair-contract-panel,
   .review-lens-panel,
   .seal-audit-panel,
   .protocol-deck-panel,
@@ -983,6 +984,13 @@ svg {
   box-shadow: none;
 }
 
+.repair-contract-panel {
+  flex: 0 0 auto;
+  margin: 12px 18px 0;
+  padding: 14px;
+  box-shadow: none;
+}
+
 .protocol-deck-panel {
   flex: 0 0 auto;
   margin: 12px 18px 0;
@@ -1005,7 +1013,8 @@ svg {
 }
 
 .scope-sentinel-head,
-.redline-proof-head {
+.redline-proof-head,
+.repair-contract-head {
   display: flex;
   align-items: flex-start;
   gap: 12px;
@@ -1013,12 +1022,14 @@ svg {
 }
 
 .scope-sentinel-head div,
-.redline-proof-head div {
+.redline-proof-head div,
+.repair-contract-head div {
   min-width: 0;
 }
 
 .scope-sentinel-head h2,
-.redline-proof-head h2 {
+.redline-proof-head h2,
+.repair-contract-head h2 {
   margin: 0;
   overflow: hidden;
   font-size: 14px;
@@ -1028,7 +1039,8 @@ svg {
 }
 
 .scope-sentinel-head p,
-.redline-proof-head p {
+.redline-proof-head p,
+.repair-contract-head p {
   display: -webkit-box;
   margin: 5px 0 0;
   overflow: hidden;
@@ -1039,8 +1051,14 @@ svg {
   -webkit-line-clamp: 2;
 }
 
+.repair-contract-head p {
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: 4;
+}
+
 .scope-sentinel-facts,
-.redline-proof-facts {
+.redline-proof-facts,
+.repair-contract-facts {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -1048,7 +1066,8 @@ svg {
 }
 
 .scope-sentinel-facts span,
-.redline-proof-facts span {
+.redline-proof-facts span,
+.repair-contract-facts span {
   max-width: 100%;
   min-height: 22px;
   padding: 4px 7px;
@@ -1063,14 +1082,16 @@ svg {
 }
 
 .scope-sentinel-changes,
-.redline-proof-signals {
+.redline-proof-signals,
+.repair-contract-signals {
   display: grid;
   gap: 7px;
   margin-top: 12px;
 }
 
 .scope-sentinel-changes span,
-.redline-proof-signals span {
+.redline-proof-signals span,
+.repair-contract-signals span {
   display: grid;
   gap: 4px;
   padding: 8px 9px;
@@ -1089,6 +1110,17 @@ svg {
   background: #fffaf3;
 }
 
+.repair-contract-signals span[data-status="awaiting-repair"],
+.repair-contract-signals span[data-status="over-broad"] {
+  border-color: #ffe2c2;
+  background: #fffaf3;
+}
+
+.repair-contract-signals span[data-status="faultline"] {
+  border-color: #ffd6d6;
+  background: #fff7f7;
+}
+
 .scope-sentinel-changes span[data-status="in-scope"] {
   border-color: #cdebd8;
   background: #f5fff8;
@@ -1099,8 +1131,15 @@ svg {
   background: #f5fff8;
 }
 
+.repair-contract-signals span[data-status="ready-for-proof"],
+.repair-contract-signals span[data-status="proven"] {
+  border-color: #cdebd8;
+  background: #f5fff8;
+}
+
 .scope-sentinel-changes strong,
-.redline-proof-signals strong {
+.redline-proof-signals strong,
+.repair-contract-signals strong {
   overflow: hidden;
   color: var(--ink);
   font-size: 11px;
@@ -1112,13 +1151,21 @@ svg {
 }
 
 .scope-sentinel-changes small,
-.redline-proof-signals small {
+.redline-proof-signals small,
+.repair-contract-signals small {
   overflow: hidden;
   color: var(--muted);
   font-size: 10px;
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.repair-contract-signals strong,
+.repair-contract-signals small {
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .scope-sentinel-findings {

@@ -5,6 +5,7 @@ import {
   deriveLoopPulse,
   deriveProofPlan,
   deriveRedlineProof,
+  deriveRepairContract,
   deriveReviewLens,
   deriveRunicProtocolDeck,
   deriveRunebook,
@@ -22,6 +23,7 @@ import {
   type MissionMap,
   type ProofPlan,
   type RedlineProof,
+  type RepairContract,
   type ReviewLens,
   type RunicProtocolDeck,
   type Runebook,
@@ -113,6 +115,7 @@ export type DashboardModel = {
   proofPlan: ProofPlan
   protocolDeck: RunicProtocolDeck
   redlineProof: RedlineProof
+  repairContract: RepairContract
   reviewLens: ReviewLens
   runebook: Runebook
   scopeSentinel: ScopeSentinel
@@ -699,6 +702,9 @@ function deriveDashboardModel(input: {
   const redlineProof = input.runtimeSnapshot
     ? deriveRedlineProof(input.runtimeSnapshot)
     : buildSeededRedlineProof(input.tasks)
+  const repairContract = input.runtimeSnapshot
+    ? deriveRepairContract(input.runtimeSnapshot)
+    : buildSeededRepairContract(input.tasks)
   const sealAudit = input.runtimeSnapshot
     ? deriveSealAudit(input.runtimeSnapshot)
     : buildSeededSealAudit(input.tasks)
@@ -719,6 +725,7 @@ function deriveDashboardModel(input: {
     proofPlan,
     protocolDeck,
     redlineProof,
+    repairContract,
     reviewLens,
     runebook,
     scopeSentinel,
@@ -762,6 +769,14 @@ function buildSeededRedlineProof(tasks: TaskCard[]): RedlineProof {
   }
 
   return deriveRedlineProof(buildSeededRuntimeSnapshot(tasks))
+}
+
+function buildSeededRepairContract(tasks: TaskCard[]): RepairContract {
+  if (tasks.length === 0) {
+    return deriveRepairContract(emptyRuntimeSnapshot())
+  }
+
+  return deriveRepairContract(buildSeededRuntimeSnapshot(tasks))
 }
 
 function buildSeededSealAudit(tasks: TaskCard[]): SealAudit {

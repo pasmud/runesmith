@@ -198,6 +198,10 @@ describe("opencode adapter", () => {
           status: "not-applicable",
           summary: "Redline Proof not required for task_alpha: no implementation file changes are captured.",
         },
+        repairContract: {
+          status: "idle",
+          summary: "No active failed diagnostic is waiting for repair on task_alpha.",
+        },
         sealAudit: {
           status: "collecting-proof",
           missionId: "mission_alpha",
@@ -418,6 +422,7 @@ describe("opencode adapter", () => {
     expect(systemOutput.system.join("\n")).toContain("Runesmith Mission Map")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Scope Sentinel")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Redline Proof")
+    expect(systemOutput.system.join("\n")).toContain("Runesmith Repair Contract")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Review Lens")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Seal Audit")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Proof Plan")
@@ -438,6 +443,7 @@ describe("opencode adapter", () => {
     expect(compactOutput.context.join("\n")).toContain("Runesmith Mission Map")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Scope Sentinel")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Redline Proof")
+    expect(compactOutput.context.join("\n")).toContain("Runesmith Repair Contract")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Review Lens")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Seal Audit")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Proof Plan")
@@ -612,6 +618,8 @@ describe("opencode adapter", () => {
     expect(prompt).toContain("Next task: task_alpha")
     expect(prompt).toContain("Runesmith Redline Proof")
     expect(prompt).toContain("Status: not-applicable")
+    expect(prompt).toContain("Runesmith Repair Contract")
+    expect(prompt).toContain("No active failed diagnostic is waiting for repair on task_alpha.")
     expect(prompt).toContain("Runesmith Review Lens")
     expect(prompt).toContain("Status: waiting-for-proof")
     expect(prompt).toContain("Engine-selected protocol; do not ask the user to invoke a workflow by name.")

@@ -345,6 +345,59 @@ describe("review lens", () => {
     )
   })
 
+  test("surfaces over-broad Faultwright repair edits as review findings", () => {
+    const runtime = createPlannedRuntime()
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runebook",
+        payload: { filePath: "packages/core/src/runebook.ts" },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_diagnostic",
+        taskId: "task_alpha",
+        type: "diagnostic",
+        summary: "Runebook tests failed",
+        payload: { command: "bun test packages/core/tests/runebook.test.ts", exitCode: 1 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_broad_repair",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed two repair surfaces",
+        payload: {
+          files: [
+            "packages/core/src/runebook.ts",
+            "packages/core/src/protocol-deck.ts",
+          ],
+        },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+
+    const lens = deriveReviewLens(runtime.snapshot())
+
+    expect(lens.findings).toEqual(
+      expect.arrayContaining([
+        {
+          severity: "warning",
+          summary: "Repair contract over-broad for task_alpha: 2 implementation files changed before proof reran.",
+        },
+      ]),
+    )
+  })
+
   test("embeds the Review Lens in autonomous review decision evidence", () => {
     const runtime = createPlannedRuntime()
     runtime.addTaskEvidence({
