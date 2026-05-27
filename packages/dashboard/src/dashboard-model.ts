@@ -1,5 +1,7 @@
 import {
+  createRuntime,
   createRunicCovenant,
+  createRunesmithAgentContracts,
   deriveDispatchMatrix,
   deriveMissionMap,
   deriveMissionMemory,
@@ -14,7 +16,10 @@ import {
   deriveScopeSentinel,
   deriveSealAudit,
   createRunesmithAgentContractMap,
+  createRunicPlanRefinementTaskPlan,
+  defaultRunesmithAgentContract,
   getNextCovenantStage,
+  refineRunicMissionPlan,
   type AgentContract,
   type CovenantStage,
   type CovenantStageId,
@@ -124,6 +129,7 @@ export type DashboardModel = {
   redlineProof: RedlineProof
   repairContract: RepairContract
   reviewLens: ReviewLens
+  runtimeSnapshot?: RuntimeSnapshot
   runebook: Runebook
   scopeSentinel: ScopeSentinel
   sealAudit: SealAudit
@@ -152,6 +158,7 @@ export type DashboardAction =
   | { type: "run-next-action"; verdict?: RiskResolutionVerdict; summary?: string; faultlineSummary?: string }
   | { type: "run-os-loop"; maxSteps?: number; verdict?: RiskResolutionVerdict; summary?: string; faultlineSummary?: string }
   | { type: "run-proof-plan" }
+  | { type: "refine-plan"; missionId?: string }
   | { type: "resolve-risk"; verdict?: RiskResolutionVerdict; summary?: string }
   | { type: "resolve-faultline"; summary?: string }
   | { type: "forge-directive"; prompt: string }
@@ -524,7 +531,7 @@ export function buildDashboardModelFromRuntimeSnapshot(
     policies: buildPoliciesFromSnapshot(snapshot, evidenceCount),
     runtimeSnapshot: snapshot,
     selectedAgentId: agents[0]?.id ?? seededAgents[0]!.id,
-    selectedTaskId: tasks[0]!.id,
+    selectedTaskId: selectRuntimeSelectedTaskId(snapshot, tasks),
     snapshots,
     tasks,
     timeline,
@@ -600,6 +607,9 @@ export function reduceDashboardModel(model: DashboardModel, action: DashboardAct
         detailPrefix: "Runesmith proof plan completed for",
         noticePrefix: "Proof plan passed for",
       })
+
+    case "refine-plan":
+      return refinePlanInModel(model, action)
 
     case "run-next-action":
       return runNextActionInModel(model, action)
@@ -752,6 +762,17 @@ function deriveDashboardModel(input: {
     selectedTask,
     selectedTaskId: selectedTask.id,
   }
+}
+
+function selectRuntimeSelectedTaskId(snapshot: RuntimeSnapshot, tasks: TaskCard[]): string {
+  const taskIds = new Set(tasks.map((task) => task.id))
+  const pulseTaskId = deriveLoopPulse(snapshot).taskId
+  if (pulseTaskId && taskIds.has(pulseTaskId)) return pulseTaskId
+
+  const mapTaskId = deriveMissionMap(snapshot).nextTaskId
+  if (mapTaskId && taskIds.has(mapTaskId)) return mapTaskId
+
+  return tasks.find((task) => task.status === "running")?.id ?? tasks[0]!.id
 }
 
 function buildSeededMissionMap(tasks: TaskCard[]): MissionMap {
@@ -1011,7 +1032,7 @@ function buildTaskCardsFromGraph(snapshot: RuntimeSnapshot, graph: MissionGraph)
         id: task.id,
         title: task.title,
         agent: contract?.displayName ?? task.assignedAgentId ?? "Unassigned",
-        status: mapTaskStatus(task.status),
+        status: mapTaskStatus(task.status, graph, task.id),
         lane: mapTaskLane(task.status, evidence),
         summary: task.description || graph.mission.goal,
         tools: contract?.allowedTools ?? ["read"],
@@ -1139,12 +1160,20 @@ function isEvidenceType(value: string): value is EvidenceType {
   ].includes(value)
 }
 
-function mapTaskStatus(status: TaskStatus): MissionStatus {
+function mapTaskStatus(status: TaskStatus, graph?: MissionGraph, taskId?: string): MissionStatus {
+  if (status === "queued" && graph && taskId && taskBlockedByDependencies(graph, taskId)) return "blocked"
   if (status === "complete" || status === "verifying") return "verified"
   if (status === "stale") return "stale"
   if (status === "blocked" || status === "failed" || status === "cancelled") return "blocked"
 
   return "running"
+}
+
+function taskBlockedByDependencies(graph: MissionGraph, taskId: string): boolean {
+  const task = graph.tasks[taskId]
+  if (!task) return false
+
+  return (task.dependsOn ?? []).some((dependencyId) => graph.tasks[dependencyId]?.status !== "complete")
 }
 
 function mapMissionStatusToTaskStatus(status: MissionStatus): TaskStatus {
@@ -1531,6 +1560,163 @@ function resolveRiskInModel(
   )
 }
 
+function refinePlanInModel(
+  model: DashboardModel,
+  action: Extract<DashboardAction, { type: "refine-plan" }>,
+): DashboardModel {
+  if (model.runtimeSnapshot) {
+    return refineRuntimePlanInModel(model, action)
+  }
+
+  const goal = normalizeDirectiveTitle(model.selectedTask.title)
+  if (!goal) {
+    return deriveDashboardModel({
+      ...model,
+      notice: "Select a mission directive before refining the plan.",
+    })
+  }
+
+  const baseId = normalizeTaskId(model.selectedTask.id)
+  const slices: TaskCard[] = [
+    {
+      id: `${baseId}_plan`,
+      title: `Plan: ${goal}`,
+      agent: "Atlas",
+      status: "verified",
+      lane: "Plan",
+      summary: `Pathfinder converted ${goal} into concrete proof-backed work slices.`,
+      tools: ["read", "edit", "test"],
+      evidence: ["decision"],
+    },
+    {
+      id: `${baseId}_runtime_forge`,
+      title: "Forge: orchestration runtime",
+      agent: "Atlas",
+      status: "running",
+      lane: "Build",
+      summary: `Runtime adapters, orchestration gates, and proof routing for ${goal}.`,
+      tools: ["read", "edit", "test"],
+      evidence: [],
+    },
+    {
+      id: `${baseId}_interface_forge`,
+      title: "Forge: operator control surface",
+      agent: "Artificer",
+      status: "running",
+      lane: "Build",
+      summary: `Dashboard, install controls, and operator feedback loops for ${goal}.`,
+      tools: ["read", "edit", "test"],
+      evidence: [],
+    },
+    {
+      id: `${baseId}_proof_review`,
+      title: "Review: proof and risk gate",
+      agent: "Oracle",
+      status: "blocked",
+      lane: "Verify",
+      summary: "Waiting for both implementation slices before proof review can run.",
+      tools: ["read", "test"],
+      evidence: [],
+    },
+    {
+      id: `${baseId}_seal_handoff`,
+      title: "Seal: install and handoff",
+      agent: "Steward",
+      status: "blocked",
+      lane: "Plan",
+      summary: "Waiting for proof review before packaging and direct-install handoff.",
+      tools: ["read", "edit", "git"],
+      evidence: [],
+    },
+  ]
+  const replacedTaskId = model.selectedTask.id
+  const tasks = [
+    ...slices,
+    ...model.tasks.filter((task) => task.id !== replacedTaskId),
+  ]
+
+  return deriveDashboardModel({
+    ...model,
+    agents: model.agents.map((agent) => {
+      if (agent.name === "Atlas") return { ...agent, activeLease: slices[1]!.id, status: "active", queue: agent.queue + 1 }
+      if (agent.name === "Artificer") return { ...agent, activeLease: slices[2]!.id, status: "active", queue: agent.queue + 1 }
+      if (agent.name === "Oracle") return { ...agent, activeLease: slices[3]!.id, status: "reviewing" }
+      if (agent.name === "Steward") return { ...agent, activeLease: slices[4]!.id, status: "idle" }
+
+      return agent
+    }),
+    commandLog: prependTimeline(model.commandLog, {
+      label: "Plan refined",
+      detail: `${goal} decomposed into ${slices.length} engine-owned slices.`,
+      tone: "running",
+    }),
+    selectedTaskId: slices[1]!.id,
+    tasks,
+    timeline: prependTimeline(model.timeline, {
+      label: "Plan refined",
+      detail: `${goal} now has parallel runtime and interface forge slices.`,
+      tone: "running",
+    }),
+    notice: `Refined ${goal} into runtime, interface, review, and seal slices.`,
+  })
+}
+
+function refineRuntimePlanInModel(
+  model: DashboardModel,
+  action: Extract<DashboardAction, { type: "refine-plan" }>,
+): DashboardModel {
+  const graph = selectDashboardRuntimeGraph(model.runtimeSnapshot!, action.missionId)
+  if (!graph) {
+    return deriveDashboardModel({
+      ...model,
+      notice: "No active runtime mission is available for plan refinement.",
+    })
+  }
+
+  const runtime = createRuntime({ snapshot: model.runtimeSnapshot })
+  for (const contract of createRunesmithAgentContracts()) {
+    runtime.registerContract(contract)
+  }
+
+  const refined = refineRunicMissionPlan(runtime, {
+    missionId: graph.mission.id,
+    taskPlan: createRunicPlanRefinementTaskPlan(graph.mission.goal),
+    contract: defaultRunesmithAgentContract,
+    holder: "runesmith-dashboard-local",
+    idempotencyScope: "dashboard-local-plan-refine",
+    ttlMs: 30_000,
+    evidenceId: `evidence_dashboard_refine_${graph.mission.id}`,
+  })
+  if (!refined.ok) {
+    return deriveDashboardModel({
+      ...model,
+      notice: `Plan refinement blocked: ${refined.error.message}`,
+    })
+  }
+
+  const next = buildDashboardModelFromRuntimeSnapshot(runtime.snapshot(), {
+    updatedAt: "local refinement",
+  })
+  const selectedTask = next.tasks.find((task) => task.title === "Forge: orchestration runtime") ?? next.selectedTask
+
+  return {
+    ...next,
+    commandLog: prependTimeline(model.commandLog, {
+      label: "Plan refined",
+      detail: `${graph.mission.goal} decomposed into ${refined.value.taskCount} proof-backed slices.`,
+      tone: "running",
+    }),
+    selectedTask,
+    selectedTaskId: selectedTask.id,
+    timeline: prependTimeline(next.timeline, {
+      label: "Plan refined",
+      detail: `${graph.mission.id} now has ${refined.value.planContract.implementationTaskCount} implementation slices.`,
+      tone: "running",
+    }),
+    notice: `Refined ${graph.mission.goal} into runtime, interface, review, and seal slices.`,
+  }
+}
+
 function forgeDirective(model: DashboardModel, prompt: string): DashboardModel {
   const title = normalizeDirectiveTitle(prompt)
 
@@ -1690,6 +1876,25 @@ function addEvidence(evidence: string[], item: string): string[] {
 
 function normalizeDirectiveTitle(prompt: string): string {
   return prompt.trim().replace(/\s+/g, " ").slice(0, 72)
+}
+
+function normalizeTaskId(value: string): string {
+  const normalized = value.trim().replace(/[^a-zA-Z0-9_]+/g, "_").replace(/^_+|_+$/g, "")
+
+  return normalized || "task"
+}
+
+function selectDashboardRuntimeGraph(
+  snapshot: RuntimeSnapshot,
+  missionId: string | undefined,
+): MissionGraph | undefined {
+  if (missionId) return snapshot.graphs[missionId]
+
+  return Object.values(snapshot.graphs)
+    .filter((graph) => !["complete", "failed", "cancelled"].includes(graph.mission.status))
+    .sort((left, right) => {
+      return right.mission.updatedAt.localeCompare(left.mission.updatedAt) || left.mission.id.localeCompare(right.mission.id)
+    })[0]
 }
 
 function clamp(value: number, min: number, max: number): number {

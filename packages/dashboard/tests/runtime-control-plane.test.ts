@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { createRuntime, type RuntimeSnapshot } from "@runesmith/core"
+import { createRuntime, deriveDispatchMatrix, derivePlanContract, type RuntimeSnapshot } from "@runesmith/core"
 import { applyDashboardRuntimeAction } from "../src/runtime-control-plane"
 
 const fixedNow = () => new Date("2026-05-27T00:00:00.000Z")
@@ -205,6 +205,94 @@ describe("dashboard runtime control plane", () => {
         }),
       ]),
     )
+  })
+
+  test("refines a thin dashboard directive into proof-backed dispatch slots", async () => {
+    const forged = await applyDashboardRuntimeAction(emptySnapshot, {
+      type: "forge-directive",
+      prompt: "Build OpenCode orchestration OS",
+    }, {
+      idFactory: ids,
+      now: fixedNow,
+    })
+    if (!forged.ok) throw new Error("forge failed")
+
+    const result = await applyDashboardRuntimeAction(forged.value.snapshot, {
+      type: "refine-plan",
+    }, {
+      idFactory: ids,
+      now: fixedNow,
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        action: "refine-plan",
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        status: "waiting-for-evidence",
+        planRefinement: {
+          evidenceId: "evidence_alpha",
+          taskCount: 5,
+          implementationTaskCount: 2,
+          activeSlotCount: 2,
+        },
+      },
+    })
+    if (!result.ok) return
+
+    const graph = result.value.snapshot.graphs.mission_alpha
+    expect(Object.keys(graph.tasks).sort()).toEqual([
+      "task_alpha",
+      "task_alpha_interface_forge",
+      "task_alpha_proof_review",
+      "task_alpha_runtime_forge",
+      "task_alpha_seal_handoff",
+    ].sort())
+    expect(graph.tasks.task_alpha).toMatchObject({
+      title: "Plan: Build OpenCode orchestration OS",
+      status: "complete",
+      assignedAgentId: "agent_atlas",
+      requiredEvidence: ["decision"],
+    })
+    expect(graph.tasks.task_alpha_runtime_forge).toMatchObject({
+      title: "Forge: orchestration runtime",
+      status: "running",
+      assignedAgentId: "agent_atlas",
+      requiredEvidence: ["file-change", "test-result"],
+      dependsOn: ["task_alpha"],
+    })
+    expect(graph.tasks.task_alpha_interface_forge).toMatchObject({
+      title: "Forge: operator control surface",
+      status: "running",
+      assignedAgentId: "agent_artificer",
+      requiredEvidence: ["file-change", "test-result"],
+      dependsOn: ["task_alpha"],
+    })
+    expect(graph.tasks.task_alpha_proof_review.dependsOn).toEqual([
+      "task_alpha_runtime_forge",
+      "task_alpha_interface_forge",
+    ])
+    expect(result.value.snapshot.ledgers.mission_alpha.evidence.evidence_alpha).toMatchObject({
+      taskId: "task_alpha",
+      type: "decision",
+      payload: {
+        mode: "runesmith-plan-refinery",
+        taskCount: 5,
+      },
+    })
+    expect(derivePlanContract(result.value.snapshot)).toMatchObject({
+      status: "ready",
+      missionId: "mission_alpha",
+      taskCount: 5,
+      implementationTaskCount: 2,
+    })
+    expect(deriveDispatchMatrix(result.value.snapshot)).toMatchObject({
+      status: "serial",
+      missionId: "mission_alpha",
+      activeSlotCount: 2,
+      blockedSlotCount: 2,
+    })
   })
 
   test("runs the current Runebook next action from dashboard control", async () => {

@@ -138,6 +138,7 @@ export function App() {
         || action.type === "run-next-action"
         || action.type === "run-os-loop"
         || action.type === "run-proof-plan"
+        || action.type === "refine-plan"
         || action.type === "resolve-risk"
         || action.type === "resolve-faultline"
       ) {
@@ -177,6 +178,18 @@ export function App() {
             <Button onClick={() => dispatch({ type: "create-snapshot" })} variant="outline">
               <Camera data-icon="inline-start" />Snapshot
             </Button>
+            {model.planContract.status === "thin" ? (
+              <Button
+                disabled={controlLoading}
+                onClick={() => void runRuntimeControl({
+                  type: "refine-plan",
+                  missionId: model.planContract.missionId,
+                })}
+                variant="outline"
+              >
+                <GitBranch data-icon="inline-start" />{controlLoading ? "Working" : "Refine plan"}
+              </Button>
+            ) : null}
             <Button
               disabled={controlLoading}
               onClick={() => void runRuntimeControl({
@@ -258,7 +271,7 @@ export function App() {
         <ActiveView dispatch={dispatch} model={model} runRuntimeControl={runRuntimeControl} />
       </section>
 
-      <RightRail dispatch={dispatch} model={model} />
+      <RightRail controlLoading={controlLoading} dispatch={dispatch} model={model} runRuntimeControl={runRuntimeControl} />
     </main>
   )
 }
@@ -694,14 +707,24 @@ function SnapshotsView({ dispatch, snapshots }: { dispatch: DashboardDispatch; s
   )
 }
 
-function RightRail({ dispatch, model }: { dispatch: DashboardDispatch; model: DashboardModel }) {
+function RightRail({
+  controlLoading,
+  dispatch,
+  model,
+  runRuntimeControl,
+}: {
+  controlLoading: boolean
+  dispatch: DashboardDispatch
+  model: DashboardModel
+  runRuntimeControl: (action: DashboardAction) => Promise<void>
+}) {
   const unread = model.commandLog.length
 
   return (
     <aside className="right-rail">
       <LoopPulsePanel model={model} />
       <MissionMapPanel model={model} />
-      <PlanContractPanel model={model} />
+      <PlanContractPanel controlLoading={controlLoading} model={model} runRuntimeControl={runRuntimeControl} />
       <DispatchMatrixPanel model={model} />
       <ScopeSentinelPanel model={model} />
       <RedlineProofPanel model={model} />
@@ -819,7 +842,15 @@ function MissionMapPanel({ model }: { model: DashboardModel }) {
   )
 }
 
-function PlanContractPanel({ model }: { model: DashboardModel }) {
+function PlanContractPanel({
+  controlLoading,
+  model,
+  runRuntimeControl,
+}: {
+  controlLoading: boolean
+  model: DashboardModel
+  runRuntimeControl: (action: DashboardAction) => Promise<void>
+}) {
   const contract = model.planContract
   const tone: MissionStatus =
     contract.status === "blocked"
@@ -846,6 +877,18 @@ function PlanContractPanel({ model }: { model: DashboardModel }) {
         <span>{contract.taskCount} tasks</span>
         <span>{contract.implementationTaskCount} implementation slices</span>
       </div>
+      {contract.status === "thin" ? (
+        <div className="plan-contract-actions">
+          <Button
+            disabled={controlLoading || !contract.missionId}
+            onClick={() => void runRuntimeControl({ type: "refine-plan", missionId: contract.missionId })}
+            size="sm"
+            variant="outline"
+          >
+            <Sparkles data-icon="inline-start" />{controlLoading ? "Working" : "Refine plan"}
+          </Button>
+        </div>
+      ) : null}
       <div className="plan-contract-slices" aria-label="Plan contract slices">
         {slices.length > 0 ? slices.map((slice) => (
           <span data-status={contract.status} key={slice.id}>

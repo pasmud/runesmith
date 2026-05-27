@@ -1409,6 +1409,16 @@ svg {
   white-space: nowrap;
 }
 
+.plan-contract-actions {
+  display: flex;
+  margin-top: 10px;
+}
+
+.plan-contract-actions .rs-button {
+  width: 100%;
+  min-width: 0;
+}
+
 .plan-contract-slices {
   display: grid;
   gap: 7px;

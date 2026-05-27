@@ -119,7 +119,7 @@ Runeweave is the default OS run loop above Runesmith Next. It repeatedly execute
 
 Runesmith Autopilot is the OpenCode-facing part of that loop. The plugin injects a short bootstrap that tells the coding agent to call `runesmith_autopilot_prepare` when a real coding goal appears. That tool reads the latest user message when no explicit goal is provided, starts or resumes the matching active mission, creates the default Covenant task graph with its mission map trace, claims the next ready task through the lease scheduler, and saves the runtime capsule.
 
-When the prepared mission is still a broad Forge/Review/Seal shell, OpenCode can call `runesmith_plan_refine` with concrete task slices, dependencies, capabilities, and required evidence. Runesmith rejects unprovable slices, remaps the mission capsule, records the planning decision on the active root task, then runs the same evidence-gated loop. If the refined plan has independent ready implementation work, Dispatch Matrix and Agent Mesh claim those slices in the same pass.
+When the prepared mission is still a broad Forge/Review/Seal shell, OpenCode can call `runesmith_plan_refine` with concrete task slices, dependencies, capabilities, and required evidence. The dashboard can also run `Refine plan` to apply Runesmith's default runtime/interface/review/seal slice map without asking the user to author a workflow. Runesmith rejects unprovable slices, remaps the mission capsule, records the planning decision on the active root task, then runs the same evidence-gated loop. If the refined plan has independent ready implementation work, Dispatch Matrix and Agent Mesh claim those slices in the same pass.
 
 If the agent reaches for a mutating or shell tool before explicitly calling `runesmith_autopilot_prepare`, Runesmith uses `tool.execute.before` to infer the latest user goal, start or resume the mission, and claim the first dependency-ready task. If OpenCode reaches `session.idle` first and includes chat messages, Runesmith uses that same prepare path from the latest user message. Read-only tools are ignored so repo inspection does not create noisy missions.
 
@@ -139,7 +139,7 @@ The dashboard is intentionally not a static report. It models the working loop a
 - **Runic Covenant**: inspect and advance the built-in autonomous coding loop that ships with the plugin.
 - **Mission Map**: inspect the engine-owned task graph, next task, dependencies, and evidence requirements from the same runtime capsule used by OpenCode.
 - **Plan Contract**: see whether the active map is thin, ready, or blocked, with execution slices and proof obligations derived from tasks and assigned contracts.
-- **Plan Refinery**: refine a thin mission into proof-backed slices through the OpenCode tool path, with the planning decision recorded into the capsule and ready slices claimed automatically.
+- **Plan Refinery**: refine a thin mission into proof-backed slices through OpenCode or the dashboard `Refine plan` control, with the planning decision recorded into the capsule and ready runtime/interface slices claimed automatically.
 - **Dispatch Matrix**: see ready, active, and blocked dispatch slots with recommended agents derived from capabilities, dependencies, and leases.
 - **Scope Sentinel**: see whether captured file changes stay inside the active agent contract's file scope before Review or Seal.
 - **Redline Proof**: see whether proof-first evidence preceded implementation changes, with missing signals carried into review and seal findings.

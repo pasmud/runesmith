@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test"
 
-import type { RuntimeCapsule } from "@runesmith/core"
+import type { RuntimeCapsule, RuntimeSnapshot } from "@runesmith/core"
 import {
   buildDashboardModel,
   buildDashboardModelFromRuntimeCapsule,
+  buildDashboardModelFromRuntimeSnapshot,
   reduceDashboardModel,
 } from "../src/dashboard-model"
+import { applyDashboardRuntimeAction } from "../src/runtime-control-plane"
 
 const capsule: RuntimeCapsule = {
   version: 1,
@@ -125,6 +127,13 @@ const capsule: RuntimeCapsule = {
       },
     },
   },
+}
+
+const emptyRuntimeSnapshot: RuntimeSnapshot = {
+  graphs: {},
+  ledgers: {},
+  leases: { leases: {} },
+  contracts: {},
 }
 
 describe("dashboard model", () => {
@@ -256,6 +265,36 @@ describe("dashboard model", () => {
     expect(next.selectedTask.status).toBe("running")
     expect(next.tasks).toHaveLength(model.tasks.length + 1)
     expect(next.timeline.at(0)?.label).toBe("Directive forged")
+  })
+
+  test("refines a local directive into visible orchestration slices", () => {
+    const forged = reduceDashboardModel(buildDashboardModel(), {
+      type: "forge-directive",
+      prompt: "Build direct install orchestration",
+    })
+
+    const next = reduceDashboardModel(forged, { type: "refine-plan" })
+
+    expect(next.tasks.slice(0, 5).map((task) => task.title)).toEqual([
+      "Plan: Build direct install orchestration",
+      "Forge: orchestration runtime",
+      "Forge: operator control surface",
+      "Review: proof and risk gate",
+      "Seal: install and handoff",
+    ])
+    expect(next.tasks.slice(0, 5).map((task) => [task.status, task.lane, task.agent])).toEqual([
+      ["verified", "Plan", "Atlas"],
+      ["running", "Build", "Atlas"],
+      ["running", "Build", "Artificer"],
+      ["blocked", "Verify", "Oracle"],
+      ["blocked", "Plan", "Steward"],
+    ])
+    expect(next.selectedTask.title).toBe("Forge: orchestration runtime")
+    expect(next.commandLog.at(0)).toMatchObject({
+      label: "Plan refined",
+      tone: "running",
+    })
+    expect(next.notice).toBe("Refined Build direct install orchestration into runtime, interface, review, and seal slices.")
   })
 
   test("toggles policy gates and records the command", () => {
@@ -433,6 +472,35 @@ describe("dashboard model", () => {
     expect(model.proofPlan.status).toBe("needs-proof")
     expect(model.proofPlan.commands.map((command) => command.command)).toEqual(["bun test"])
     expect(model.notice).toBe("Loaded runtime capsule from 2026-05-27T00:00:00.000Z.")
+  })
+
+  test("selects the active implementation slice when a refined runtime capsule loads", async () => {
+    const forged = await applyDashboardRuntimeAction(emptyRuntimeSnapshot, {
+      type: "forge-directive",
+      prompt: "Build direct install orchestration",
+    })
+    if (!forged.ok) throw new Error("forge failed")
+
+    const refined = await applyDashboardRuntimeAction(forged.value.snapshot, {
+      type: "refine-plan",
+    })
+    if (!refined.ok) throw new Error("refine failed")
+
+    const model = buildDashboardModelFromRuntimeSnapshot(refined.value.snapshot)
+
+    expect(model.selectedTask.title).toBe("Forge: orchestration runtime")
+    expect(model.selectedTask.status).toBe("running")
+    expect(model.tasks.find((task) => task.title === "Review: proof and risk gate")?.status).toBe("blocked")
+    expect(model.tasks.find((task) => task.title === "Seal: install and handoff")?.status).toBe("blocked")
+    expect(model.planContract).toMatchObject({
+      status: "ready",
+      taskCount: 5,
+      implementationTaskCount: 2,
+    })
+    expect(model.dispatchMatrix).toMatchObject({
+      activeSlotCount: 2,
+      blockedSlotCount: 2,
+    })
   })
 
   test("places runtime tasks with failed verification into the repair lane", () => {

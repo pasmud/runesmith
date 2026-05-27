@@ -1,6 +1,8 @@
 import { createRunesmithAgentContracts, defaultRunesmithAgentContract } from "./agent-mesh.js"
 import { createCovenantTaskPlan } from "./covenant.js"
+import { deriveDispatchMatrix } from "./dispatch-matrix.js"
 import { deriveLoopPulse } from "./loop-pulse.js"
+import { createRunicPlanRefinementTaskPlan, refineRunicMissionPlan } from "./plan-refinery.js"
 import { deriveProofPlan, type ProofPlanCommand, type ProofPlanOptions } from "./proof-plan.js"
 import { runProofPlan, type ProofCommandExecution, type ProofRunCommandResult } from "./proof-runner.js"
 import { createRuntime, type RuntimeOptions, type RuntimeSnapshot } from "./runtime.js"
@@ -40,6 +42,10 @@ export type RuntimeControlAction =
       type: "run-proof-plan"
     }
   | {
+      type: "refine-plan"
+      missionId?: string
+    }
+  | {
       type: "resolve-risk"
       verdict?: RiskResolutionVerdict
       summary?: string
@@ -70,6 +76,13 @@ export type RuntimeControlActionValue = {
     evidenceId: string
     nextStatus: RunicMissionLoopStatus
     diagnostics: string[]
+  }
+  planRefinement?: {
+    evidenceId: string
+    rootTaskId: string
+    taskCount: number
+    implementationTaskCount: number
+    activeSlotCount: number
   }
   snapshot: RuntimeSnapshot
 }
@@ -115,6 +128,10 @@ export async function applyRuntimeControlAction(
 
   if (action.type === "run-proof-plan") {
     return runRuntimeProofPlan(runtime, options)
+  }
+
+  if (action.type === "refine-plan") {
+    return refineRuntimePlan(runtime, action, options)
   }
 
   if (action.type === "run-next-action") {
@@ -210,6 +227,59 @@ function runRuntimeAutopilotCycle(
       status: mapRuntimeControlRunicStatus(advanced.value.status),
       missingEvidence: advanced.value.missingEvidence,
       snapshot: runtime.snapshot(),
+    },
+  }
+}
+
+function refineRuntimePlan(
+  runtime: ReturnType<typeof createRuntime>,
+  action: Extract<RuntimeControlAction, { type: "refine-plan" }>,
+  options: RuntimeControlActionOptions,
+): RuntimeControlActionResult {
+  const before = runtime.snapshot()
+  const graph = selectRuntimeControlGraph(before, action.missionId)
+  if (!graph) {
+    return {
+      ok: false,
+      error: {
+        code: "MISSION_NOT_FOUND",
+        message: "No active mission is available for plan refinement.",
+      },
+    }
+  }
+
+  const nextEvidenceId = createRuntimeControlEvidenceIdFactory(before, options.idFactory)
+  const refined = refineRunicMissionPlan(runtime, {
+    missionId: graph.mission.id,
+    taskPlan: createRunicPlanRefinementTaskPlan(graph.mission.goal),
+    contract: defaultRuntimeControlContract,
+    holder: "runesmith-dashboard",
+    idempotencyScope: "dashboard-plan-refine",
+    ttlMs: 30_000,
+    evidenceId: nextEvidenceId(),
+    now: options.now,
+  })
+  if (!refined.ok) return { ok: false, error: refined.error }
+
+  const snapshot = runtime.snapshot()
+  const matrix = deriveDispatchMatrix(snapshot)
+
+  return {
+    ok: true,
+    value: {
+      action: "refine-plan",
+      missionId: refined.value.missionId,
+      taskId: refined.value.rootTaskId,
+      status: mapRuntimeControlRunicStatus(refined.value.status),
+      missingEvidence: refined.value.loopPulse.missingEvidence,
+      planRefinement: {
+        evidenceId: refined.value.evidenceId,
+        rootTaskId: refined.value.rootTaskId,
+        taskCount: refined.value.taskCount,
+        implementationTaskCount: refined.value.planContract.implementationTaskCount,
+        activeSlotCount: matrix.activeSlotCount,
+      },
+      snapshot,
     },
   }
 }
@@ -490,4 +560,17 @@ function fingerprint(value: string): string {
   }
 
   return (hash >>> 0).toString(36)
+}
+
+function selectRuntimeControlGraph(
+  snapshot: RuntimeSnapshot,
+  missionId: string | undefined,
+): RuntimeSnapshot["graphs"][string] | undefined {
+  if (missionId) return snapshot.graphs[missionId]
+
+  return Object.values(snapshot.graphs)
+    .filter((graph) => !["complete", "failed", "cancelled"].includes(graph.mission.status))
+    .sort((left, right) => {
+      return right.mission.updatedAt.localeCompare(left.mission.updatedAt) || left.mission.id.localeCompare(right.mission.id)
+    })[0]
 }

@@ -29,6 +29,52 @@ export type RunicPlanRefinementValue = {
   loopPulse: LoopPulse
 }
 
+export function createRunicPlanRefinementTaskPlan(goal: string): MissionTaskPlanItem[] {
+  const normalizedGoal = normalizeGoal(goal)
+
+  return [
+    {
+      key: "pathfinder-plan",
+      title: `Plan: ${normalizedGoal}`,
+      description: `Convert "${normalizedGoal}" into an engine-owned execution map with explicit proof obligations.`,
+      requiredCapabilities: ["typescript", "testing", "repository-maintenance"],
+      requiredEvidence: ["decision"],
+    },
+    {
+      key: "runtime-forge",
+      title: "Forge: orchestration runtime",
+      description: `Implement the runtime, adapters, and proof gates required for "${normalizedGoal}".`,
+      requiredCapabilities: ["typescript", "testing"],
+      requiredEvidence: ["file-change", "test-result"],
+      dependsOn: ["pathfinder-plan"],
+    },
+    {
+      key: "interface-forge",
+      title: "Forge: operator control surface",
+      description: `Implement the dashboard and install-facing controls required for "${normalizedGoal}".`,
+      requiredCapabilities: ["typescript", "ui", "accessibility"],
+      requiredEvidence: ["file-change", "test-result"],
+      dependsOn: ["pathfinder-plan"],
+    },
+    {
+      key: "proof-review",
+      title: "Review: proof and risk gate",
+      description: `Review implementation proof, residual risk, and operator handoff for "${normalizedGoal}".`,
+      requiredCapabilities: ["testing", "review", "risk-analysis"],
+      requiredEvidence: ["test-result", "decision"],
+      dependsOn: ["runtime-forge", "interface-forge"],
+    },
+    {
+      key: "seal-handoff",
+      title: "Seal: install and handoff",
+      description: `Package, document, and checkpoint the install path for "${normalizedGoal}".`,
+      requiredCapabilities: ["repository-maintenance", "release", "documentation"],
+      requiredEvidence: ["decision"],
+      dependsOn: ["proof-review"],
+    },
+  ]
+}
+
 export function refineRunicMissionPlan(
   runtime: RunesmithRuntime,
   options: RunicPlanRefinementOptions,
@@ -142,4 +188,8 @@ function validateRefinementPlan(taskPlan: MissionTaskPlanItem[]): Result<void> {
   }
 
   return ok(undefined)
+}
+
+function normalizeGoal(goal: string): string {
+  return goal.trim().replace(/\s+/g, " ") || "Runesmith mission"
 }
