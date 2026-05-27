@@ -22,6 +22,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - The Runic mission loop is a shared core kernel used by OpenCode, the CLI, and the dashboard, so recovery, decision synthesis, task claiming, and evidence gates cannot drift between surfaces.
 - Idle recovery requeues dependency-ready stale tasks, clears stale ownership, and claims a fresh lease so work can continue without a manual reset.
 - Runtime state is stored in a local capsule so missions survive OpenCode restarts.
+- Direct OpenCode plugin startup repairs the runtime capsule when it is missing or invalid, backing up corrupt state before recreating a usable capsule.
 - OpenCode compaction carries the mission capsule forward so long sessions do not lose orchestration state.
 - A live Runesmith Control Brief is injected from runtime state so OpenCode sees the active mission, next Covenant stage, and missing proof without user-managed workflow steps.
 - A compact first-user-message bootstrap also carries the current Loop Pulse and active protocol, giving OpenCode a low-bloat fallback when message hooks are more reliable than repeated system prompt injection.
@@ -89,6 +90,8 @@ Runesmith Ignite sits above setup and mission commands for first use. `runesmith
 
 Runesmith Heal is the self-repair path. It preserves valid runtime state, backs up a corrupt `.runesmith/runtime/capsule.json` to `.runesmith/runtime/capsule.json.runesmith.bak`, writes a fresh capsule, restores OpenCode plugin wiring, and reports whether doctor is ready or staged because the host OpenCode CLI is still missing.
 
+The direct OpenCode package plugin uses the same runtime-capsule repair primitive on startup. If OpenCode loads Runesmith against a missing or invalid capsule, the plugin repairs the capsule before exposing tools, so the normal chat path can still reach Autopilot instead of failing before the user sees a useful action.
+
 Runesmith Next is the default hands-off surface above the Runebook. It reads the active card and takes the smallest safe engine-owned action: run Proof Runner for `Capture proof` and `Repair diagnostic`, apply a supplied decision for `Resolve risk`, recover stale work, claim the next dependency-ready task, or advance through Review and Seal when evidence is already present. This is the Runesmith-owned version of workflow-skill dispatch: the user runs `runesmith next`, clicks `Run next`, or lets OpenCode call `runesmith_next`; the engine chooses the lower-level operation from runtime state.
 
 Runeweave is the default OS run loop above Runesmith Next. It repeatedly executes engine-owned Runebook cards with a safety step limit, then stops with a concrete reason: sealed, idle, needs implementation evidence, proof failed, risk held, blocked, or step limit reached. This is the boundary that keeps the product magical without faking autonomy: Runesmith handles leases, recovery, proof, decisions, Review, and Seal; the coding agent still performs creative implementation edits when the active card says `Continue forge`.
@@ -140,7 +143,7 @@ For OpenCode users, the direct path is a single plugin entry:
 }
 ```
 
-Add it to your global or project `opencode.json`, restart OpenCode, and let OpenCode install the package at startup. The repo root exports the Runesmith OpenCode plugin, runs the package build during git-package preparation, creates `.runesmith/runtime/capsule.json` on first load when it is missing, resumes that capsule on later OpenCode starts, and loads the same Runic Covenant, Control Brief, Loop Pulse, Runebook, `runesmith_os_run`, `runesmith_next`, tool hooks, runtime capsule, and evidence-gated autopilot described above.
+Add it to your global or project `opencode.json`, restart OpenCode, and let OpenCode install the package at startup. The repo root exports the Runesmith OpenCode plugin, runs the package build during git-package preparation, creates `.runesmith/runtime/capsule.json` on first load when it is missing, backs up and repairs an invalid capsule when needed, resumes that capsule on later OpenCode starts, and loads the same Runic Covenant, Control Brief, Loop Pulse, Runebook, `runesmith_os_run`, `runesmith_next`, tool hooks, runtime capsule, and evidence-gated autopilot described above.
 
 The same root package also ships the `runesmith` CLI binary from `packages/cli/dist/index.js`, so package installs expose one command for bootstrap, status, proof, run, launch, doctor, and risk resolution. The source commands below are the local development equivalents of that packaged binary.
 

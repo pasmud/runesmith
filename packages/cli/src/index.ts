@@ -19,6 +19,7 @@ import {
   deriveSealAudit,
   loadRuntimeCapsule,
   prepareRunicMission,
+  repairRuntimeCapsule as repairRuntimeCapsuleStore,
   resolveRunicRisk,
   runRuneweave,
   runRunebookNext,
@@ -435,18 +436,13 @@ async function repairProjectConfig(host: CliHost): Promise<RepairState> {
 }
 
 async function repairRuntimeCapsule(host: CliHost): Promise<RepairState> {
-  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
-  if (capsule.ok && capsule.value) return "ok"
-
-  if (!capsule.ok && await host.exists(defaultRuntimeCapsulePath)) {
-    await host.writeText(`${defaultRuntimeCapsulePath}.runesmith.bak`, await host.readText(defaultRuntimeCapsulePath))
-  }
-
-  await saveRuntimeCapsule(host, {
+  const repaired = await repairRuntimeCapsuleStore(host, {
     path: defaultRuntimeCapsulePath,
     snapshot: emptySnapshot,
   })
-  return "repaired"
+  if (!repaired.ok) return "repaired"
+
+  return repaired.value.status
 }
 
 async function runesmithUp(args: string[], host: CliHost): Promise<CliResult> {

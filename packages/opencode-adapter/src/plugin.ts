@@ -24,8 +24,8 @@ import {
   deriveRunebook,
   deriveScopeSentinel,
   deriveSealAudit,
-  loadRuntimeCapsule,
   prepareRunicMission,
+  repairRuntimeCapsule,
   resolveRunicRisk,
   runRuneweave,
   runRunebookNext,
@@ -651,10 +651,20 @@ export async function createRunesmithOpenCodePlugin(
 ): Promise<RunesmithPlugin> {
   const host = options.host ?? createNodeRuntimeStoreHost()
   const capsulePath = options.capsulePath ?? defaultRuntimeCapsulePath
-  const capsule = await loadRuntimeCapsule(host, capsulePath)
+  const fallbackSnapshot = options.snapshot ?? {
+    graphs: {},
+    ledgers: {},
+    leases: { leases: {} },
+    contracts: {},
+  }
+  const capsule = await repairRuntimeCapsule(host, {
+    path: capsulePath,
+    snapshot: fallbackSnapshot,
+    now: options.now,
+  })
   const runtime = options.runtime ?? createRuntime({
     ...options,
-    snapshot: capsule.ok ? capsule.value?.runtime ?? options.snapshot : options.snapshot,
+    snapshot: capsule.ok ? capsule.value.capsule.runtime : fallbackSnapshot,
   })
   const runtimeStore: PluginRuntimeStore = {
     async save(nextSnapshot) {
@@ -664,15 +674,6 @@ export async function createRunesmithOpenCodePlugin(
       })
       await options.runtimeStore?.save(nextSnapshot)
     },
-  }
-
-  if (capsule.ok && !capsule.value) {
-    const snapshot = runtime.snapshot()
-    await saveRuntimeCapsule(host, {
-      path: capsulePath,
-      snapshot,
-    })
-    await options.runtimeStore?.save(snapshot)
   }
 
   return createRunesmithPlugin({

@@ -1,16 +1,17 @@
 import { describe, expect, test } from "bun:test"
 
 import { createRuntime } from "../src/runtime"
-import { loadRuntimeCapsule, saveRuntimeCapsule, type RuntimeStoreHost } from "../src/runtime-store"
+import { loadRuntimeCapsule, repairRuntimeCapsule, saveRuntimeCapsule, type RuntimeStoreHost } from "../src/runtime-store"
 import type { RuntimeSnapshot } from "../src/runtime"
 
 const fixedNow = () => new Date("2026-05-27T00:00:00.000Z")
 const ids = (prefix: string) => `${prefix}_alpha`
 
-function createMemoryHost(initialFiles: Record<string, string> = {}): RuntimeStoreHost {
+function createMemoryHost(initialFiles: Record<string, string> = {}): RuntimeStoreHost & { files: Map<string, string> } {
   const files = new Map(Object.entries(initialFiles))
 
   return {
+    files,
     exists(path) {
       return files.has(path)
     },
@@ -78,5 +79,30 @@ describe("runtime capsule store", () => {
     }), ".runesmith/runtime/capsule.json")
 
     expect(loaded.ok).toBe(false)
+  })
+
+  test("backs up an invalid capsule and writes a fresh runtime snapshot", async () => {
+    const host = createMemoryHost({
+      ".runesmith/runtime/capsule.json": "{ broken",
+    })
+
+    const repaired = await repairRuntimeCapsule(host, {
+      path: ".runesmith/runtime/capsule.json",
+      snapshot: {
+        graphs: {},
+        ledgers: {},
+        leases: { leases: {} },
+        contracts: {},
+      },
+      now: fixedNow,
+    })
+
+    expect(repaired.ok).toBe(true)
+    if (!repaired.ok) throw new Error(repaired.error.message)
+    expect(repaired.value.status).toBe("repaired")
+    expect(repaired.value.backupPath).toBe(".runesmith/runtime/capsule.json.runesmith.bak")
+    expect(host.files.get(".runesmith/runtime/capsule.json.runesmith.bak")).toBe("{ broken")
+    expect(repaired.value.capsule.runtime.graphs).toEqual({})
+    expect(repaired.value.capsule.updatedAt).toBe("2026-05-27T00:00:00.000Z")
   })
 })

@@ -10,7 +10,7 @@ Add Runesmith to the `plugin` array in your global or project `opencode.json`:
 }
 ```
 
-Restart OpenCode. OpenCode installs package plugins with Bun at startup, then loads the Runesmith plugin entrypoint from this repo. The package plugin creates `.runesmith/runtime/capsule.json` on first load when it is missing, resumes that capsule on later starts, and persists each mission mutation back into the same file.
+Restart OpenCode. OpenCode installs package plugins with Bun at startup, then loads the Runesmith plugin entrypoint from this repo. The package plugin creates `.runesmith/runtime/capsule.json` on first load when it is missing, backs up and repairs an invalid capsule when needed, resumes that capsule on later starts, and persists each mission mutation back into the same file.
 
 ## What Loads
 

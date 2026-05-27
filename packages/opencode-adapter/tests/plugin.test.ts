@@ -264,6 +264,33 @@ describe("opencode adapter", () => {
     expect(saved.value.runtime.graphs.mission_alpha.tasks.task_alpha.assignedAgentId).toBe("agent_atlas")
   })
 
+  test("direct OpenCode plugin backs up and repairs an invalid runtime capsule on load", async () => {
+    const host = createMemoryRuntimeHost({
+      [defaultRuntimeCapsulePath]: "{not json",
+    })
+
+    const plugin = await createRunesmithOpenCodePlugin({
+      host,
+      idFactory: ids,
+      now: fixedNow,
+    })
+    const status = await plugin.tool.runesmith_covenant_status.execute({})
+    const repaired = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+
+    expect(host.files.get(`${defaultRuntimeCapsulePath}.runesmith.bak`)).toBe("{not json")
+    expect(repaired.ok).toBe(true)
+    if (!repaired.ok || !repaired.value) throw new Error("expected repaired capsule")
+    expect(repaired.value.runtime.graphs).toEqual({})
+    expect(JSON.parse(status.output)).toMatchObject({
+      ok: true,
+      value: {
+        controlBrief: {
+          status: "idle",
+        },
+      },
+    })
+  })
+
   test("direct OpenCode plugin resumes the existing runtime capsule", async () => {
     const host = createMemoryRuntimeHost()
     const existingRuntime = createRuntime({ idFactory: ids, now: fixedNow })

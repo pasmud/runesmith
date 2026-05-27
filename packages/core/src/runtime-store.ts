@@ -22,6 +22,16 @@ export type SaveRuntimeCapsuleInput = {
   now?: Clock
 }
 
+export type RepairRuntimeCapsuleInput = SaveRuntimeCapsuleInput & {
+  backupPath?: string
+}
+
+export type RepairRuntimeCapsuleValue = {
+  status: "ok" | "repaired"
+  capsule: RuntimeCapsule
+  backupPath?: string
+}
+
 export async function loadRuntimeCapsule(
   host: RuntimeStoreHost,
   path = defaultRuntimeCapsulePath,
@@ -43,6 +53,33 @@ export async function loadRuntimeCapsule(
   }
 
   return ok(parsed)
+}
+
+export async function repairRuntimeCapsule(
+  host: RuntimeStoreHost,
+  input: RepairRuntimeCapsuleInput,
+): Promise<Result<RepairRuntimeCapsuleValue>> {
+  const loaded = await loadRuntimeCapsule(host, input.path)
+  if (loaded.ok && loaded.value) {
+    return ok({
+      status: "ok",
+      capsule: loaded.value,
+    })
+  }
+
+  let backupPath: string | undefined
+  if (!loaded.ok && await host.exists(input.path)) {
+    backupPath = input.backupPath ?? `${input.path}.runesmith.bak`
+    await host.writeText(backupPath, await host.readText(input.path))
+  }
+
+  const capsule = await saveRuntimeCapsule(host, input)
+
+  return ok({
+    status: "repaired",
+    capsule,
+    backupPath,
+  })
 }
 
 export async function saveRuntimeCapsule(
