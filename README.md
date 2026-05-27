@@ -130,8 +130,8 @@ bun packages/cli/src/index.ts up
 # The Runic Covenant bootstrap and runtime capsule persistence are included automatically.
 bun packages/cli/src/index.ts install
 
-# Future npm-style install, matching the OpenCode `plugin` array flow.
-bun packages/cli/src/index.ts install --mode npm --package runesmith@latest
+# Npm-style install, matching the OpenCode `plugin` array flow.
+bun packages/cli/src/index.ts install --mode npm
 bun packages/cli/src/index.ts doctor --mode npm
 ```
 

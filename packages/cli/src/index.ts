@@ -234,7 +234,7 @@ async function installRunesmith(args: string[], host: CliHost): Promise<CliResul
   if (mode === "npm") {
     return installNpmPlugin(host, {
       configPath: options.config ?? getDefaultOpenCodeConfigPath(),
-      pluginEntry: options.package ?? "runesmith@latest",
+      pluginEntry: options.package ?? "@runesmith/opencode-adapter@latest",
     })
   }
 

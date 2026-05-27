@@ -197,6 +197,32 @@ describe("runesmith cli", () => {
     expect(host.readText("opencode.jsonc.runesmith.bak")).toContain("\"runesmith@0.1.0\"")
   })
 
+  test("install npm mode defaults to the scoped OpenCode adapter package", async () => {
+    const host = createMemoryHost()
+
+    const result = await runCli([
+      "install",
+      "--mode",
+      "npm",
+      "--config",
+      "opencode.jsonc",
+    ], host)
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Installed Runesmith npm plugin",
+        "config: opencode.jsonc",
+        "plugin: @runesmith/opencode-adapter@latest",
+        "backup: none",
+        "covenant: automatic",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+    expect(host.readText("opencode.jsonc")).toContain("\"@runesmith/opencode-adapter@latest\"")
+  })
+
   test("up initializes the workspace, installs OpenCode, and creates the runtime capsule", async () => {
     const host = createMemoryHost()
 

@@ -6,15 +6,21 @@
   "types": "./dist/plugin.d.ts",
   "exports": {
     ".": {
-      "types": "./src/plugin.ts",
-      "import": "./src/plugin.ts"
+      "types": "./dist/plugin.d.ts",
+      "bun": "./src/plugin.ts",
+      "import": "./dist/plugin.js"
     }
   },
+  "files": [
+    "dist",
+    "src"
+  ],
   "dependencies": {
-    "@runesmith/core": "workspace:*"
+    "@runesmith/core": "0.1.0"
   },
   "scripts": {
     "build": "tsc -b",
+    "prepack": "bun run build",
     "test": "bun test tests",
     "typecheck": "tsc -b"
   }

@@ -3,16 +3,28 @@
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "runesmith": "./src/index.ts"
+    "runesmith": "./dist/index.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
   "dependencies": {
-    "@runesmith/core": "workspace:*",
+    "@runesmith/core": "0.1.0",
     "jsonc-parser": "^3.3.1"
   },
   "scripts": {
     "build": "tsc -b",
+    "prepack": "bun run build",
     "test": "bun test tests",
     "typecheck": "tsc -b"
   }

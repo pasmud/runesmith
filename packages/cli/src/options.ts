@@ -35,7 +35,12 @@ export function parseOptions(args: string[]): ParsedOptions {
 }
 
 export function isRunesmithPluginEntry(entry: string): boolean {
-  return entry === "runesmith" || entry.startsWith("runesmith@") || entry === "@runesmith/opencode-adapter"
+  return (
+    entry === "runesmith"
+    || entry.startsWith("runesmith@")
+    || entry === "@runesmith/opencode-adapter"
+    || entry.startsWith("@runesmith/opencode-adapter@")
+  )
 }
 
 export function getDefaultOpenCodeConfigPath(): string {
