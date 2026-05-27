@@ -23,9 +23,12 @@ From a cloned checkout:
 ```bash
 bun install
 bun packages/cli/src/index.ts up
+bun packages/cli/src/index.ts up --mode npm
 bun packages/cli/src/index.ts status
 bun packages/cli/src/index.ts prove
 bun packages/cli/src/index.ts launch -- <opencode args>
 ```
+
+Use plain `up` for a local development shim, or `up --mode npm` to initialize Runesmith and write the direct package plugin entry into OpenCode config.
 
 Use `bun packages/cli/src/index.ts doctor` when OpenCode does not load the plugin or the runtime capsule looks invalid.

@@ -81,11 +81,11 @@ Owns local user commands.
 
 Responsibilities:
 
-- `runesmith up`: one-command bootstrap that writes project config, installs the Runesmith OpenCode plugin wiring, creates the runtime capsule if needed, and reports whether the host `opencode` CLI is available.
+- `runesmith up`: one-command bootstrap that writes project config, installs the Runesmith OpenCode plugin wiring, creates the runtime capsule if needed, and reports whether the host `opencode` CLI is available. `up --mode npm` uses the direct package plugin entry while still creating the Runesmith runtime capsule, so users do not need to learn a separate install command before first launch.
 - `runesmith launch -- <opencode args>`: run the same bootstrap/readiness path, refuse to continue when `opencode` is missing, then hand off to the OpenCode CLI with pass-through arguments.
 - `runesmith init`: create project config.
 - `runesmith doctor`: validate config, runtime capsule, host OpenCode CLI availability, OpenCode plugin wiring, and an internal Forge -> Review -> Seal loop smoke test; exit nonzero with an actionable repair hint when setup is incomplete.
-- `runesmith install --mode npm`: write the default git-installable OpenCode package entry, while keeping `--package` available for pinned tags, forks, or future registry releases.
+- `runesmith install --mode npm`: write only the default git-installable OpenCode package entry for existing projects, while keeping `--package` available for pinned tags, forks, or future registry releases.
 - `runesmith status`: print the current OS state, OpenCode CLI readiness, Loop Pulse next action, execution plan, active mission and task, missing proof, diagnostics, active runes, and Proof Plan commands without requiring users to learn the lower-level mission commands.
 - `runesmith prove`: execute the active Proof Plan from the runtime capsule, record passing commands as `test-result` evidence, record the first failing command as `diagnostic` evidence, and advance the shared mission loop after passing proof.
 - Published packages expose built `dist` entrypoints, keep Bun source imports for local agent execution, and use publishable internal dependency ranges instead of workspace-only dependency specifiers.

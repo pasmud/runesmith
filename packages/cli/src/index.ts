@@ -330,6 +330,8 @@ async function ensureRuntimeCapsule(host: CliHost): Promise<void> {
 }
 
 async function runesmithUp(args: string[], host: CliHost): Promise<CliResult> {
+  const options = parseOptions(args)
+  const installMode = options.mode === "npm" ? "package" : "local shim"
   await writeProjectConfig(host)
   await ensureRuntimeCapsule(host)
 
@@ -337,11 +339,14 @@ async function runesmithUp(args: string[], host: CliHost): Promise<CliResult> {
   if (install.exitCode !== 0) return install
 
   const pluginPath = extractOutputValue(install.stdout, "plugin")
+  const openCodeConfig = extractOutputValue(install.stdout, "config")
   const openCodeCli = await findOpenCodeCli(host)
 
   return success([
     openCodeCli ? "Runesmith OS is ready" : "Runesmith OS is staged",
     "config: .runesmith/config.json",
+    `install: ${installMode}`,
+    ...(openCodeConfig ? [`opencode config: ${openCodeConfig}`] : []),
     `plugin: ${pluginPath ?? "installed"}`,
     `runtime: ${defaultRuntimeCapsulePath}`,
     openCodeCli

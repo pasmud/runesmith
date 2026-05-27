@@ -126,6 +126,14 @@ bun packages/cli/src/index.ts up
 
 That creates `.runesmith/config.json`, installs the local OpenCode plugin shim, and creates `.runesmith/runtime/capsule.json` if it does not exist. It also checks whether the `opencode` command is available. When OpenCode is not on PATH, `up` reports the OS as staged instead of ready and tells you to install OpenCode before launch.
 
+For the direct package-plugin path that mirrors the one-line `opencode.json` install, use:
+
+```bash
+bun packages/cli/src/index.ts up --mode npm
+```
+
+That initializes the same runtime capsule and writes the Runesmith package entry into the OpenCode config in one step. Add `--config <path>` or `--package <entry>` for pinned tags, forks, or project-local OpenCode config files.
+
 Verify the installation:
 
 ```bash
@@ -202,9 +210,13 @@ bun packages/cli/src/index.ts launch -- <opencode args>
 # The Runic Covenant bootstrap and runtime capsule persistence are included automatically.
 bun packages/cli/src/index.ts install
 
-# OpenCode package install, matching the `plugin` array flow.
-bun packages/cli/src/index.ts install --mode npm
+# Direct package install, matching the `plugin` array flow while also
+# initializing Runesmith config and the runtime capsule.
+bun packages/cli/src/index.ts up --mode npm
 bun packages/cli/src/index.ts doctor --mode npm
+
+# Package-only wiring is still available for existing projects.
+bun packages/cli/src/index.ts install --mode npm
 ```
 
 For a project-local install:

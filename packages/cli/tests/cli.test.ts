@@ -325,6 +325,45 @@ describe("runesmith cli", () => {
     expect(host.readText("opencode.jsonc")).toContain("\"runesmith@git+https://github.com/pasmud/runesmith.git\"")
   })
 
+  test("up npm mode presents the direct OpenCode package install path", async () => {
+    const host = createMemoryHost(
+      {},
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+      },
+    )
+
+    const result = await runCli([
+      "up",
+      "--mode",
+      "npm",
+      "--config",
+      "opencode.jsonc",
+      "--package",
+      "runesmith@0.2.0",
+    ], host)
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Runesmith OS is ready",
+        "config: .runesmith/config.json",
+        "install: package",
+        "opencode config: opencode.jsonc",
+        "plugin: runesmith@0.2.0",
+        "runtime: .runesmith/runtime/capsule.json",
+        "opencode: found E:/tools/opencode.exe",
+        "covenant: automatic",
+        "dashboard: bun run dev:dashboard",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+    expect(host.readText("opencode.jsonc")).toContain("\"runesmith@0.2.0\"")
+  })
+
   test("up initializes the workspace, wires OpenCode, and creates the runtime capsule", async () => {
     const host = createMemoryHost(
       {},
@@ -348,6 +387,7 @@ describe("runesmith cli", () => {
       stdout: [
         "Runesmith OS is ready",
         "config: .runesmith/config.json",
+        "install: local shim",
         "plugin: .opencode/plugins/runesmith.ts",
         "runtime: .runesmith/runtime/capsule.json",
         "opencode: found E:/tools/opencode.exe",
@@ -389,6 +429,7 @@ describe("runesmith cli", () => {
       stdout: [
         "Runesmith OS is staged",
         "config: .runesmith/config.json",
+        "install: local shim",
         "plugin: .opencode/plugins/runesmith.ts",
         "runtime: .runesmith/runtime/capsule.json",
         "opencode: missing (install OpenCode CLI, then run `runesmith doctor`)",
@@ -506,6 +547,7 @@ describe("runesmith cli", () => {
       stdout: [
         "Runesmith OS is ready",
         "config: .runesmith/config.json",
+        "install: local shim",
         "plugin: .opencode/plugins/runesmith.ts",
         "runtime: .runesmith/runtime/capsule.json",
         "opencode: found E:/tools/opencode.exe",
@@ -542,6 +584,7 @@ describe("runesmith cli", () => {
       stdout: [
         "Runesmith OS is staged",
         "config: .runesmith/config.json",
+        "install: local shim",
         "plugin: .opencode/plugins/runesmith.ts",
         "runtime: .runesmith/runtime/capsule.json",
         "opencode: missing (install OpenCode CLI, then run `runesmith doctor`)",
