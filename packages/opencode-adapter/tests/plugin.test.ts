@@ -717,6 +717,130 @@ describe("opencode adapter", () => {
     )
   })
 
+  test("session idle runs the active proof plan and seals the mission when proof passes", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const writes: string[] = []
+    const commands: string[] = []
+    const plugin = createRunesmithPlugin({
+      runtime,
+      proofPlanOptions: false,
+      proofCommandRunner(command) {
+        commands.push(command.command)
+        return {
+          exitCode: 0,
+          stdout: "proof passed",
+          stderr: "",
+        }
+      },
+      runtimeStore: {
+        save(snapshot) {
+          writes.push(JSON.stringify(snapshot))
+        },
+      },
+    })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Autoprove on idle",
+    })
+    await plugin["tool.execute.after"]?.(
+      { tool: "edit" },
+      {
+        args: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+        result: { status: "changed" },
+      },
+    )
+
+    await plugin.event?.({ event: { type: "session.idle" } })
+
+    expect(commands).toEqual(["bun test"])
+    expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("complete")
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.status).toBe("complete")
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_review.status).toBe("complete")
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_seal.status).toBe("complete")
+    expect(Object.values(runtime.snapshot().ledgers.mission_alpha.evidence)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task_alpha",
+          type: "test-result",
+          summary: "Run tests passed: bun test",
+          payload: expect.objectContaining({
+            command: "bun test",
+            exitCode: 0,
+            mode: "runesmith-proof-runner",
+          }),
+        }),
+      ]),
+    )
+    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.mission.status).toBe("complete")
+  })
+
+  test("session idle holds failed proof until a repair edit creates new evidence", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const commands: string[] = []
+    let nextExitCode = 1
+    const plugin = createRunesmithPlugin({
+      runtime,
+      proofPlanOptions: false,
+      proofCommandRunner(command) {
+        commands.push(command.command)
+        return {
+          exitCode: nextExitCode,
+          stdout: "",
+          stderr: nextExitCode === 0 ? "" : `${command.command} failed`,
+        }
+      },
+    })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Repair proof on idle",
+    })
+    await plugin["tool.execute.after"]?.(
+      { tool: "edit" },
+      {
+        args: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+        result: { status: "changed" },
+      },
+    )
+
+    await plugin.event?.({ event: { type: "session.idle" } })
+    await plugin.event?.({ event: { type: "session.idle" } })
+
+    expect(commands).toEqual(["bun test"])
+    expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("running")
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.status).toBe("running")
+    expect(Object.values(runtime.snapshot().ledgers.mission_alpha.evidence)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task_alpha",
+          type: "diagnostic",
+          summary: "Run tests failed: bun test",
+        }),
+      ]),
+    )
+
+    nextExitCode = 0
+    await plugin["tool.execute.after"]?.(
+      { tool: "edit" },
+      {
+        args: { filePath: "packages/opencode-adapter/src/plugin.ts", id: "repair-edit" },
+        result: { status: "changed" },
+      },
+    )
+    await plugin.event?.({ event: { type: "session.idle" } })
+
+    expect(commands).toEqual(["bun test", "bun test"])
+    expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("complete")
+    expect(Object.values(runtime.snapshot().ledgers.mission_alpha.evidence)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task_alpha",
+          type: "test-result",
+          summary: "Rerun failing command passed: bun test",
+        }),
+      ]),
+    )
+  })
+
   test("autopilot tick completes the active task once captured evidence satisfies the contract", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const writes: string[] = []

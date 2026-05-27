@@ -27,7 +27,7 @@ The first production slice includes:
 - Zero-touch mission preparation from OpenCode `tool.execute.before` when a mutating or shell tool is about to run and no active mission exists.
 - Automatic evidence capture from OpenCode tool execution events for shell commands, test runs, and file edits, followed by an immediate evidence-gated advance attempt.
 - Evidence writes are validated against the mission graph and refresh task heartbeat/timeline state, so active proof collection is not mistaken for stale work.
-- Evidence-gated autopilot ticks that can complete the active task on OpenCode idle events once proof requirements are satisfied.
+- Engine-owned OpenCode idle orchestration that recovers stale work first, runs the active Proof Plan after implementation evidence exists, holds failed proof as a repair target, retries after a new repair edit, and completes the active task once proof requirements are satisfied.
 - A shared Runic mission loop kernel in `packages/core` so OpenCode, CLI, and dashboard surfaces use the same recovery, claim, evidence, decision, and completion state machine.
 - A state-aware Runesmith Control Brief that tells OpenCode the active mission, active task, next Runic Covenant stage, required evidence, and missing proof directly from runtime state.
 - A Runesmith Loop Pulse that derives one authoritative next action, compact execution plan, health signal, priority, blockers, required evidence, and active runes from the runtime capsule.
@@ -70,7 +70,7 @@ Responsibilities:
 - Inject the Runic Covenant and Runesmith Autopilot through OpenCode's system transform hook.
 - Inject a mission capsule summary through OpenCode's compaction hook.
 - Record evidence from OpenCode tool execution hooks without requiring the agent to call evidence tools manually for routine shell, test, and file-change proof.
-- Advance the active mission from idle events only through the runtime evidence gate.
+- Advance the active mission from idle events only through the runtime evidence gate, with automatic Proof Plan execution gated by implementation or repair evidence.
 - Translate OpenCode events into core runtime events.
 - Use the core lease scheduler before sending any internal prompt or continuation.
 - Keep OpenCode-specific types and instability out of `packages/core`.
@@ -266,7 +266,9 @@ For zero-touch operation, the adapter also uses `tool.execute.before`. When the 
 
 After a mission is prepared, the `tool.execute.after` hook records routine proof automatically. Shell commands become `command-output` evidence, recognized passing test commands become `test-result` evidence, failed test commands become `diagnostic` evidence, and file mutation tools become `file-change` evidence on the active non-terminal task. After recording evidence, the hook runs the evidence-gated advance loop so a task can seal immediately when the required proof exists. If the mission has another dependency-ready task, autopilot claims it immediately so the agent continues the loop instead of stopping after implementation proof. Covenant Review and Seal stages synthesize `decision` evidence from the verified mission state, allowing routine missions to finish without the user invoking workflow tools. Runesmith ignores read-only tools and its own tools to avoid noisy ledgers and feedback loops.
 
-The `runesmith_autopilot_tick` tool, and the same loop on OpenCode `session.idle` events, checks the active task's assigned contract and task-level evidence requirements. If required evidence is missing, it holds with a missing-evidence list. If failed verification is present, the tool response includes diagnostic summaries plus the live `Repair diagnostic` Loop Pulse so OpenCode can repair without a separate user-invoked workflow. If proof is present, it calls the runtime completion gate, synthesizes safe Covenant decisions for Review and Seal, claims the next dependency-ready task when one exists, and persists the capsule. This keeps the agent loop automatic while preserving evidence-gated completion.
+The `runesmith_autopilot_tick` tool checks the active task's assigned contract and task-level evidence requirements. If required evidence is missing, it holds with a missing-evidence list. If failed verification is present, the tool response includes diagnostic summaries plus the live `Repair diagnostic` Loop Pulse so OpenCode can repair without a separate user-invoked workflow. If proof is present, it calls the runtime completion gate, synthesizes safe Covenant decisions for Review and Seal, claims the next dependency-ready task when one exists, and persists the capsule.
+
+OpenCode `session.idle` events add the hands-off proof layer above that tick. Idle orchestration gives stale recovery priority, then runs the active Proof Plan automatically when implementation evidence exists and passing proof is missing. A failed proof run becomes diagnostic evidence and stops the run. Runesmith will not repeat the same failed proof on every idle event; it waits until a later file-change evidence entry shows that the agent made a repair edit, then reruns the focused diagnostic command before broader proof. This keeps the user experience install-once while preventing noisy retry loops.
 
 The tick logic is implemented once in the core Runic mission loop and reused by OpenCode, `runesmith mission tick`, and dashboard runtime controls. Surface adapters only provide holder identity, idempotency scope, persistence, and response formatting.
 
@@ -310,7 +312,7 @@ The adapter also exposes documented OpenCode hooks:
 - `experimental.session.compacting`: appends the current mission capsule summary, live Control Brief, Loop Pulse, Mission Memory, and Proof Plan to compaction context.
 - `tool.execute.before`: starts or resumes orchestration before mutating/shell tools run when no active task exists.
 - `tool.execute.after`: records useful command, test, and file-change evidence against the active Runesmith task, then runs the evidence-gated advance loop.
-- `event`: runs the autopilot tick on `session.idle` events.
+- `event`: runs idle orchestration on `session.idle` events: recover stale work first, run eligible Proof Plan commands, hold failed proof until a repair edit appears, then advance through the evidence gate.
 
 ## Dashboard Direction
 

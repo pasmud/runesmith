@@ -22,6 +22,7 @@ import {
   type IdFactory,
   type ProofCommandExecution,
   type ProofCommandRunner,
+  type ProofPlan,
   type ProofPlanCommand,
   type ProofPlanOptions,
   type RunicCovenant,
@@ -491,10 +492,13 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
     async event(input) {
       if (getOpenCodeEventType(input) !== "session.idle") return
 
-      await advanceAutopilotLoop({
+      await advanceIdleOrchestration({
         runtime,
         proofPlanOptions,
+        proofCommandRunner: options.proofCommandRunner,
         runtimeStore: options.runtimeStore,
+        idFactory: options.idFactory,
+        now: options.now,
       })
     },
   }
@@ -652,6 +656,48 @@ type AdvanceAutopilotLoopInput = {
   recoverStale?: boolean
 }
 
+type AdvanceIdleOrchestrationInput = {
+  runtime: RunesmithRuntime
+  proofPlanOptions?: ProofPlanOptions
+  proofCommandRunner?: ProofCommandRunner
+  runtimeStore?: PluginRuntimeStore
+  idFactory?: IdFactory
+  now?: () => Date
+}
+
+async function advanceIdleOrchestration(input: AdvanceIdleOrchestrationInput): Promise<void> {
+  const snapshot = input.runtime.snapshot()
+  const loopPulse = deriveLoopPulse(snapshot)
+
+  if (loopPulse.nextAction.id === "recover-stale") {
+    await advanceAutopilotLoop({
+      runtime: input.runtime,
+      proofPlanOptions: input.proofPlanOptions,
+      runtimeStore: input.runtimeStore,
+    })
+    return
+  }
+
+  const proofPlan = deriveProofPlan(snapshot, input.proofPlanOptions)
+  if (shouldRunProofPlanOnIdle(snapshot, proofPlan)) {
+    await runProofFromOpenCode({
+      runtime: input.runtime,
+      proofPlanOptions: input.proofPlanOptions,
+      proofCommandRunner: input.proofCommandRunner,
+      runtimeStore: input.runtimeStore,
+      idFactory: input.idFactory,
+      now: input.now,
+    })
+    return
+  }
+
+  await advanceAutopilotLoop({
+    runtime: input.runtime,
+    proofPlanOptions: input.proofPlanOptions,
+    runtimeStore: input.runtimeStore,
+  })
+}
+
 async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<ToolResponse> {
   const advanced = advanceRunicMissionLoop(input.runtime, {
     contract: defaultAtlasContract,
@@ -732,6 +778,51 @@ async function runProofFromOpenCode(input: RunProofFromOpenCodeInput): Promise<T
     proofPlan: nextProofPlan,
     loopPulse,
   })
+}
+
+function shouldRunProofPlanOnIdle(snapshot: RuntimeSnapshot, proofPlan: ProofPlan): boolean {
+  if (!proofPlan.missionId || !proofPlan.taskId || proofPlan.commands.length === 0) return false
+
+  if (proofPlan.status === "needs-proof") {
+    return hasTaskEvidenceOfType(snapshot, proofPlan.missionId, proofPlan.taskId, "file-change")
+  }
+
+  if (proofPlan.status === "needs-repair") {
+    return hasTaskEvidenceAfterLatestDiagnostic(snapshot, proofPlan.missionId, proofPlan.taskId, "file-change")
+  }
+
+  return false
+}
+
+function hasTaskEvidenceOfType(
+  snapshot: RuntimeSnapshot,
+  missionId: string,
+  taskId: string,
+  evidenceType: EvidenceType,
+): boolean {
+  return taskEvidence(snapshot, missionId, taskId).some((entry) => entry.type === evidenceType)
+}
+
+function hasTaskEvidenceAfterLatestDiagnostic(
+  snapshot: RuntimeSnapshot,
+  missionId: string,
+  taskId: string,
+  evidenceType: EvidenceType,
+): boolean {
+  const evidence = taskEvidence(snapshot, missionId, taskId)
+  let latestDiagnosticIndex = -1
+  let latestEvidenceIndex = -1
+
+  evidence.forEach((entry, index) => {
+    if (entry.type === "diagnostic") latestDiagnosticIndex = index
+    if (entry.type === evidenceType) latestEvidenceIndex = index
+  })
+
+  return latestDiagnosticIndex >= 0 && latestEvidenceIndex > latestDiagnosticIndex
+}
+
+function taskEvidence(snapshot: RuntimeSnapshot, missionId: string, taskId: string) {
+  return Object.values(snapshot.ledgers[missionId]?.evidence ?? {}).filter((entry) => entry.taskId === taskId)
 }
 
 function formatAutopilotLoopTitle(status: string): string {
