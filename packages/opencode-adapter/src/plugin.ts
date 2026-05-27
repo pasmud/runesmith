@@ -17,6 +17,7 @@ import {
   deriveRunebook,
   loadRuntimeCapsule,
   resolveRunicRisk,
+  runRunebookNext,
   runProofPlan,
   saveRuntimeCapsule,
   selectRunicLoopTask,
@@ -56,6 +57,7 @@ export type RunesmithPlugin = {
   name: "runesmith"
   tool: {
     runesmith_autopilot_prepare: ToolDefinition<AutopilotPrepareArgs>
+    runesmith_next: ToolDefinition<NextArgs>
     runesmith_autopilot_tick: ToolDefinition<AutopilotTickArgs>
     runesmith_proof_run: ToolDefinition<ProofRunArgs>
     runesmith_risk_resolve: ToolDefinition<RiskResolveArgs>
@@ -99,6 +101,12 @@ type CovenantStatusArgs = Record<string, never>
 type AutopilotPrepareArgs = {
   goal?: string
   messages?: unknown[]
+}
+
+type NextArgs = {
+  riskSummary?: string
+  riskVerdict?: RiskResolutionVerdict
+  evidenceId?: string
 }
 
 type AutopilotTickArgs = Record<string, never>
@@ -217,6 +225,26 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           return prepareAutopilotMission({
             runtime,
             runtimeStore: options.runtimeStore,
+            args,
+          })
+        },
+      },
+      runesmith_next: {
+        description:
+          "Run the current Runesmith Runebook card: prove, recover, resolve risk when given a decision summary, or advance the shared loop as appropriate.",
+        parameters: objectSchema({
+          riskSummary: stringSchema("Optional decision summary when the active Runebook card is a risk hold"),
+          riskVerdict: stringSchema("Optional risk verdict: accepted or cleared"),
+          evidenceId: stringSchema("Optional stable risk decision evidence id"),
+        }),
+        async execute(args) {
+          return runNextFromOpenCode({
+            runtime,
+            proofPlanOptions,
+            proofCommandRunner: options.proofCommandRunner,
+            runtimeStore: options.runtimeStore,
+            idFactory: options.idFactory,
+            now: options.now,
             args,
           })
         },
@@ -786,6 +814,10 @@ type RunProofFromOpenCodeInput = {
   now?: () => Date
 }
 
+type RunNextFromOpenCodeInput = RunProofFromOpenCodeInput & {
+  args: NextArgs
+}
+
 type ResolveRiskFromOpenCodeInput = {
   runtime: RunesmithRuntime
   proofPlanOptions?: ProofPlanOptions
@@ -793,6 +825,32 @@ type ResolveRiskFromOpenCodeInput = {
   idFactory?: IdFactory
   now?: () => Date
   args: RiskResolveArgs
+}
+
+async function runNextFromOpenCode(input: RunNextFromOpenCodeInput): Promise<ToolResponse> {
+  const snapshot = input.runtime.snapshot()
+  const nextEvidenceId = createProofEvidenceIdFactory(snapshot, input.idFactory)
+  const next = await runRunebookNext(input.runtime, {
+    contract: defaultAtlasContract,
+    holder: "runesmith-autopilot",
+    idempotencyScope: "next",
+    ttlMs: 30_000,
+    staleAfterMs: autopilotStaleAfterMs,
+    proofPlanOptions: input.proofPlanOptions,
+    proofCommandRunner: input.proofCommandRunner ?? runShellProofCommand,
+    nextEvidenceId,
+    now: input.now,
+    risk: {
+      verdict: parseRiskVerdict(input.args.riskVerdict),
+      summary: input.args.riskSummary,
+      evidenceIdFactory: () => input.args.evidenceId ?? input.idFactory?.("evidence") ?? `evidence_${crypto.randomUUID()}`,
+    },
+  })
+  if (!next.ok) return formatError("Runebook next rejected", next.error)
+
+  await persistRuntime(input.runtimeStore, input.runtime)
+
+  return formatValue("Runebook next", next.value as unknown as Record<string, unknown>)
 }
 
 async function runProofFromOpenCode(input: RunProofFromOpenCodeInput): Promise<ToolResponse> {
@@ -1115,6 +1173,7 @@ function buildAutopilotPrompt(): string {
     "If you reach a session-idle point before preparation, Runesmith can infer the latest user goal from chat context and prepare the mission automatically.",
     "Continue under the returned mission, task, and lease. New autopilot missions are planned as Forge, Review, and Seal tasks. Runesmith records shell, test, file-change, and safe Covenant decision evidence automatically; use `runesmith_task_evidence` for risks, diagnostics, external proof, or decisions the tool hooks cannot infer.",
     "Follow the active Runesmith Runebook card and Active runes as automatic procedure, not as user-invoked workflows.",
+    "Prefer `runesmith_next` when you need Runesmith to execute the current Runebook card without choosing a lower-level tool.",
     "When proof is missing or repair is active, call `runesmith_proof_run` to execute the live Runesmith Proof Plan before asking for completion.",
     "When Loop Pulse says `Resolve risk`, call `runesmith_risk_resolve` with a short decision summary instead of asking the user to find mission ids or manually attach decision evidence.",
     "When the active task has required evidence, call `runesmith_autopilot_tick` or let session-idle events advance it. The tick may complete the task only after the evidence gate is satisfied, synthesize Review and Seal decisions when safe, then claim the next dependency-ready task.",

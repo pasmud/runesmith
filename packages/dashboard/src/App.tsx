@@ -132,6 +132,7 @@ export function App() {
       if (
         action.type === "forge-directive"
         || action.type === "run-autopilot-cycle"
+        || action.type === "run-next-action"
         || action.type === "run-proof-plan"
         || action.type === "resolve-risk"
       ) {
@@ -171,6 +172,16 @@ export function App() {
             <Button onClick={() => dispatch({ type: "create-snapshot" })} variant="outline">
               <Camera data-icon="inline-start" />Snapshot
             </Button>
+            <Button
+              disabled={controlLoading}
+              onClick={() => void runRuntimeControl({
+                type: "run-next-action",
+                verdict: "accepted",
+                summary: activeRiskSummary,
+              })}
+            >
+              <Command data-icon="inline-start" />{controlLoading ? "Working" : "Run next"}
+            </Button>
             <Button disabled={controlLoading} onClick={() => void runRuntimeControl({ type: "run-proof-plan" })} variant="outline">
               <CheckCircle2 data-icon="inline-start" />{controlLoading ? "Working" : "Run proof"}
             </Button>
@@ -187,7 +198,7 @@ export function App() {
                 <ShieldCheck data-icon="inline-start" />{controlLoading ? "Working" : "Resolve risk"}
               </Button>
             ) : null}
-            <Button disabled={controlLoading} onClick={() => void runRuntimeControl({ type: "run-autopilot-cycle" })}>
+            <Button disabled={controlLoading} onClick={() => void runRuntimeControl({ type: "run-autopilot-cycle" })} variant="outline">
               <Zap data-icon="inline-start" />{controlLoading ? "Working" : "Autopilot cycle"}
             </Button>
           </div>

@@ -14,6 +14,7 @@ import {
   deriveRunebook,
   loadRuntimeCapsule,
   resolveRunicRisk,
+  runRunebookNext,
   runProofPlan,
   saveRuntimeCapsule,
   type AgentContract,
@@ -171,6 +172,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     return runesmithStatus(host)
   }
 
+  if (command === "next") {
+    return runNextFromCli(args.slice(1), host)
+  }
+
   if (command === "launch") {
     return launchOpenCode(args.slice(1), host)
   }
@@ -265,7 +270,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     ].join("\n"))
   }
 
-  return failure("Usage: runesmith <up|status|launch|prove|install|init|doctor|risk resolve|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
+  return failure("Usage: runesmith <up|status|next|launch|prove|install|init|doctor|risk resolve|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
 }
 
 function success(stdout: string): CliResult {
@@ -747,6 +752,65 @@ async function runProofFromCli(host: CliHost): Promise<CliResult> {
       `status: ${status}`,
       `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
       ...formatPulseDiagnostics(pulse),
+      `runtime: ${defaultRuntimeCapsulePath}`,
+      "",
+    ].join("\n"),
+    stderr: "",
+  }
+}
+
+async function runNextFromCli(args: string[], host: CliHost): Promise<CliResult> {
+  const options = parseFlagOptions(args)
+  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  if (!capsule.ok) return failure(`${capsule.error.message}\n`)
+  if (!capsule.value) return failure(`Runtime capsule not found: ${defaultRuntimeCapsulePath}\n`)
+
+  const idFactory = createCliIdFactory(capsule.value.runtime)
+  const runtime = createRuntime({
+    snapshot: capsule.value.runtime,
+    idFactory,
+  })
+  runtime.registerContract(cliAtlasContract)
+
+  const proofOptions = await readProofPlanOptions(host)
+  const next = await runRunebookNext(runtime, {
+    contract: cliAtlasContract,
+    holder: "runesmith-cli",
+    idempotencyScope: "cli-next",
+    ttlMs: 30_000,
+    proofPlanOptions: proofOptions,
+    proofCommandRunner: host.runShellCommand
+      ? (command) => host.runShellCommand!(command.command)
+      : undefined,
+    nextEvidenceId: () => idFactory("evidence"),
+    risk: {
+      verdict: parseRiskVerdict(options.verdict),
+      summary: options.summary,
+      evidenceIdFactory: () => idFactory("evidence"),
+    },
+  })
+  if (!next.ok) return failure(`${next.error.message}\n`)
+
+  const snapshot = runtime.snapshot()
+  await saveRuntimeCapsule(host, {
+    path: defaultRuntimeCapsulePath,
+    snapshot,
+  })
+  const value = next.value
+
+  return {
+    exitCode: value.status === "proof-failed" ? 1 : 0,
+    stdout: [
+      "Runebook next",
+      `action: ${value.actionId}`,
+      `card: ${value.card.title} [${value.card.autonomy}]`,
+      `mission: ${value.missionId ?? "none"}`,
+      `task: ${value.taskId ?? "none"}`,
+      ...formatProofRunLines(value.commands ?? []),
+      `status: ${value.status}`,
+      `next status: ${value.nextStatus ?? "none"}`,
+      `next: ${value.loopPulse.nextAction.label} [${value.loopPulse.health}/${value.loopPulse.nextAction.priority}]`,
+      ...formatPulseDiagnostics(value.loopPulse),
       `runtime: ${defaultRuntimeCapsulePath}`,
       "",
     ].join("\n"),

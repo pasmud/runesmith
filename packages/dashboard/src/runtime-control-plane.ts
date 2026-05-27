@@ -5,6 +5,7 @@ import {
   deriveLoopPulse,
   deriveProofPlan,
   resolveRunicRisk,
+  runRunebookNext,
   runProofPlan,
   type AgentContract,
   type EvidenceType,
@@ -12,6 +13,7 @@ import {
   type ProofPlanCommand,
   type ProofPlanOptions,
   type ProofRunCommandResult,
+  type RunebookNextStatus,
   type RunicMissionLoopStatus,
   type RiskResolutionVerdict,
   type RuntimeOptions,
@@ -27,6 +29,11 @@ export type DashboardRuntimeAction =
     }
   | {
       type: "run-autopilot-cycle"
+    }
+  | {
+      type: "run-next-action"
+      verdict?: RiskResolutionVerdict
+      summary?: string
     }
   | {
       type: "run-proof-plan"
@@ -114,6 +121,10 @@ export async function applyDashboardRuntimeAction(
     return runDashboardProofPlan(runtime, options)
   }
 
+  if (action.type === "run-next-action") {
+    return runDashboardNextAction(runtime, action, options)
+  }
+
   if (action.type === "resolve-risk") {
     return resolveDashboardRisk(runtime, action, options)
   }
@@ -188,6 +199,47 @@ function runDashboardAutopilotCycle(
       nextTaskStatus: advanced.value.nextTaskStatus,
       status: mapDashboardRunicStatus(advanced.value.status),
       missingEvidence: advanced.value.missingEvidence,
+      snapshot: runtime.snapshot(),
+    },
+  }
+}
+
+async function runDashboardNextAction(
+  runtime: ReturnType<typeof createRuntime>,
+  action: Extract<DashboardRuntimeAction, { type: "run-next-action" }>,
+  options: DashboardRuntimeActionOptions,
+): Promise<DashboardRuntimeActionResult> {
+  const before = runtime.snapshot()
+  const nextEvidenceId = createDashboardEvidenceIdFactory(before, options.idFactory)
+  const next = await runRunebookNext(runtime, {
+    contract: dashboardAtlasContract,
+    holder: "runesmith-dashboard",
+    idempotencyScope: "dashboard-next",
+    ttlMs: 30_000,
+    staleAfterMs: dashboardStaleAfterMs,
+    proofPlanOptions: options.proofPlanOptions,
+    proofCommandRunner: options.runProofCommand ?? runDashboardShellCommand,
+    nextEvidenceId,
+    now: options.now,
+    risk: {
+      verdict: action.verdict ?? "accepted",
+      summary: action.summary,
+      evidenceIdFactory: () => nextEvidenceId(),
+    },
+  })
+  if (!next.ok) return { ok: false, error: next.error }
+
+  return {
+    ok: true,
+    value: {
+      action: "run-next-action",
+      missionId: next.value.missionId,
+      taskId: next.value.taskId,
+      status: mapRunebookNextStatus(next.value.status, next.value.nextStatus),
+      proofStatus: next.value.proofStatus,
+      missingEvidence: next.value.loopPulse.missingEvidence,
+      commands: next.value.commands,
+      riskResolution: next.value.riskResolution,
       snapshot: runtime.snapshot(),
     },
   }
@@ -279,6 +331,17 @@ async function runDashboardProofPlan(
 
 function mapDashboardRunicStatus(status: RunicMissionLoopStatus): DashboardRuntimeActionValue["status"] {
   return status === "claimed" ? "running" : status
+}
+
+function mapRunebookNextStatus(
+  status: RunebookNextStatus,
+  nextStatus: RunicMissionLoopStatus | undefined,
+): DashboardRuntimeActionValue["status"] {
+  if (status === "proof-failed" || status === "risk-held") return "waiting-for-evidence"
+  if (status === "proof-idle" || status === "idle") return "idle"
+  if (nextStatus) return mapDashboardRunicStatus(nextStatus)
+
+  return "running"
 }
 
 async function runDashboardShellCommand(command: ProofPlanCommand): Promise<ProofCommandExecution> {

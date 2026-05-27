@@ -207,6 +207,69 @@ describe("dashboard runtime control plane", () => {
     )
   })
 
+  test("runs the current Runebook next action from dashboard control", async () => {
+    const forged = await applyDashboardRuntimeAction(emptySnapshot, {
+      type: "forge-directive",
+      prompt: "Run next from dashboard",
+    }, {
+      idFactory: ids,
+      now: fixedNow,
+    })
+    if (!forged.ok) throw new Error("forge failed")
+
+    const hydrated = createRuntime({
+      snapshot: forged.value.snapshot,
+      idFactory: ids,
+      now: fixedNow,
+    })
+    hydrated.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed dashboard next control",
+        payload: { filePath: "packages/dashboard/src/runtime-control-plane.ts" },
+        createdAt: fixedNow().toISOString(),
+      },
+    })
+
+    const result = await applyDashboardRuntimeAction(hydrated.snapshot(), {
+      type: "run-next-action",
+    }, {
+      idFactory: ids,
+      now: fixedNow,
+      async runProofCommand(command) {
+        return {
+          exitCode: 0,
+          stdout: `${command.command} passed`,
+          stderr: "",
+        }
+      },
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        action: "run-next-action",
+        status: "completed",
+        proofStatus: "passed",
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        commands: [
+          {
+            command: "bun test",
+            evidenceType: "test-result",
+            exitCode: 0,
+          },
+        ],
+      },
+    })
+    if (!result.ok) return
+
+    expect(result.value.snapshot.graphs.mission_alpha.mission.status).toBe("complete")
+  })
+
   test("resolves an active risk from dashboard control", async () => {
     const forged = await applyDashboardRuntimeAction(emptySnapshot, {
       type: "forge-directive",

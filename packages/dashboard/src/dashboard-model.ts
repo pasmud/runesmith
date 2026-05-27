@@ -121,6 +121,7 @@ export type DashboardAction =
   | { type: "recover-stale" }
   | { type: "run-verifier" }
   | { type: "run-autopilot-cycle" }
+  | { type: "run-next-action"; verdict?: RiskResolutionVerdict; summary?: string }
   | { type: "run-proof-plan" }
   | { type: "resolve-risk"; verdict?: RiskResolutionVerdict; summary?: string }
   | { type: "forge-directive"; prompt: string }
@@ -569,6 +570,9 @@ export function reduceDashboardModel(model: DashboardModel, action: DashboardAct
         detailPrefix: "Runesmith proof plan completed for",
         noticePrefix: "Proof plan passed for",
       })
+
+    case "run-next-action":
+      return runNextActionInModel(model, action)
 
     case "resolve-risk":
       return resolveRiskInModel(model, action)
@@ -1233,6 +1237,30 @@ function runAutopilotCycle(model: DashboardModel): DashboardModel {
     mode: "autopilot",
     notice: "Autopilot found no pending work.",
   })
+}
+
+function runNextActionInModel(
+  model: DashboardModel,
+  action: Extract<DashboardAction, { type: "run-next-action" }>,
+): DashboardModel {
+  if (model.loopPulse.nextAction.id === "resolve-risk") {
+    return resolveRiskInModel(model, {
+      type: "resolve-risk",
+      verdict: action.verdict,
+      summary: action.summary ?? model.loopPulse.risks[0],
+    })
+  }
+
+  if (model.loopPulse.nextAction.id === "capture-proof" || model.loopPulse.nextAction.id === "repair-diagnostic") {
+    return verifySelectedTask(model, {
+      label: "Runebook next passed",
+      commandLabel: "Runebook next passed",
+      detailPrefix: "Runesmith executed the active Runebook card for",
+      noticePrefix: "Runebook next passed for",
+    })
+  }
+
+  return runAutopilotCycle(model)
 }
 
 function resolveRiskInModel(

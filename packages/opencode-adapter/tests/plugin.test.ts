@@ -364,6 +364,72 @@ describe("opencode adapter", () => {
     expect(writes.length).toBeGreaterThanOrEqual(2)
   })
 
+  test("runs the current Runebook next action through one OpenCode tool", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const commands: string[] = []
+    const writes: string[] = []
+    const plugin = createRunesmithPlugin({
+      runtime,
+      proofPlanOptions: false,
+      proofCommandRunner(command) {
+        commands.push(command.command)
+        return {
+          exitCode: 0,
+          stdout: "next proof passed",
+          stderr: "",
+        }
+      },
+      runtimeStore: {
+        save(snapshot) {
+          writes.push(JSON.stringify(snapshot))
+        },
+      },
+    })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Run one next action",
+    })
+    await plugin["tool.execute.after"]?.(
+      { tool: "edit" },
+      {
+        args: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+        result: { status: "changed" },
+      },
+    )
+
+    const next = await plugin.tool.runesmith_next.execute({})
+
+    expect(JSON.parse(next.output)).toMatchObject({
+      ok: true,
+      value: {
+        status: "proof-passed",
+        actionId: "capture-proof",
+        card: {
+          title: "Proofwright proof gate",
+        },
+        proofStatus: "passed",
+        nextStatus: "completed",
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        commands: [
+          {
+            command: "bun test",
+            evidenceType: "test-result",
+            exitCode: 0,
+          },
+        ],
+        loopPulse: {
+          nextAction: {
+            id: "wait-for-goal",
+          },
+        },
+      },
+    })
+    expect(commands).toEqual(["bun test"])
+    expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("complete")
+    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.mission.status).toBe("complete")
+  })
+
   test("records evidence automatically from OpenCode tool execution events", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const writes: string[] = []
