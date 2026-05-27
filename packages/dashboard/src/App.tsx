@@ -105,6 +105,9 @@ export function App() {
   const workspaceRef = useRef<HTMLElement | null>(null)
   const activeSection = sectionMeta[model.activeView]
   const activeRiskSummary = model.loopPulse.risks[0] ?? "Operator accepted the active risk."
+  const activeFaultlineSummary = model.loopPulse.diagnostics.length > 0
+    ? `Question architecture after ${model.loopPulse.diagnostics.at(-1)}`
+    : "Operator selected an architecture path for the active Faultline."
 
   const refreshRuntimeCapsule = async () => {
     setCapsuleLoading(true)
@@ -136,6 +139,7 @@ export function App() {
         || action.type === "run-os-loop"
         || action.type === "run-proof-plan"
         || action.type === "resolve-risk"
+        || action.type === "resolve-faultline"
       ) {
         const capsule = await runDashboardRuntimeAction(action)
         dispatch(runtimeCapsuleHasMissions(capsule) ? { type: "load-runtime-capsule", capsule } : action)
@@ -180,6 +184,7 @@ export function App() {
                 maxSteps: 8,
                 verdict: "accepted",
                 summary: activeRiskSummary,
+                faultlineSummary: activeFaultlineSummary,
               })}
             >
               <Sparkles data-icon="inline-start" />{controlLoading ? "Working" : "Run OS"}
@@ -190,6 +195,7 @@ export function App() {
                 type: "run-next-action",
                 verdict: "accepted",
                 summary: activeRiskSummary,
+                faultlineSummary: activeFaultlineSummary,
               })}
               variant="outline"
             >
@@ -209,6 +215,18 @@ export function App() {
                 variant="outline"
               >
                 <ShieldCheck data-icon="inline-start" />{controlLoading ? "Working" : "Resolve risk"}
+              </Button>
+            ) : null}
+            {model.loopPulse.nextAction.id === "review-faultline" ? (
+              <Button
+                disabled={controlLoading}
+                onClick={() => void runRuntimeControl({
+                  type: "resolve-faultline",
+                  summary: activeFaultlineSummary,
+                })}
+                variant="outline"
+              >
+                <AlertTriangle data-icon="inline-start" />{controlLoading ? "Working" : "Resolve Faultline"}
               </Button>
             ) : null}
             <Button disabled={controlLoading} onClick={() => void runRuntimeControl({ type: "run-autopilot-cycle" })} variant="outline">

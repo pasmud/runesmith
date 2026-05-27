@@ -1518,6 +1518,54 @@ describe("runesmith cli", () => {
     )
   })
 
+  test("faultline resolve records an architecture path without mission ids", async () => {
+    const host = createMemoryHost()
+
+    await runCli(["mission", "start", "Resolve CLI Faultline"], host)
+    await runCli([
+      "mission",
+      "evidence",
+      "mission_cli_1",
+      "task_cli_1",
+      "--type",
+      "file-change",
+      "--summary",
+      "Updated CLI files",
+      "--payload-json",
+      "{\"files\":[\"packages/cli/src/index.ts\"]}",
+    ], host)
+    for (const index of [1, 2, 3]) {
+      await runCli([
+        "mission",
+        "evidence",
+        "mission_cli_1",
+        "task_cli_1",
+        "--type",
+        "diagnostic",
+        "--summary",
+        `CLI tests failed attempt ${index}`,
+        "--payload-json",
+        `{\"command\":\"bun test packages/cli/tests --attempt=${index}\",\"exitCode\":1}`,
+      ], host)
+    }
+
+    const resolved = await runCli([
+      "faultline",
+      "resolve",
+      "--summary",
+      "Split CLI command routing before another repair",
+    ], host)
+    const inspect = await runCli(["mission", "inspect", "mission_cli_1"], host)
+
+    expect(resolved.stdout).toContain("Faultline resolved")
+    expect(resolved.stdout).toContain("mission: mission_cli_1")
+    expect(resolved.stdout).toContain("task: task_cli_1")
+    expect(resolved.stdout).toContain("status: waiting-for-evidence")
+    expect(resolved.stdout).toContain("next: Repair diagnostic [attention/high]")
+    expect(inspect.stdout).toContain("Faultline path: Split CLI command routing before another repair")
+    expect(inspect.stdout).toContain("Loop Pulse: Repair diagnostic [attention/high]")
+  })
+
   test("risk resolve records a decision and advances the active mission", async () => {
     const host = createMemoryHost()
 

@@ -1287,7 +1287,7 @@ describe("opencode adapter", () => {
           activeCard: {
             id: "faultline-breakpoint",
             title: "Faultline architecture breakpoint",
-            toolHints: ["runesmith_task_evidence"],
+            toolHints: ["runesmith_faultline_resolve"],
           },
         },
         loopPulse: {
@@ -1319,6 +1319,70 @@ describe("opencode adapter", () => {
           ],
         },
       },
+    })
+  })
+
+  test("resolves an active Faultline breakpoint through a first-class OpenCode tool", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({ runtime, proofPlanOptions: false })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Resolve OpenCode Faultline without task ids",
+    })
+    await plugin["tool.execute.after"]?.(
+      { tool: "edit" },
+      {
+        args: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+        result: { status: "changed" },
+      },
+    )
+    for (const index of [1, 2, 3]) {
+      await plugin["tool.execute.after"]?.(
+        { tool: "bash" },
+        {
+          args: { command: `bun test packages/opencode-adapter/tests/plugin.test.ts --attempt=${index}` },
+          result: { exitCode: 1, stdout: "", stderr: `${index} fail` },
+        },
+      )
+    }
+
+    const resolved = await plugin.tool.runesmith_faultline_resolve.execute({
+      summary: "Extract plugin event capture from proof routing before another repair",
+      evidenceId: "evidence_faultline_resolution",
+    })
+
+    expect(JSON.parse(resolved.output)).toMatchObject({
+      ok: true,
+      value: {
+        status: "resolved",
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        evidenceId: "evidence_faultline_resolution",
+        nextStatus: "waiting-for-evidence",
+        proofPlan: {
+          status: "needs-repair",
+          commands: [
+            {
+              command: "bun test packages/opencode-adapter/tests/plugin.test.ts --attempt=3",
+              kind: "rerun-diagnostic",
+            },
+            {
+              command: "bun test",
+              kind: "test",
+            },
+          ],
+        },
+        loopPulse: {
+          nextAction: {
+            id: "repair-diagnostic",
+          },
+        },
+      },
+    })
+    expect(runtime.snapshot().ledgers.mission_alpha.evidence.evidence_faultline_resolution).toMatchObject({
+      taskId: "task_alpha",
+      type: "decision",
+      summary: "Faultline path: Extract plugin event capture from proof routing before another repair",
     })
   })
 

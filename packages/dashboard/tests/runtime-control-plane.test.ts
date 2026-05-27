@@ -424,6 +424,81 @@ describe("dashboard runtime control plane", () => {
     )
   })
 
+  test("resolves an active Faultline from dashboard control", async () => {
+    const forged = await applyDashboardRuntimeAction(emptySnapshot, {
+      type: "forge-directive",
+      prompt: "Resolve Faultline from dashboard",
+    }, {
+      idFactory: ids,
+      now: fixedNow,
+    })
+    if (!forged.ok) throw new Error("forge failed")
+
+    const hydrated = createRuntime({
+      snapshot: forged.value.snapshot,
+      idFactory: ids,
+      now: fixedNow,
+    })
+    hydrated.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed dashboard runtime control plane",
+        payload: { filePath: "packages/dashboard/src/runtime-control-plane.ts" },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    for (const index of [1, 2, 3]) {
+      hydrated.addTaskEvidence({
+        missionId: "mission_alpha",
+        evidence: {
+          id: `evidence_diagnostic_${index}`,
+          taskId: "task_alpha",
+          type: "diagnostic",
+          summary: `Dashboard tests failed attempt ${index}`,
+          payload: { command: `bun test packages/dashboard/tests --attempt=${index}`, exitCode: 1 },
+          createdAt: `2026-05-27T00:0${index}:00.000Z`,
+        },
+      })
+    }
+
+    const result = await applyDashboardRuntimeAction(hydrated.snapshot(), {
+      type: "resolve-faultline",
+      summary: "Split runtime control proof routing before another repair",
+    }, {
+      idFactory: ids,
+      now: later,
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        action: "resolve-faultline",
+        status: "waiting-for-evidence",
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        faultlineResolution: {
+          evidenceId: "evidence_alpha",
+          nextStatus: "waiting-for-evidence",
+          diagnostics: [
+            "Dashboard tests failed attempt 1",
+            "Dashboard tests failed attempt 2",
+            "Dashboard tests failed attempt 3",
+          ],
+        },
+      },
+    })
+    if (!result.ok) return
+
+    expect(result.value.snapshot.ledgers.mission_alpha.evidence.evidence_alpha).toMatchObject({
+      taskId: "task_alpha",
+      type: "decision",
+      summary: "Faultline path: Split runtime control proof routing before another repair",
+    })
+  })
+
   test("records dashboard proof failures as diagnostics without advancing completion", async () => {
     const forged = await applyDashboardRuntimeAction(emptySnapshot, {
       type: "forge-directive",

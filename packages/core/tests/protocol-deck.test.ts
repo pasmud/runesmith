@@ -183,7 +183,7 @@ describe("runic protocol deck", () => {
       id: "faultline-breakpoint-protocol",
       name: "Faultline Breakpoint Protocol",
       mode: "guarded",
-      toolHints: ["runesmith_task_evidence"],
+      toolHints: ["runesmith_faultline_resolve"],
     })
     expect(deck.summary).toBe("Review faultline through Faultline Breakpoint Protocol.")
     expect(deck.active.procedure).toContain("Compare the repeated diagnostics and the repair edits between them.")

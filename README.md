@@ -41,9 +41,9 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - Runesmith Proof Runner can execute those Proof Plan commands, capture passing `test-result` evidence or failing `diagnostic` evidence with bounded logs, and advance the mission through the same evidence gate.
 - Runesmith Ignite is the least-ceremony terminal entrypoint: one command installs/configures the OpenCode package plugin, prepares or resumes the matching Covenant mission, claims the active task, and runs the OS loop once.
 - Runesmith Heal repairs the local OS install by regenerating missing config, backing up and replacing invalid runtime capsules, restoring plugin wiring, and rerunning doctor checks.
-- Runesmith Next is the hands-off router over the Runebook: one CLI command, one OpenCode tool, and one dashboard button that proves, repairs, resolves a supplied risk decision, recovers, or advances whichever card is active.
+- Runesmith Next is the hands-off router over the Runebook: one CLI command, one OpenCode tool, and one dashboard button that proves, repairs, resolves supplied Faultline or risk decisions, recovers, or advances whichever card is active.
 - Runeweave is the OS run loop over Runesmith Next: one command, OpenCode tool, or dashboard button that keeps executing engine-owned Runebook cards until work is sealed or the loop reaches a real stop condition such as implementation work, failed proof, Faultline, unresolved risk, or a blocker.
-- OpenCode idle events run Runeweave automatically: they can prepare the first mission from chat, recover stale work, prove ready work, advance Review and Seal, and record a `runeweave.stopped` mission event with the concrete stop reason. Failed proof is held as a repair target, repeated failed proof escalates to Faultline, and proof will not be retried until a new repair edit is captured.
+- OpenCode idle events run Runeweave automatically: they can prepare the first mission from chat, recover stale work, prove ready work, advance Review and Seal, and record a `runeweave.stopped` mission event with the concrete stop reason. Failed proof is held as a repair target, repeated failed proof escalates to Faultline, and proof will not be retried until a new repair edit or explicit Faultline path is captured.
 - The dashboard is an operating surface: forge directives, run guarded autopilot, resolve active risks, boost agents, toggle policies, and seal evidence snapshots.
 
 ## Packages
@@ -95,7 +95,7 @@ Runesmith Heal is the self-repair path. It preserves valid local state, backs up
 
 The direct OpenCode package plugin uses the same config and runtime-capsule repair primitives on startup. If OpenCode loads Runesmith against missing or invalid local OS files, the plugin repairs them before exposing tools, so the normal chat path can still reach Autopilot instead of failing before the user sees a useful action.
 
-Runesmith Next is the default hands-off surface above the Runebook. It reads the active card and takes the smallest safe engine-owned action: run Proof Runner for `Capture proof` and `Repair diagnostic`, stop at Faultline when repeated failed repairs need architecture review, apply a supplied decision for `Resolve risk`, recover stale work, claim the next dependency-ready task, or advance through Review and Seal when evidence is already present. This is the Runesmith-owned version of workflow-skill dispatch: the user runs `runesmith next`, clicks `Run next`, or lets OpenCode call `runesmith_next`; the engine chooses the lower-level operation from runtime state.
+Runesmith Next is the default hands-off surface above the Runebook. It reads the active card and takes the smallest safe engine-owned action: run Proof Runner for `Capture proof` and `Repair diagnostic`, stop at Faultline when repeated failed repairs need architecture review, apply supplied decisions for `Review faultline` and `Resolve risk`, recover stale work, claim the next dependency-ready task, or advance through Review and Seal when evidence is already present. This is the Runesmith-owned version of workflow-skill dispatch: the user runs `runesmith next`, clicks `Run next`, or lets OpenCode call `runesmith_next`; the engine chooses the lower-level operation from runtime state.
 
 Runeweave is the default OS run loop above Runesmith Next. It repeatedly executes engine-owned Runebook cards with a safety step limit, then stops with a concrete reason: sealed, idle, needs implementation evidence, proof failed, Faultline architecture review, risk held, blocked, or step limit reached. This is the boundary that keeps the product magical without faking autonomy: Runesmith handles leases, recovery, proof, decisions, Review, and Seal; the coding agent still performs creative implementation edits when the active card says `Continue forge`.
 
@@ -105,7 +105,7 @@ If the agent reaches for a mutating or shell tool before explicitly calling `run
 
 After that, Runesmith listens to OpenCode tool execution. Shell commands become `command-output` evidence, passing verification commands such as test, typecheck, lint, and build become `test-result` evidence, failing verification commands become `diagnostic` evidence, and file-edit tools become `file-change` evidence on the active task. Each captured evidence event runs the same evidence-gated advance loop, so a task can complete immediately after the required proof appears. The gate requires passing proof to be newer than the latest edit or diagnostic on that task, which keeps completion tied to the current work rather than earlier green runs. It also treats unresolved `risk` evidence as a human-hold gate that requires a later `decision`, so high-risk findings cannot be washed away by passing tests. When a planned task completes, Runesmith claims the next dependency-ready task automatically. Covenant Review and Seal synthesize their own `decision` evidence from the verified mission state, so routine missions can finish end to end; manual evidence calls remain available for risks, diagnostics, screenshots, external proof, or decisions the tool hooks cannot infer.
 
-When OpenCode reaches an idle point, Runesmith runs Runeweave, the same OS loop exposed by `runesmith_os_run`, against the active capsule. If no mission exists and chat context contains a coding goal, idle first prepares and claims the Forge task, then lets Runeweave classify the next stop. From there the loop gives stale recovery priority, runs eligible Proof Plan commands, writes passing `test-result` evidence or failing `diagnostic` evidence, advances Review and Seal when evidence gates are satisfied, and persists a `runeweave.stopped` mission event with mode, status, stop reason, final action, proof status, and command summaries. If a proof run failed, Runesmith holds the repair target, prompts for a hypothesis-linked one-variable repair, and does not rerun the failing command again until a new repair edit is captured. If three failed diagnostics accumulate without passing proof and the latest evidence is still diagnostic, Loop Pulse switches to `Review faultline` and the Protocol Deck selects `Faultline Breakpoint Protocol`. If unresolved risk is present, the Loop Pulse switches to `Resolve risk` and the runtime refuses completion until a later decision evidence entry exists; OpenCode can call `runesmith_next` with a risk summary or `runesmith_risk_resolve` directly so the agent does not need to ask the user for mission ids or raw evidence commands.
+When OpenCode reaches an idle point, Runesmith runs Runeweave, the same OS loop exposed by `runesmith_os_run`, against the active capsule. If no mission exists and chat context contains a coding goal, idle first prepares and claims the Forge task, then lets Runeweave classify the next stop. From there the loop gives stale recovery priority, runs eligible Proof Plan commands, writes passing `test-result` evidence or failing `diagnostic` evidence, advances Review and Seal when evidence gates are satisfied, and persists a `runeweave.stopped` mission event with mode, status, stop reason, final action, proof status, and command summaries. If a proof run failed, Runesmith holds the repair target, prompts for a hypothesis-linked one-variable repair, and does not rerun the failing command again until a new repair edit is captured. If three failed diagnostics accumulate without passing proof and the latest evidence is still diagnostic, Loop Pulse switches to `Review faultline` and the Protocol Deck selects `Faultline Breakpoint Protocol`; OpenCode can call `runesmith_faultline_resolve` with the chosen architecture path so the breakpoint clears without raw mission ids. If unresolved risk is present, the Loop Pulse switches to `Resolve risk` and the runtime refuses completion until a later decision evidence entry exists; OpenCode can call `runesmith_next` with a risk summary or `runesmith_risk_resolve` directly so the agent does not need to ask the user for mission ids or raw evidence commands.
 
 That same advance loop lives in `@runesmith/core` and is reused by the OpenCode plugin, `runesmith mission tick`, and the dashboard control plane. Each surface can provide its own holder name and idempotency scope, but the state machine is shared.
 
@@ -128,6 +128,7 @@ The dashboard is intentionally not a static report. It models the working loop a
 - **Proof Plan**: see the exact verification commands Runesmith wants next, including focused diagnostic reruns before broad proof.
 - **Proof Runner**: run the active proof plan from the dashboard and persist the resulting proof or diagnostic evidence.
 - **Risk Resolver**: when Loop Pulse says `Resolve risk`, record the decision and re-enter the shared mission loop from the dashboard or OpenCode tool.
+- **Faultline Resolver**: when Loop Pulse says `Review faultline`, record the architecture path and return to focused repair proof without task-id plumbing.
 - **Agent mesh**: inspect agent capacity, active leases, queues, model policy, and boost an agent.
 - **Policy gates**: toggle evidence, lease, tool-scope, stall-radar, and human-hold guardrails, with unresolved risks promoted into critical `Resolve risk` work.
 - **Snapshots**: seal replayable mission checkpoints with task, evidence, and readiness counts.
@@ -224,7 +225,7 @@ Run the active Runebook card without choosing the lower-level command:
 bun packages/cli/src/index.ts next
 ```
 
-`next` is the default hands-off terminal control. It reads the Loop Pulse and Runebook, then proves, repairs, recovers, resolves a supplied risk decision, or advances the shared mission loop from the same runtime capsule used by OpenCode and the dashboard.
+`next` is the default hands-off terminal control. It reads the Loop Pulse and Runebook, then proves, repairs, recovers, resolves supplied Faultline or risk decisions, or advances the shared mission loop from the same runtime capsule used by OpenCode and the dashboard.
 
 Run the active proof plan and let Runesmith write evidence:
 
@@ -241,6 +242,14 @@ bun packages/cli/src/index.ts risk resolve --verdict accepted --summary "Operato
 ```
 
 `risk resolve` records a `decision` on the active `Resolve risk` Loop Pulse task, saves the runtime capsule, and calls the shared mission loop so verified work can continue through Review and Seal.
+
+Resolve the active Faultline breakpoint without looking up mission or task ids:
+
+```bash
+bun packages/cli/src/index.ts faultline resolve --summary "Split the failing boundary before another repair"
+```
+
+`faultline resolve` records a `decision` on the active `Review faultline` Loop Pulse task, saves the runtime capsule, and returns the loop to focused repair proof with the latest failing command still visible.
 
 Launch OpenCode through Runesmith after bootstrap:
 
@@ -345,9 +354,10 @@ Once installed and OpenCode is restarted, users do not need to invoke a workflow
 - `event`: on `session.idle`, prepares the first mission from chat context when possible, then runs Runeweave automatically so recovery, proof, Review, Seal, and stop-condition reporting use the same OS loop as `runesmith_os_run`.
 - `runesmith_autopilot_prepare`: starts or resumes the active mission from the latest user goal and claims the next ready Covenant task.
 - `runesmith_os_run`: run Runeweave, repeatedly executing engine-owned Runebook cards until sealed or stopped by implementation work, failed proof, Faultline, risk, blocker, idle state, or safety limit.
-- `runesmith_next`: run the active Runebook card from one tool, including proof execution, repair proof, recovery, risk decision application when supplied, or normal loop advancement.
+- `runesmith_next`: run the active Runebook card from one tool, including proof execution, repair proof, recovery, supplied risk or Faultline decision application, or normal loop advancement.
 - `runesmith_autopilot_tick`: manually run the same evidence-gated advance loop and return the live Loop Pulse and Proof Plan, including repair diagnostics, Faultline breakpoints when repeated verification failed, and risk holds when unresolved risk needs a later decision.
 - `runesmith_proof_run`: execute the active Proof Plan inside OpenCode, record proof or diagnostics, and advance the mission when verification passes.
 - `runesmith_risk_resolve`: record a decision for the active unresolved risk and advance the shared mission loop without raw evidence plumbing.
+- `runesmith_faultline_resolve`: record the architecture path for the active Faultline breakpoint and return to focused repair proof without raw evidence plumbing.
 - `runesmith_covenant_status`: returns the installed Covenant, live Control Brief, Loop Pulse, Mission Map, Scope Sentinel, Review Lens, Seal Audit, Runebook card, Proof Plan, and active runes from the runtime capsule.
 - Mission tools for status, claim, evidence, completion, and recovery.

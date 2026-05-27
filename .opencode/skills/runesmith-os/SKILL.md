@@ -27,12 +27,13 @@ When a coding goal appears, prepare or resume the Runesmith mission before mutat
 - `runesmith_next` for one engine-selected Runebook action.
 - `runesmith_proof_run` when implementation evidence exists and proof is missing or stale.
 - `runesmith_risk_resolve` when risk evidence needs a decision summary.
+- `runesmith_faultline_resolve` when repeated failed repairs need an architecture path before more patching.
 
 ## Completion Discipline
 
 Completion requires current evidence in the runtime capsule. Passing proof must be newer than the latest relevant file change or diagnostic. Unresolved risk requires later decision evidence. Stale leases must be recovered before unrelated work continues.
 
-If Loop Pulse selects `Review faultline`, stop ordinary patching. Compare the repeated diagnostics, name the architecture or assumption that made local fixes ineffective, choose a redesign/revert/scope split/new hypothesis, then rerun the focused proof command only after that breakpoint is resolved.
+If Loop Pulse selects `Review faultline`, stop ordinary patching. Compare the repeated diagnostics, name the architecture or assumption that made local fixes ineffective, choose a redesign/revert/scope split/new hypothesis, call `runesmith_faultline_resolve` with that path, then rerun the focused proof command only after that breakpoint is resolved.
 
 Use Seal Audit as the final completion signal. If it is `collecting-proof`, run the Proof Plan. If it is `blocked`, resolve the listed finding. Only claim completion when Seal Audit is `ready` or `sealed`.
 

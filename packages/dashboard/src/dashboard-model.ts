@@ -136,10 +136,11 @@ export type DashboardAction =
   | { type: "recover-stale" }
   | { type: "run-verifier" }
   | { type: "run-autopilot-cycle" }
-  | { type: "run-next-action"; verdict?: RiskResolutionVerdict; summary?: string }
-  | { type: "run-os-loop"; maxSteps?: number; verdict?: RiskResolutionVerdict; summary?: string }
+  | { type: "run-next-action"; verdict?: RiskResolutionVerdict; summary?: string; faultlineSummary?: string }
+  | { type: "run-os-loop"; maxSteps?: number; verdict?: RiskResolutionVerdict; summary?: string; faultlineSummary?: string }
   | { type: "run-proof-plan" }
   | { type: "resolve-risk"; verdict?: RiskResolutionVerdict; summary?: string }
+  | { type: "resolve-faultline"; summary?: string }
   | { type: "forge-directive"; prompt: string }
   | { type: "advance-covenant-stage" }
   | { type: "load-runtime-capsule"; capsule: RuntimeCapsule }
@@ -595,6 +596,9 @@ export function reduceDashboardModel(model: DashboardModel, action: DashboardAct
 
     case "resolve-risk":
       return resolveRiskInModel(model, action)
+
+    case "resolve-faultline":
+      return resolveFaultlineInModel(model, action)
 
     case "run-autopilot-cycle":
       return runAutopilotCycle(model)
@@ -1330,6 +1334,13 @@ function runNextActionInModel(
     })
   }
 
+  if (model.loopPulse.nextAction.id === "review-faultline") {
+    return resolveFaultlineInModel(model, {
+      type: "resolve-faultline",
+      summary: action.faultlineSummary ?? action.summary,
+    })
+  }
+
   if (model.loopPulse.nextAction.id === "capture-proof" || model.loopPulse.nextAction.id === "repair-diagnostic") {
     return verifySelectedTask(model, {
       label: "Runebook next passed",
@@ -1350,12 +1361,44 @@ function runOsLoopInModel(
     type: "run-next-action",
     verdict: action.verdict,
     summary: action.summary,
+    faultlineSummary: action.faultlineSummary,
   })
 
   return {
     ...next,
     notice: next.notice.replace("Runebook next", "Runesmith OS"),
   }
+}
+
+function resolveFaultlineInModel(
+  model: DashboardModel,
+  action: Extract<DashboardAction, { type: "resolve-faultline" }>,
+): DashboardModel {
+  const faultlineTask = model.tasks.find((task) => task.evidence.includes("diagnostic") && task.status !== "verified")
+  const targetTask = faultlineTask ?? model.selectedTask
+  const summary = action.summary?.trim() || "Operator selected an architecture path for the active Faultline."
+
+  return mutateSelectedTask(
+    deriveDashboardModel({
+      ...model,
+      mode: "guarded",
+      selectedTaskId: targetTask.id,
+    }),
+    {
+      timelineLabel: "Faultline resolved",
+      timelineTone: "running",
+      commandLabel: "Faultline decision recorded",
+      notice: (task) => `Resolved Faultline for ${task.title}.`,
+      mutate: (task) => ({
+        ...task,
+        status: "running",
+        lane: "Repair",
+        summary: `Faultline path: ${summary}`,
+        evidence: addEvidence(task.evidence, "decision"),
+      }),
+      detail: (task) => `${task.id} received a Faultline architecture decision`,
+    },
+  )
 }
 
 function resolveRiskInModel(

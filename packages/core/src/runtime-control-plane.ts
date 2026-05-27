@@ -7,6 +7,7 @@ import { runRunebookNext, type RunebookNextStatus } from "./runebook-next.js"
 import { runRuneweave, type RuneweaveStatus } from "./runeweave.js"
 import {
   advanceRunicMissionLoop,
+  resolveRunicFaultline,
   resolveRunicRisk,
   type RiskResolutionVerdict,
   type RunicMissionLoopStatus,
@@ -25,12 +26,14 @@ export type RuntimeControlAction =
       type: "run-next-action"
       verdict?: RiskResolutionVerdict
       summary?: string
+      faultlineSummary?: string
     }
   | {
       type: "run-os-loop"
       maxSteps?: number
       verdict?: RiskResolutionVerdict
       summary?: string
+      faultlineSummary?: string
     }
   | {
       type: "run-proof-plan"
@@ -38,6 +41,10 @@ export type RuntimeControlAction =
   | {
       type: "resolve-risk"
       verdict?: RiskResolutionVerdict
+      summary?: string
+    }
+  | {
+      type: "resolve-faultline"
       summary?: string
     }
 
@@ -57,6 +64,11 @@ export type RuntimeControlActionValue = {
     verdict: RiskResolutionVerdict
     nextStatus: RunicMissionLoopStatus
     risks: string[]
+  }
+  faultlineResolution?: {
+    evidenceId: string
+    nextStatus: RunicMissionLoopStatus
+    diagnostics: string[]
   }
   snapshot: RuntimeSnapshot
 }
@@ -128,6 +140,10 @@ export async function applyRuntimeControlAction(
 
   if (action.type === "resolve-risk") {
     return resolveRuntimeRisk(runtime, action, options)
+  }
+
+  if (action.type === "resolve-faultline") {
+    return resolveRuntimeFaultline(runtime, action, options)
   }
 
   return runRuntimeAutopilotCycle(runtime, options)
@@ -227,6 +243,10 @@ async function runRuntimeNextAction(
       summary: action.summary,
       evidenceIdFactory: () => nextEvidenceId(),
     },
+    faultline: {
+      summary: action.faultlineSummary ?? action.summary,
+      evidenceIdFactory: () => nextEvidenceId(),
+    },
   })
   if (!next.ok) return { ok: false, error: next.error }
 
@@ -241,6 +261,7 @@ async function runRuntimeNextAction(
       missingEvidence: next.value.loopPulse.missingEvidence,
       commands: next.value.commands,
       riskResolution: next.value.riskResolution,
+      faultlineResolution: next.value.faultlineResolution,
       snapshot: runtime.snapshot(),
     },
   }
@@ -267,6 +288,10 @@ async function runRuntimeOsLoop(
     risk: {
       verdict: action.verdict ?? "accepted",
       summary: action.summary,
+      evidenceIdFactory: () => nextEvidenceId(),
+    },
+    faultline: {
+      summary: action.faultlineSummary ?? action.summary,
       evidenceIdFactory: () => nextEvidenceId(),
     },
   })
@@ -319,6 +344,41 @@ function resolveRuntimeRisk(
         verdict: resolved.value.verdict,
         nextStatus: resolved.value.nextStatus,
         risks: resolved.value.risks,
+      },
+      snapshot: runtime.snapshot(),
+    },
+  }
+}
+
+function resolveRuntimeFaultline(
+  runtime: ReturnType<typeof createRuntime>,
+  action: Extract<RuntimeControlAction, { type: "resolve-faultline" }>,
+  options: RuntimeControlActionOptions,
+): RuntimeControlActionResult {
+  const nextEvidenceId = createRuntimeControlEvidenceIdFactory(runtime.snapshot(), options.idFactory)
+  const resolved = resolveRunicFaultline(runtime, {
+    contract: defaultRuntimeControlContract,
+    holder: "runesmith-dashboard",
+    idempotencyScope: "dashboard",
+    ttlMs: 30_000,
+    summary: action.summary ?? "",
+    now: options.now,
+    evidenceIdFactory: () => nextEvidenceId(),
+  })
+  if (!resolved.ok) return { ok: false, error: resolved.error }
+
+  return {
+    ok: true,
+    value: {
+      action: "resolve-faultline",
+      missionId: resolved.value.missionId,
+      taskId: resolved.value.taskId,
+      status: mapRuntimeControlRunicStatus(resolved.value.nextStatus),
+      missingEvidence: resolved.value.missingEvidence,
+      faultlineResolution: {
+        evidenceId: resolved.value.evidenceId,
+        nextStatus: resolved.value.nextStatus,
+        diagnostics: resolved.value.diagnostics,
       },
       snapshot: runtime.snapshot(),
     },
@@ -390,7 +450,7 @@ function mapRunebookNextStatus(
   status: RunebookNextStatus,
   nextStatus: RunicMissionLoopStatus | undefined,
 ): RuntimeControlActionValue["status"] {
-  if (status === "proof-failed" || status === "risk-held") return "waiting-for-evidence"
+  if (status === "proof-failed" || status === "risk-held" || status === "faultline-held") return "waiting-for-evidence"
   if (status === "proof-idle" || status === "idle") return "idle"
   if (nextStatus) return mapRuntimeControlRunicStatus(nextStatus)
 

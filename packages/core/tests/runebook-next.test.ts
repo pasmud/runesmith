@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import { createRuntime, runRunebookNext, type AgentContract } from "../src/index"
 
 const fixedNow = () => new Date("2026-05-27T00:00:00.000Z")
+const later = () => new Date("2026-05-27T00:04:00.000Z")
 const ids = (prefix: string) => `${prefix}_alpha`
 
 const atlas: AgentContract = {
@@ -96,6 +97,93 @@ describe("runebook next action", () => {
       taskId: "task_alpha",
       type: "test-result",
       summary: "Run tests passed: bun test",
+    })
+  })
+
+  test("resolves the current Faultline card with a supplied architecture path", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Resolve next Faultline card",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed next action",
+        payload: { filePath: "packages/core/src/runebook-next.ts" },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    for (const index of [1, 2, 3]) {
+      runtime.addTaskEvidence({
+        missionId: "mission_alpha",
+        evidence: {
+          id: `evidence_diagnostic_${index}`,
+          taskId: "task_alpha",
+          type: "diagnostic",
+          summary: `Runebook next failed attempt ${index}`,
+          payload: { command: `bun test packages/core/tests/runebook-next.test.ts --attempt=${index}`, exitCode: 1 },
+          createdAt: `2026-05-27T00:0${index}:00.000Z`,
+        },
+      })
+    }
+
+    const result = await runRunebookNext(runtime, {
+      contract: atlas,
+      holder: "runesmith-test",
+      idempotencyScope: "test-next",
+      ttlMs: 30_000,
+      faultline: {
+        summary: "Separate proof execution from loop advancement before the next repair",
+        evidenceIdFactory: () => "evidence_faultline",
+      },
+      now: later,
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        status: "faultline-resolved",
+        actionId: "review-faultline",
+        card: {
+          title: "Faultline architecture breakpoint",
+        },
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        nextStatus: "waiting-for-evidence",
+        missingEvidence: ["test-result"],
+        faultlineResolution: {
+          evidenceId: "evidence_faultline",
+          nextStatus: "waiting-for-evidence",
+          diagnostics: [
+            "Runebook next failed attempt 1",
+            "Runebook next failed attempt 2",
+            "Runebook next failed attempt 3",
+          ],
+        },
+        loopPulse: {
+          nextAction: {
+            id: "repair-diagnostic",
+          },
+        },
+      },
+    })
+    expect(runtime.snapshot().ledgers.mission_alpha.evidence.evidence_faultline).toMatchObject({
+      taskId: "task_alpha",
+      type: "decision",
+      summary: "Faultline path: Separate proof execution from loop advancement before the next repair",
     })
   })
 })

@@ -23,6 +23,7 @@ import {
   prepareRunicMission,
   repairProjectConfig as repairProjectConfigStore,
   repairRuntimeCapsule as repairRuntimeCapsuleStore,
+  resolveRunicFaultline,
   resolveRunicRisk,
   runRuneweave,
   runRunebookNext,
@@ -267,6 +268,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     return resolveRiskFromCli([maybeId, ...rest].filter((value): value is string => Boolean(value)), host)
   }
 
+  if (command === "faultline" && subcommand === "resolve") {
+    return resolveFaultlineFromCli([maybeId, ...rest].filter((value): value is string => Boolean(value)), host)
+  }
+
   if (command === "init") {
     await writeProjectConfig(host)
 
@@ -372,7 +377,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     ].join("\n"))
   }
 
-  return failure("Usage: runesmith <ignite|heal|up|status|run|next|launch|dashboard|prove|install|init|doctor|risk resolve|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
+  return failure("Usage: runesmith <ignite|heal|up|status|run|next|launch|dashboard|prove|install|init|doctor|risk resolve|faultline resolve|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
 }
 
 function success(stdout: string): CliResult {
@@ -1286,6 +1291,55 @@ async function resolveRiskFromCli(args: string[], host: CliHost): Promise<CliRes
     `task: ${resolved.value.taskId}`,
     `evidence: ${resolved.value.evidenceId}`,
     `verdict: ${resolved.value.verdict}`,
+    `status: ${resolved.value.nextStatus}`,
+    `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
+    ...formatPulseDiagnostics(pulse),
+    `runtime: ${runtimeCapsulePath}`,
+    "",
+  ].join("\n"))
+}
+
+async function resolveFaultlineFromCli(args: string[], host: CliHost): Promise<CliResult> {
+  const options = parseFlagOptions(args)
+  const summary = options.summary?.trim()
+  if (!summary) {
+    return failure("Usage: runesmith faultline resolve --summary <summary>\n")
+  }
+
+  const runtimeCapsulePath = await resolveRuntimeCapsulePath(host)
+  const capsule = await loadRuntimeCapsule(host, runtimeCapsulePath)
+  if (!capsule.ok) return failure(`${capsule.error.message}\n`)
+  if (!capsule.value) return failure(`Runtime capsule not found: ${runtimeCapsulePath}\n`)
+
+  const idFactory = createCliIdFactory(capsule.value.runtime)
+  const runtime = createRuntime({
+    snapshot: capsule.value.runtime,
+    idFactory,
+  })
+  runtime.registerContract(cliAtlasContract)
+
+  const resolved = resolveRunicFaultline(runtime, {
+    contract: cliAtlasContract,
+    holder: "runesmith-cli",
+    idempotencyScope: "cli-faultline",
+    ttlMs: 30_000,
+    summary,
+    evidenceIdFactory: () => idFactory("evidence"),
+  })
+  if (!resolved.ok) return failure(`${resolved.error.message}\n`)
+
+  const snapshot = runtime.snapshot()
+  await saveRuntimeCapsule(host, {
+    path: runtimeCapsulePath,
+    snapshot,
+  })
+  const pulse = deriveLoopPulse(snapshot)
+
+  return success([
+    "Faultline resolved",
+    `mission: ${resolved.value.missionId}`,
+    `task: ${resolved.value.taskId}`,
+    `evidence: ${resolved.value.evidenceId}`,
     `status: ${resolved.value.nextStatus}`,
     `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
     ...formatPulseDiagnostics(pulse),

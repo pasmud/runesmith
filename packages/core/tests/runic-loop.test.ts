@@ -4,6 +4,7 @@ import {
   advanceRunicMissionLoop,
   createCovenantTaskPlan,
   createRuntime,
+  resolveRunicFaultline,
   resolveRunicRisk,
   type AgentContract,
 } from "../src/index"
@@ -225,6 +226,91 @@ describe("runic mission loop", () => {
             mode: "runesmith-risk-resolution",
             verdict: "accepted",
             risks: ["Deletes generated user files without confirmation"],
+          }),
+        }),
+      ]),
+    )
+  })
+
+  test("resolves a Faultline breakpoint with an architecture decision", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Resolve repeated repair failure",
+      taskPlan: createCovenantTaskPlan("Resolve repeated repair failure"),
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runtime files",
+        payload: { filePath: "packages/core/src/runic-loop.ts" },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    for (const index of [1, 2, 3]) {
+      runtime.addTaskEvidence({
+        missionId: "mission_alpha",
+        evidence: {
+          id: `evidence_diagnostic_${index}`,
+          taskId: "task_alpha",
+          type: "diagnostic",
+          summary: `Core loop tests failed attempt ${index}`,
+          payload: { command: `bun test packages/core/tests/runic-loop.test.ts --attempt=${index}`, exitCode: 1 },
+          createdAt: `2026-05-27T00:0${index}:00.000Z`,
+        },
+      })
+    }
+
+    const resolved = resolveRunicFaultline(runtime, {
+      ...loopDefaults(),
+      summary: "Split proof runner IO from mission advancement before another repair",
+      now: later,
+      evidenceIdFactory: () => "evidence_faultline_decision",
+    })
+
+    expect(resolved).toMatchObject({
+      ok: true,
+      value: {
+        status: "resolved",
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        evidenceId: "evidence_faultline_decision",
+        diagnostics: [
+          "Core loop tests failed attempt 1",
+          "Core loop tests failed attempt 2",
+          "Core loop tests failed attempt 3",
+        ],
+        nextStatus: "waiting-for-evidence",
+        missingEvidence: ["test-result"],
+      },
+    })
+
+    const snapshot = runtime.snapshot()
+    expect(Object.values(snapshot.ledgers.mission_alpha.evidence)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "evidence_faultline_decision",
+          taskId: "task_alpha",
+          type: "decision",
+          summary: "Faultline path: Split proof runner IO from mission advancement before another repair",
+          payload: expect.objectContaining({
+            mode: "runesmith-faultline-resolution",
+            diagnostics: [
+              "Core loop tests failed attempt 1",
+              "Core loop tests failed attempt 2",
+              "Core loop tests failed attempt 3",
+            ],
           }),
         }),
       ]),

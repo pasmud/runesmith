@@ -1,4 +1,10 @@
-import { advanceRunicMissionLoop, resolveRunicRisk, type RiskResolutionVerdict, type RunicMissionLoopStatus } from "./runic-loop.js"
+import {
+  advanceRunicMissionLoop,
+  resolveRunicFaultline,
+  resolveRunicRisk,
+  type RiskResolutionVerdict,
+  type RunicMissionLoopStatus,
+} from "./runic-loop.js"
 import { deriveLoopPulse, type LoopPulseActionId } from "./loop-pulse.js"
 import { deriveProofPlan, type ProofPlan, type ProofPlanOptions } from "./proof-plan.js"
 import { runProofPlan, type ProofCommandRunner, type ProofRunCommandResult, type ProofRunStatus } from "./proof-runner.js"
@@ -13,6 +19,8 @@ export type RunebookNextStatus =
   | "proof-passed"
   | "proof-failed"
   | "proof-idle"
+  | "faultline-resolved"
+  | "faultline-held"
   | "risk-resolved"
   | "risk-held"
 
@@ -24,6 +32,16 @@ export type RunebookNextRiskOptions = {
     task: MissionTask
     verdict: RiskResolutionVerdict
     risks: string[]
+  }) => string
+}
+
+export type RunebookNextFaultlineOptions = {
+  summary?: string
+  evidenceIdFactory?: (input: {
+    missionId: string
+    task: MissionTask
+    diagnostics: string[]
+    summary: string
   }) => string
 }
 
@@ -39,6 +57,7 @@ export type RunebookNextOptions = {
   nextEvidenceId?: () => string
   now?: () => Date
   risk?: RunebookNextRiskOptions
+  faultline?: RunebookNextFaultlineOptions
 }
 
 export type RunebookNextValue = {
@@ -56,6 +75,11 @@ export type RunebookNextValue = {
     verdict: RiskResolutionVerdict
     nextStatus: RunicMissionLoopStatus
     risks: string[]
+  }
+  faultlineResolution?: {
+    evidenceId: string
+    nextStatus: RunicMissionLoopStatus
+    diagnostics: string[]
   }
   loopPulse: ReturnType<typeof deriveLoopPulse>
   runebook: Runebook
@@ -78,6 +102,10 @@ export async function runRunebookNext(
 
   if (actionId === "resolve-risk") {
     return resolveRiskNext(runtime, options, actionId, card)
+  }
+
+  if (actionId === "review-faultline") {
+    return resolveFaultlineNext(runtime, options, actionId, card)
   }
 
   const advanced = advanceRunicMissionLoop(runtime, {
@@ -155,6 +183,55 @@ async function runProofNext(
     missingEvidence: advanced.value.missingEvidence,
     proofStatus: proofRun.status,
     commands: proofRun.commands,
+  }))
+}
+
+function resolveFaultlineNext(
+  runtime: RunesmithRuntime,
+  options: RunebookNextOptions,
+  actionId: LoopPulseActionId,
+  card: RunebookCard,
+): Result<RunebookNextValue> {
+  const summary = options.faultline?.summary?.trim()
+  if (!summary) {
+    const pulse = deriveLoopPulse(runtime.snapshot())
+
+    return ok(buildValue(runtime, options, {
+      status: "faultline-held",
+      actionId,
+      card,
+      missionId: pulse.missionId,
+      taskId: pulse.taskId,
+      missingEvidence: pulse.missingEvidence,
+    }))
+  }
+
+  const resolved = resolveRunicFaultline(runtime, {
+    contract: options.contract,
+    holder: options.holder,
+    idempotencyScope: `${options.idempotencyScope}:faultline`,
+    ttlMs: options.ttlMs,
+    staleAfterMs: options.staleAfterMs,
+    recoverStale: options.recoverStale,
+    now: options.now,
+    summary,
+    evidenceIdFactory: options.faultline?.evidenceIdFactory,
+  })
+  if (!resolved.ok) return resolved
+
+  return ok(buildValue(runtime, options, {
+    status: "faultline-resolved",
+    actionId,
+    card,
+    missionId: resolved.value.missionId,
+    taskId: resolved.value.taskId,
+    nextStatus: resolved.value.nextStatus,
+    missingEvidence: resolved.value.missingEvidence,
+    faultlineResolution: {
+      evidenceId: resolved.value.evidenceId,
+      nextStatus: resolved.value.nextStatus,
+      diagnostics: resolved.value.diagnostics,
+    },
   }))
 }
 

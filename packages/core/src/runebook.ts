@@ -280,7 +280,7 @@ function buildActiveRunebookCard(input: {
         ],
         requiredEvidence: ["diagnostic"],
         commands: input.commands,
-        toolHints: ["runesmith_task_evidence"],
+        toolHints: ["runesmith_faultline_resolve"],
         stopConditions: [
           "Do not make a fourth blind repair attempt.",
           "Do not rerun proof until the architecture hypothesis or decision is explicit.",

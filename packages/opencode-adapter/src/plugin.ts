@@ -27,6 +27,7 @@ import {
   prepareRunicMission,
   repairProjectConfig,
   repairRuntimeCapsule,
+  resolveRunicFaultline,
   resolveRunicRisk,
   runRuneweave,
   runRunebookNext,
@@ -78,6 +79,7 @@ export type RunesmithPlugin = {
     runesmith_autopilot_tick: ToolDefinition<AutopilotTickArgs>
     runesmith_proof_run: ToolDefinition<ProofRunArgs>
     runesmith_risk_resolve: ToolDefinition<RiskResolveArgs>
+    runesmith_faultline_resolve: ToolDefinition<FaultlineResolveArgs>
     runesmith_covenant_status: ToolDefinition<CovenantStatusArgs>
     runesmith_mission_start: ToolDefinition<MissionStartArgs>
     runesmith_mission_status: ToolDefinition<MissionStatusArgs>
@@ -130,6 +132,7 @@ type AutopilotPrepareArgs = {
 type NextArgs = {
   riskSummary?: string
   riskVerdict?: RiskResolutionVerdict
+  faultlineSummary?: string
   evidenceId?: string
 }
 
@@ -143,6 +146,11 @@ type ProofRunArgs = Record<string, never>
 
 type RiskResolveArgs = {
   verdict?: RiskResolutionVerdict
+  summary?: string
+  evidenceId?: string
+}
+
+type FaultlineResolveArgs = {
   summary?: string
   evidenceId?: string
 }
@@ -272,11 +280,12 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       },
       runesmith_next: {
         description:
-          "Run the current Runesmith Runebook card: prove, recover, resolve risk when given a decision summary, or advance the shared loop as appropriate.",
+          "Run the current Runesmith Runebook card: prove, recover, resolve risk or Faultline when given a decision summary, or advance the shared loop as appropriate.",
         parameters: objectSchema({
           riskSummary: stringSchema("Optional decision summary when the active Runebook card is a risk hold"),
           riskVerdict: stringSchema("Optional risk verdict: accepted or cleared"),
-          evidenceId: stringSchema("Optional stable risk decision evidence id"),
+          faultlineSummary: stringSchema("Optional architecture decision summary when the active Runebook card is a Faultline breakpoint"),
+          evidenceId: stringSchema("Optional stable risk or Faultline decision evidence id"),
         }),
         async execute(args) {
           return runNextFromOpenCode({
@@ -297,7 +306,8 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           maxSteps: numberSchema("Optional safety limit for Runebook actions in this OS run"),
           riskSummary: stringSchema("Optional decision summary when the loop reaches a risk hold"),
           riskVerdict: stringSchema("Optional risk verdict: accepted or cleared"),
-          evidenceId: stringSchema("Optional stable risk decision evidence id"),
+          faultlineSummary: stringSchema("Optional architecture decision summary when the loop reaches a Faultline breakpoint"),
+          evidenceId: stringSchema("Optional stable risk or Faultline decision evidence id"),
         }),
         async execute(args) {
           return runOsFromOpenCode({
@@ -348,6 +358,24 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
         }),
         async execute(args) {
           return resolveRiskFromOpenCode({
+            runtime,
+            proofPlanOptions,
+            runtimeStore: options.runtimeStore,
+            idFactory: options.idFactory,
+            now: options.now,
+            args,
+          })
+        },
+      },
+      runesmith_faultline_resolve: {
+        description:
+          "Record an explicit architecture decision for the active Faultline breakpoint, then return to the focused repair proof path.",
+        parameters: objectSchema({
+          summary: stringSchema("Short architecture path, redesign, revert, scope split, or new hypothesis chosen for the active Faultline"),
+          evidenceId: stringSchema("Optional stable Faultline decision evidence id"),
+        }),
+        async execute(args) {
+          return resolveFaultlineFromOpenCode({
             runtime,
             proofPlanOptions,
             runtimeStore: options.runtimeStore,
@@ -931,6 +959,15 @@ type ResolveRiskFromOpenCodeInput = {
   args: RiskResolveArgs
 }
 
+type ResolveFaultlineFromOpenCodeInput = {
+  runtime: RunesmithRuntime
+  proofPlanOptions?: ProofPlanOptions
+  runtimeStore?: PluginRuntimeStore
+  idFactory?: IdFactory
+  now?: () => Date
+  args: FaultlineResolveArgs
+}
+
 async function runNextFromOpenCode(input: RunNextFromOpenCodeInput): Promise<ToolResponse> {
   const snapshot = input.runtime.snapshot()
   const nextEvidenceId = createProofEvidenceIdFactory(snapshot, input.idFactory)
@@ -947,6 +984,10 @@ async function runNextFromOpenCode(input: RunNextFromOpenCodeInput): Promise<Too
     risk: {
       verdict: parseRiskVerdict(input.args.riskVerdict),
       summary: input.args.riskSummary,
+      evidenceIdFactory: () => input.args.evidenceId ?? input.idFactory?.("evidence") ?? `evidence_${crypto.randomUUID()}`,
+    },
+    faultline: {
+      summary: input.args.faultlineSummary,
       evidenceIdFactory: () => input.args.evidenceId ?? input.idFactory?.("evidence") ?? `evidence_${crypto.randomUUID()}`,
     },
   })
@@ -974,6 +1015,10 @@ async function runOsFromOpenCode(input: RunOsFromOpenCodeInput): Promise<ToolRes
     risk: {
       verdict: parseRiskVerdict(input.args.riskVerdict),
       summary: input.args.riskSummary,
+      evidenceIdFactory: () => input.args.evidenceId ?? input.idFactory?.("evidence") ?? `evidence_${crypto.randomUUID()}`,
+    },
+    faultline: {
+      summary: input.args.faultlineSummary,
       evidenceIdFactory: () => input.args.evidenceId ?? input.idFactory?.("evidence") ?? `evidence_${crypto.randomUUID()}`,
     },
   })
@@ -1080,6 +1125,40 @@ async function resolveRiskFromOpenCode(input: ResolveRiskFromOpenCodeInput): Pro
     evidenceId: resolved.value.evidenceId,
     verdict: resolved.value.verdict,
     risks: resolved.value.risks,
+    nextStatus: resolved.value.nextStatus,
+    missingEvidence: loopPulse.missingEvidence,
+    missionMemory,
+    proofPlan,
+    runebook,
+    loopPulse,
+  })
+}
+
+async function resolveFaultlineFromOpenCode(input: ResolveFaultlineFromOpenCodeInput): Promise<ToolResponse> {
+  const resolved = resolveRunicFaultline(input.runtime, {
+    contract: defaultAtlasContract,
+    holder: "runesmith-autopilot",
+    idempotencyScope: "faultline-resolve",
+    ttlMs: 30_000,
+    summary: input.args.summary ?? "",
+    now: input.now,
+    evidenceIdFactory: () => input.args.evidenceId ?? input.idFactory?.("evidence") ?? `evidence_${crypto.randomUUID()}`,
+  })
+  if (!resolved.ok) return formatError("Faultline resolution rejected", resolved.error)
+
+  await persistRuntime(input.runtimeStore, input.runtime)
+  const snapshot = input.runtime.snapshot()
+  const loopPulse = deriveLoopPulse(snapshot)
+  const missionMemory = deriveMissionMemory(snapshot)
+  const proofPlan = deriveProofPlan(snapshot, input.proofPlanOptions)
+  const runebook = deriveRunebook(snapshot, { proofPlanOptions: input.proofPlanOptions })
+
+  return formatValue("Faultline resolved", {
+    status: resolved.value.status,
+    missionId: resolved.value.missionId,
+    taskId: resolved.value.taskId,
+    evidenceId: resolved.value.evidenceId,
+    diagnostics: resolved.value.diagnostics,
     nextStatus: resolved.value.nextStatus,
     missingEvidence: loopPulse.missingEvidence,
     missionMemory,
@@ -1442,6 +1521,7 @@ function buildAutopilotPrompt(): string {
     "Prefer `runesmith_next` when you need Runesmith to execute the current Runebook card without choosing a lower-level tool.",
     "When proof is missing, call `runesmith_proof_run` to execute the live Runesmith Proof Plan before asking for completion. When Faultline is active, follow the architecture breakpoint before rerunning proof.",
     "When Loop Pulse says `Resolve risk`, call `runesmith_risk_resolve` with a short decision summary instead of asking the user to find mission ids or manually attach decision evidence.",
+    "When Loop Pulse says `Review faultline`, call `runesmith_faultline_resolve` with the architecture path, redesign, revert, scope split, or new hypothesis before another proof run.",
     "When the active task has required evidence, call `runesmith_autopilot_tick` or let session-idle events advance it. The tick may complete the task only after the evidence gate is satisfied, synthesize Review and Seal decisions when safe, then claim the next dependency-ready task.",
     "Do not ask the user to invoke Runesmith, skills, or a workflow by name. Keep the user experience install-once and direct.",
     "Before claiming completion, attach required evidence and use `runesmith_task_complete`; if state looks stale or conflicting, run `runesmith_recover` first.",
@@ -1516,7 +1596,7 @@ function buildMessageBootstrap(
     `Active protocol: ${protocolDeck.active.name} [${protocolDeck.active.mode}].`,
     "Let Runesmith choose the procedure from runtime state.",
     "Before mutating coding work, use Runesmith to prepare or resume the active mission.",
-    "Prefer runesmith_os_run, runesmith_next, runesmith_proof_run, or runesmith_risk_resolve when Loop Pulse makes them the next engine-owned action.",
+    "Prefer runesmith_os_run, runesmith_next, runesmith_proof_run, runesmith_risk_resolve, or runesmith_faultline_resolve when Loop Pulse makes them the next engine-owned action.",
     "Do not ask the user to load skills or invoke workflows by name.",
     "</RUNESMITH_BOOTSTRAP>",
   ].join("\n")

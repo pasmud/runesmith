@@ -49,6 +49,16 @@ export type ResolveRunicRiskOptions = Omit<AdvanceRunicMissionLoopOptions, "evid
   }) => string
 }
 
+export type ResolveRunicFaultlineOptions = Omit<AdvanceRunicMissionLoopOptions, "evidenceIdFactory"> & {
+  summary: string
+  evidenceIdFactory?: (input: {
+    missionId: string
+    task: MissionTask
+    diagnostics: string[]
+    summary: string
+  }) => string
+}
+
 export type AdvanceRunicMissionLoopValue = {
   status: RunicMissionLoopStatus
   missionId?: string
@@ -65,6 +75,17 @@ export type ResolveRunicRiskValue = {
   evidenceId: string
   verdict: RiskResolutionVerdict
   risks: string[]
+  nextStatus: RunicMissionLoopStatus
+  missionStatus?: string
+  missingEvidence?: EvidenceType[]
+}
+
+export type ResolveRunicFaultlineValue = {
+  status: "resolved"
+  missionId: string
+  taskId: string
+  evidenceId: string
+  diagnostics: string[]
   nextStatus: RunicMissionLoopStatus
   missionStatus?: string
   missingEvidence?: EvidenceType[]
@@ -257,6 +278,80 @@ export function resolveRunicRisk(
   })
 }
 
+export function resolveRunicFaultline(
+  runtime: RunesmithRuntime,
+  options: ResolveRunicFaultlineOptions,
+): Result<ResolveRunicFaultlineValue> {
+  runtime.registerContract(options.contract)
+
+  const summary = options.summary.trim()
+  if (!summary) {
+    return err(runtimeError("INVALID_TRANSITION", "Faultline resolution summary is required"))
+  }
+
+  const snapshot = runtime.snapshot()
+  const pulse = deriveLoopPulse(snapshot)
+  if (pulse.nextAction.id !== "review-faultline" || !pulse.missionId || !pulse.taskId) {
+    return err(
+      runtimeError("INVALID_TRANSITION", "No active Faultline breakpoint is waiting for an architecture decision", {
+        nextAction: pulse.nextAction.id,
+        missionId: pulse.missionId,
+        taskId: pulse.taskId,
+      }),
+    )
+  }
+
+  const graph = snapshot.graphs[pulse.missionId]
+  const task = graph?.tasks[pulse.taskId]
+  if (!graph || !task) {
+    return err(runtimeError("TASK_NOT_FOUND", "Active Faultline task does not exist", {
+      missionId: pulse.missionId,
+      taskId: pulse.taskId,
+    }))
+  }
+
+  const evidenceId = buildFaultlineDecisionEvidenceId(options, {
+    missionId: pulse.missionId,
+    task,
+    diagnostics: pulse.diagnostics,
+    summary,
+  })
+  const recorded = runtime.addTaskEvidence({
+    missionId: pulse.missionId,
+    evidence: {
+      id: evidenceId,
+      taskId: pulse.taskId,
+      type: "decision",
+      summary: formatFaultlineDecisionSummary(summary),
+      payload: {
+        mode: "runesmith-faultline-resolution",
+        summary,
+        diagnostics: pulse.diagnostics,
+      },
+      createdAt: (options.now ?? (() => new Date()))().toISOString(),
+    },
+  })
+  if (!recorded.ok) return recorded
+
+  const advanced = advanceRunicMissionLoop(runtime, {
+    ...options,
+    recoverStale: false,
+    evidenceIdFactory: undefined,
+  })
+  if (!advanced.ok) return advanced
+
+  return ok({
+    status: "resolved",
+    missionId: pulse.missionId,
+    taskId: pulse.taskId,
+    evidenceId,
+    diagnostics: pulse.diagnostics,
+    nextStatus: advanced.value.status,
+    missionStatus: advanced.value.missionStatus,
+    missingEvidence: advanced.value.missingEvidence,
+  })
+}
+
 export function selectRunicLoopTask(
   snapshot: RuntimeSnapshot,
   missionId?: string,
@@ -388,12 +483,24 @@ function buildRiskDecisionEvidenceId(
   }) ?? `evidence_risk_decision_${fingerprint(`${input.missionId}:${input.task.id}:${options.verdict}:${input.risks.join("|")}`)}`
 }
 
+function buildFaultlineDecisionEvidenceId(
+  options: ResolveRunicFaultlineOptions,
+  input: { missionId: string; task: MissionTask; diagnostics: string[]; summary: string },
+): string {
+  return options.evidenceIdFactory?.(input)
+    ?? `evidence_faultline_decision_${fingerprint(`${input.missionId}:${input.task.id}:${input.summary}:${input.diagnostics.join("|")}`)}`
+}
+
 function formatRiskDecisionSummary(verdict: RiskResolutionVerdict, summary: string | undefined, risks: string[]): string {
   const fallback = risks.length > 0 ? risks.join("; ") : "active risk"
   const detail = summary?.trim() || fallback
   const label = verdict === "accepted" ? "accepted" : "cleared"
 
   return `Risk ${label}: ${detail}`
+}
+
+function formatFaultlineDecisionSummary(summary: string): string {
+  return `Faultline path: ${summary}`
 }
 
 function fingerprint(value: string): string {
