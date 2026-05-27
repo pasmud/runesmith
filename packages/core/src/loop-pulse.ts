@@ -256,7 +256,7 @@ function selectNextAction(
       id: "refine-plan",
       label: "Refine plan",
       priority: "high",
-      reason: "Plan Contract is thin; convert Forge/Review/Seal into proof-backed runtime, interface, review, and seal slices before broad implementation.",
+      reason: "Plan Contract is thin; convert Forge/Review/Seal into goal-aware proof-backed slices before broad implementation.",
     }
   }
 
@@ -408,7 +408,7 @@ function buildExecutionPlan(
         id: "refine-thin-plan",
         label: "Refine thin Plan Contract",
         status: "active",
-        instruction: "Replace the thin Forge/Review/Seal map with proof-backed runtime, interface, review, and seal slices.",
+        instruction: "Replace the thin Forge/Review/Seal map with goal-aware proof-backed execution slices.",
         evidence: ["decision"],
         runes: ["Pathfinder", "Proofwright"],
       },
@@ -416,7 +416,7 @@ function buildExecutionPlan(
         id: "dispatch-implementation-slices",
         label: "Dispatch implementation slices",
         status: "queued",
-        instruction: "Claim independent runtime and operator-interface Forge slices through Dispatch Matrix.",
+        instruction: "Claim independent goal-matched Forge slices through Dispatch Matrix.",
         evidence: ["file-change", "test-result"],
         runes: ["Claim Ward", "Forge Trace"],
       },

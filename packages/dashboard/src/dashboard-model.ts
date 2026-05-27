@@ -1588,71 +1588,31 @@ function refinePlanInModel(
   }
 
   const baseId = normalizeTaskId(model.selectedTask.id)
-  const slices: TaskCard[] = [
-    {
-      id: `${baseId}_plan`,
-      title: `Plan: ${goal}`,
-      agent: "Atlas",
-      status: "verified",
-      lane: "Plan",
-      summary: `Pathfinder converted ${goal} into concrete proof-backed work slices.`,
-      tools: ["read", "edit", "test"],
-      evidence: ["decision"],
-    },
-    {
-      id: `${baseId}_runtime_forge`,
-      title: "Forge: orchestration runtime",
-      agent: "Atlas",
-      status: "running",
-      lane: "Build",
-      summary: `Runtime adapters, orchestration gates, and proof routing for ${goal}.`,
-      tools: ["read", "edit", "test"],
-      evidence: [],
-    },
-    {
-      id: `${baseId}_interface_forge`,
-      title: "Forge: operator control surface",
-      agent: "Artificer",
-      status: "running",
-      lane: "Build",
-      summary: `Dashboard, install controls, and operator feedback loops for ${goal}.`,
-      tools: ["read", "edit", "test"],
-      evidence: [],
-    },
-    {
-      id: `${baseId}_proof_review`,
-      title: "Review: proof and risk gate",
-      agent: "Oracle",
-      status: "blocked",
-      lane: "Verify",
-      summary: "Waiting for both implementation slices before proof review can run.",
-      tools: ["read", "test"],
-      evidence: [],
-    },
-    {
-      id: `${baseId}_seal_handoff`,
-      title: "Seal: install and handoff",
-      agent: "Steward",
-      status: "blocked",
-      lane: "Plan",
-      summary: "Waiting for proof review before packaging and direct-install handoff.",
-      tools: ["read", "edit", "git"],
-      evidence: [],
-    },
-  ]
+  const taskPlan = createRunicPlanRefinementTaskPlan(goal)
+  const slices = taskPlan.map((task, index) => taskPlanItemToTaskCard(task, {
+    baseId,
+    index,
+  }))
+  const selectedSlice = slices.find((task) => task.status === "running") ?? slices[0]!
   const replacedTaskId = model.selectedTask.id
   const tasks = [
     ...slices,
     ...model.tasks.filter((task) => task.id !== replacedTaskId),
   ]
+  const activeLeasesByAgent = collectActiveLeasesByAgent(slices)
 
   return deriveDashboardModel({
     ...model,
     agents: model.agents.map((agent) => {
-      if (agent.name === "Atlas") return { ...agent, activeLease: slices[1]!.id, status: "active", queue: agent.queue + 1 }
-      if (agent.name === "Artificer") return { ...agent, activeLease: slices[2]!.id, status: "active", queue: agent.queue + 1 }
-      if (agent.name === "Oracle") return { ...agent, activeLease: slices[3]!.id, status: "reviewing" }
-      if (agent.name === "Steward") return { ...agent, activeLease: slices[4]!.id, status: "idle" }
+      const active = activeLeasesByAgent.get(agent.name)
+      if (active) {
+        return {
+          ...agent,
+          activeLease: active.firstLease,
+          status: agent.name === "Oracle" ? "reviewing" : "active",
+          queue: agent.queue + active.count,
+        }
+      }
 
       return agent
     }),
@@ -1661,14 +1621,14 @@ function refinePlanInModel(
       detail: `${goal} decomposed into ${slices.length} engine-owned slices.`,
       tone: "running",
     }),
-    selectedTaskId: slices[1]!.id,
+    selectedTaskId: selectedSlice.id,
     tasks,
     timeline: prependTimeline(model.timeline, {
       label: "Plan refined",
-      detail: `${goal} now has parallel runtime and interface forge slices.`,
+      detail: `${goal} now has ${countImplementationSlices(slices)} goal-aware Forge slice${countImplementationSlices(slices) === 1 ? "" : "s"}.`,
       tone: "running",
     }),
-    notice: `Refined ${goal} into runtime, interface, review, and seal slices.`,
+    notice: buildPlanRefinementNotice(goal, slices),
   })
 }
 
@@ -1708,7 +1668,8 @@ function refineRuntimePlanInModel(
   const next = buildDashboardModelFromRuntimeSnapshot(runtime.snapshot(), {
     updatedAt: "local refinement",
   })
-  const selectedTask = next.tasks.find((task) => task.title === "Forge: orchestration runtime") ?? next.selectedTask
+  const selectedTask = next.tasks.find((task) => task.status === "running" && task.title.startsWith("Forge:"))
+    ?? next.selectedTask
 
   return {
     ...next,
@@ -1724,8 +1685,78 @@ function refineRuntimePlanInModel(
       detail: `${graph.mission.id} now has ${refined.value.planContract.implementationTaskCount} implementation slices.`,
       tone: "running",
     }),
-    notice: `Refined ${graph.mission.goal} into runtime, interface, review, and seal slices.`,
+    notice: buildPlanRefinementNotice(graph.mission.goal, next.tasks.filter((task) => task.id.startsWith(graph.mission.rootTaskId))),
   }
+}
+
+function taskPlanItemToTaskCard(
+  task: ReturnType<typeof createRunicPlanRefinementTaskPlan>[number],
+  input: { baseId: string; index: number },
+): TaskCard {
+  const agent = selectLocalTaskAgent(task)
+  const title = task.title
+  const isPlan = input.index === 0
+  const isForge = title.startsWith("Forge:")
+
+  return {
+    id: isPlan ? `${input.baseId}_plan` : `${input.baseId}_${normalizeTaskId(task.key)}`,
+    title,
+    agent,
+    status: isPlan ? "verified" : isForge ? "running" : "blocked",
+    lane: selectLocalTaskLane(task),
+    summary: task.description,
+    tools: selectLocalTaskTools(agent),
+    evidence: isPlan ? ["decision"] : [],
+  }
+}
+
+function selectLocalTaskAgent(task: ReturnType<typeof createRunicPlanRefinementTaskPlan>[number]): string {
+  const capabilities = task.requiredCapabilities ?? []
+  const title = task.title
+  if (title.startsWith("Review:")) return "Oracle"
+  if (title.startsWith("Seal:")) return "Steward"
+  if (capabilities.includes("ui")) return "Artificer"
+  if (capabilities.includes("documentation") || capabilities.includes("release")) return "Steward"
+
+  return "Atlas"
+}
+
+function selectLocalTaskLane(task: ReturnType<typeof createRunicPlanRefinementTaskPlan>[number]): TaskLane {
+  if (task.title.startsWith("Plan:") || task.title.startsWith("Seal:")) return "Plan"
+  if (task.title.startsWith("Review:")) return "Verify"
+  if (task.key.includes("repair")) return "Repair"
+
+  return "Build"
+}
+
+function selectLocalTaskTools(agent: string): string[] {
+  if (agent === "Oracle") return ["read", "test"]
+  if (agent === "Steward") return ["read", "edit", "git"]
+
+  return ["read", "edit", "test"]
+}
+
+function collectActiveLeasesByAgent(tasks: TaskCard[]): Map<string, { firstLease: string; count: number }> {
+  const active = new Map<string, { firstLease: string; count: number }>()
+  for (const task of tasks) {
+    if (task.status !== "running") continue
+    const current = active.get(task.agent)
+    active.set(task.agent, {
+      firstLease: current?.firstLease ?? task.id,
+      count: (current?.count ?? 0) + 1,
+    })
+  }
+
+  return active
+}
+
+function countImplementationSlices(tasks: TaskCard[]): number {
+  return tasks.filter((task) => task.title.startsWith("Forge:")).length
+}
+
+function buildPlanRefinementNotice(goal: string, tasks: TaskCard[]): string {
+  const count = countImplementationSlices(tasks)
+  return `Refined ${goal} into ${count} goal-aware Forge slice${count === 1 ? "" : "s"}, review, and seal.`
 }
 
 function forgeDirective(model: DashboardModel, prompt: string): DashboardModel {

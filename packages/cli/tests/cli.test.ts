@@ -637,7 +637,7 @@ describe("runesmith cli", () => {
     expect(graph.mission.goal).toBe("Build direct ignition")
     expect(graph.tasks.task_cli_1.status).toBe("complete")
     expect(graph.tasks.task_cli_1_runtime_forge.status).toBe("running")
-    expect(graph.tasks.task_cli_1_interface_forge.status).toBe("running")
+    expect(graph.tasks.task_cli_1_install_forge.status).toBe("running")
   })
 
   test("ignite heals an invalid runtime capsule before preparing the mission", async () => {
@@ -734,7 +734,7 @@ describe("runesmith cli", () => {
     expect(graph.mission.goal).toBe("Build direct orchestration")
     expect(graph.tasks.task_cli_1.status).toBe("complete")
     expect(graph.tasks.task_cli_1_runtime_forge.status).toBe("running")
-    expect(graph.tasks.task_cli_1_interface_forge.status).toBe("running")
+    expect(graph.tasks.task_cli_1_install_forge.status).toBe("running")
   })
 
   test("go can prime the mission capsule and then launch OpenCode with pass-through args", async () => {

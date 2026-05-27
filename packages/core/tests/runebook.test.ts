@@ -55,7 +55,7 @@ describe("runebook", () => {
       requiredEvidence: ["decision"],
       toolHints: ["runesmith_plan_refine", "runesmith_next"],
     })
-    expect(runebook.activeCard.steps).toContain("Replace the thin Forge/Review/Seal map with proof-backed runtime, interface, review, and seal slices.")
+    expect(runebook.activeCard.steps).toContain("Replace the thin Forge/Review/Seal map with goal-aware proof-backed execution slices.")
     expect(runebook.activeCard.stopConditions).toContain("Do not start broad Forge work while the Plan Contract is thin and evidence-free.")
     expect(prompt).toContain("Active card: Pathfinder plan refinery [auto]")
     expect(prompt).toContain("Tool hints: runesmith_plan_refine, runesmith_next")

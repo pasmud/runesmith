@@ -29,8 +29,84 @@ export type RunicPlanRefinementValue = {
   loopPulse: LoopPulse
 }
 
+type RefinementSliceId =
+  | "repair"
+  | "runtime"
+  | "install"
+  | "interface"
+  | "docs"
+  | "focused"
+
+type RefinementSliceDefinition = {
+  id: RefinementSliceId
+  key: string
+  title: string
+  capabilities: string[]
+  description: (goal: string) => string
+}
+
+const refinementSliceDefinitions: Record<RefinementSliceId, RefinementSliceDefinition> = {
+  repair: {
+    id: "repair",
+    key: "repair-forge",
+    title: "Forge: focused repair path",
+    capabilities: ["typescript", "testing"],
+    description: (goal) =>
+      `Diagnose and repair the failing behavior for "${goal}" with one scoped change path and fresh proof.`,
+  },
+  runtime: {
+    id: "runtime",
+    key: "runtime-forge",
+    title: "Forge: orchestration engine path",
+    capabilities: ["typescript", "testing"],
+    description: (goal) =>
+      `Implement engine, state, adapter, or proof-gate changes required for "${goal}".`,
+  },
+  install: {
+    id: "install",
+    key: "install-forge",
+    title: "Forge: direct install surface",
+    capabilities: ["typescript", "testing", "repository-maintenance"],
+    description: (goal) =>
+      `Implement CLI, plugin, configuration, or setup changes required for "${goal}" to work through direct install.`,
+  },
+  interface: {
+    id: "interface",
+    key: "interface-forge",
+    title: "Forge: operator interface path",
+    capabilities: ["typescript", "ui", "accessibility"],
+    description: (goal) =>
+      `Implement dashboard, component, interaction, or accessibility changes required for "${goal}".`,
+  },
+  docs: {
+    id: "docs",
+    key: "docs-forge",
+    title: "Forge: documentation and handoff path",
+    capabilities: ["documentation", "repository-maintenance"],
+    description: (goal) =>
+      `Update installation, recovery, operator, or release documentation required for "${goal}" and prove the package still validates.`,
+  },
+  focused: {
+    id: "focused",
+    key: "focused-forge",
+    title: "Forge: focused implementation path",
+    capabilities: ["typescript", "testing"],
+    description: (goal) =>
+      `Implement the smallest focused repository change required for "${goal}" with fresh proof.`,
+  },
+}
+
 export function createRunicPlanRefinementTaskPlan(goal: string): MissionTaskPlanItem[] {
   const normalizedGoal = normalizeGoal(goal)
+  const implementationSlices: MissionTaskPlanItem[] = selectRefinementSlices(normalizedGoal).map((slice) => ({
+    key: slice.key,
+    title: slice.title,
+    description: slice.description(normalizedGoal),
+    requiredCapabilities: [...slice.capabilities],
+    requiredEvidence: ["file-change", "test-result"],
+    dependsOn: ["pathfinder-plan"],
+  }))
+  const implementationKeys = implementationSlices.map((slice) => slice.key)
 
   return [
     {
@@ -40,29 +116,14 @@ export function createRunicPlanRefinementTaskPlan(goal: string): MissionTaskPlan
       requiredCapabilities: ["typescript", "testing", "repository-maintenance"],
       requiredEvidence: ["decision"],
     },
-    {
-      key: "runtime-forge",
-      title: "Forge: orchestration runtime",
-      description: `Implement the runtime, adapters, and proof gates required for "${normalizedGoal}".`,
-      requiredCapabilities: ["typescript", "testing"],
-      requiredEvidence: ["file-change", "test-result"],
-      dependsOn: ["pathfinder-plan"],
-    },
-    {
-      key: "interface-forge",
-      title: "Forge: operator control surface",
-      description: `Implement the dashboard and install-facing controls required for "${normalizedGoal}".`,
-      requiredCapabilities: ["typescript", "ui", "accessibility"],
-      requiredEvidence: ["file-change", "test-result"],
-      dependsOn: ["pathfinder-plan"],
-    },
+    ...implementationSlices,
     {
       key: "proof-review",
       title: "Review: proof and risk gate",
       description: `Review implementation proof, residual risk, and operator handoff for "${normalizedGoal}".`,
       requiredCapabilities: ["testing", "review", "risk-analysis"],
       requiredEvidence: ["test-result", "decision"],
-      dependsOn: ["runtime-forge", "interface-forge"],
+      dependsOn: implementationKeys,
     },
     {
       key: "seal-handoff",
@@ -73,6 +134,131 @@ export function createRunicPlanRefinementTaskPlan(goal: string): MissionTaskPlan
       dependsOn: ["proof-review"],
     },
   ]
+}
+
+function selectRefinementSlices(goal: string): RefinementSliceDefinition[] {
+  const profile = deriveGoalProfile(goal)
+  if (profile.docsFocused) return [refinementSliceDefinitions.docs]
+
+  const selected: RefinementSliceId[] = []
+  if (profile.repair) selected.push("repair")
+  if (profile.runtime) selected.push("runtime")
+  if (profile.install) selected.push("install")
+  if (profile.interface) selected.push("interface")
+  if (profile.docs) selected.push("docs")
+  if (selected.length === 0) selected.push("focused")
+
+  return unique(selected).slice(0, 3).map((id) => refinementSliceDefinitions[id])
+}
+
+function deriveGoalProfile(goal: string): {
+  repair: boolean
+  runtime: boolean
+  install: boolean
+  interface: boolean
+  docs: boolean
+  docsFocused: boolean
+} {
+  const text = goal.toLowerCase()
+  const docs = hasAny(text, [
+    "doc",
+    "docs",
+    "document",
+    "documentation",
+    "readme",
+    "install guide",
+    "handoff",
+    "release note",
+    "changelog",
+  ])
+  const docsFocused = docs && hasAny(text, [
+    "document",
+    "write docs",
+    "update docs",
+    "readme",
+    "install guide",
+  ]) && !hasAny(text, [
+    "build",
+    "implement",
+    "fix",
+    "repair",
+    "debug",
+    "dashboard",
+    "ui",
+    "plugin",
+    "adapter",
+    "cli",
+    "runtime",
+  ])
+
+  return {
+    repair: hasAny(text, ["fix", "repair", "debug", "bug", "broken", "failing", "failure", "error", "click"]),
+    runtime: hasAny(text, [
+      "agent",
+      "orchestrat",
+      "runtime",
+      "engine",
+      "ignite",
+      "ignition",
+      "loop",
+      "autopilot",
+      "proof",
+      "recovery",
+      "state",
+      "capsule",
+      "mission",
+      "rune",
+    ]),
+    install: hasAny(text, [
+      "install",
+      "opencode",
+      "plugin",
+      "adapter",
+      "cli",
+      "command",
+      "setup",
+      "bootstrap",
+      "direct",
+      "package",
+      "doctor",
+      "heal",
+    ]),
+    interface: hasAny(text, [
+      "ui",
+      "dashboard",
+      "screen",
+      "theme",
+      "white",
+      "button",
+      "click",
+      "sidebar",
+      "panel",
+      "control surface",
+      "shadcn",
+      "openclaw",
+      "frontend",
+    ]),
+    docs,
+    docsFocused,
+  }
+}
+
+function hasAny(text: string, needles: string[]): boolean {
+  return needles.some((needle) => {
+    if (/^[a-z0-9]+$/.test(needle) && needle.length <= 3) {
+      return new RegExp(`(^|[^a-z0-9])${escapeRegExp(needle)}(?=$|[^a-z0-9])`).test(text)
+    }
+
+    return text.includes(needle)
+  })
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function unique<T>(values: T[]): T[] {
+  return [...new Set(values)]
 }
 
 export function refineRunicMissionPlan(

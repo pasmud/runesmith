@@ -177,7 +177,7 @@ describe("runeweave OS loop", () => {
       implementationTaskCount: 2,
     })
     expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_runtime_forge.status).toBe("running")
-    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_interface_forge.status).toBe("running")
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_install_forge.status).toBe("running")
   })
 
   test("stops cleanly when autonomous review is held by guard findings", async () => {

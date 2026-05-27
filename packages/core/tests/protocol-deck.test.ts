@@ -54,7 +54,7 @@ describe("runic protocol deck", () => {
       toolHints: ["runesmith_plan_refine", "runesmith_next"],
     })
     expect(deck.summary).toBe("Refine plan through Pathfinder Plan Refinery Protocol.")
-    expect(deck.active.procedure).toContain("Replace the thin Forge/Review/Seal map with proof-backed runtime, interface, review, and seal slices.")
+    expect(deck.active.procedure).toContain("Replace the thin Forge/Review/Seal map with goal-aware proof-backed execution slices.")
     expect(deck.active.forbiddenMoves).toContain("Do not start broad Forge work while the Plan Contract is thin and evidence-free.")
     expect(prompt).toContain("Active protocol: Pathfinder Plan Refinery Protocol [auto]")
     expect(prompt).not.toContain("Superpowers")

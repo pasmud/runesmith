@@ -316,7 +316,7 @@ describe("dashboard runtime control plane", () => {
     const graph = result.value.snapshot.graphs.mission_alpha
     expect(Object.keys(graph.tasks).sort()).toEqual([
       "task_alpha",
-      "task_alpha_interface_forge",
+      "task_alpha_install_forge",
       "task_alpha_proof_review",
       "task_alpha_runtime_forge",
       "task_alpha_seal_handoff",
@@ -328,22 +328,22 @@ describe("dashboard runtime control plane", () => {
       requiredEvidence: ["decision"],
     })
     expect(graph.tasks.task_alpha_runtime_forge).toMatchObject({
-      title: "Forge: orchestration runtime",
+      title: "Forge: orchestration engine path",
       status: "running",
       assignedAgentId: "agent_atlas",
       requiredEvidence: ["file-change", "test-result"],
       dependsOn: ["task_alpha"],
     })
-    expect(graph.tasks.task_alpha_interface_forge).toMatchObject({
-      title: "Forge: operator control surface",
+    expect(graph.tasks.task_alpha_install_forge).toMatchObject({
+      title: "Forge: direct install surface",
       status: "running",
-      assignedAgentId: "agent_artificer",
+      assignedAgentId: "agent_atlas",
       requiredEvidence: ["file-change", "test-result"],
       dependsOn: ["task_alpha"],
     })
     expect(graph.tasks.task_alpha_proof_review.dependsOn).toEqual([
       "task_alpha_runtime_forge",
-      "task_alpha_interface_forge",
+      "task_alpha_install_forge",
     ])
     expect(result.value.snapshot.ledgers.mission_alpha.evidence.evidence_alpha).toMatchObject({
       taskId: "task_alpha",
@@ -411,7 +411,7 @@ describe("dashboard runtime control plane", () => {
       implementationTaskCount: 2,
     })
     expect(result.value.snapshot.graphs.mission_alpha.tasks.task_alpha_runtime_forge.status).toBe("running")
-    expect(result.value.snapshot.graphs.mission_alpha.tasks.task_alpha_interface_forge.status).toBe("running")
+    expect(result.value.snapshot.graphs.mission_alpha.tasks.task_alpha_install_forge.status).toBe("running")
   })
 
   test("runs the current Runebook next action from dashboard control", async () => {

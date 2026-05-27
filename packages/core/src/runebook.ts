@@ -151,7 +151,7 @@ function buildActiveRunebookCard(input: {
         intent: "Turn a thin starter map into a concrete execution contract before broad autonomous implementation starts.",
         steps: [
           "Read the current Plan Contract and mission goal.",
-          "Replace the thin Forge/Review/Seal map with proof-backed runtime, interface, review, and seal slices.",
+          "Replace the thin Forge/Review/Seal map with goal-aware proof-backed execution slices.",
           "Record decision evidence for the refined contract.",
           "Claim dependency-ready implementation slices through Dispatch Matrix.",
         ],

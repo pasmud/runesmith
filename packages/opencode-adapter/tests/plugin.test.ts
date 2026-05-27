@@ -2003,10 +2003,7 @@ describe("opencode adapter", () => {
       status: "running",
       assignedAgentId: "agent_atlas",
     })
-    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_interface_forge).toMatchObject({
-      status: "running",
-      assignedAgentId: "agent_artificer",
-    })
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_interface_forge).toBeUndefined()
     expect(snapshot.graphs.mission_alpha.events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -2113,7 +2110,7 @@ describe("opencode adapter", () => {
     expect(task.status).toBe("complete")
     expect(task.assignedAgentId).toBe("agent_atlas")
     expect(snapshot.graphs.mission_alpha.tasks.task_alpha_runtime_forge.status).toBe("running")
-    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_interface_forge.status).toBe("running")
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_interface_forge).toBeUndefined()
     expect(snapshot.graphs.mission_alpha.events.map((event) => event.type)).toEqual(
       expect.arrayContaining(["task.stale", "task.requeued", "task.transitioned"]),
     )

@@ -132,7 +132,7 @@ describe("mission memory", () => {
         id: "refine-plan",
       },
       handoff:
-        "Refine plan for task_alpha: Plan Contract is thin; convert Forge/Review/Seal into proof-backed runtime, interface, review, and seal slices before broad implementation.",
+        "Refine plan for task_alpha: Plan Contract is thin; convert Forge/Review/Seal into goal-aware proof-backed slices before broad implementation.",
     })
     expect(prompt).toContain("Status: needs-plan")
     expect(prompt).toContain("Refine plan for task_alpha")

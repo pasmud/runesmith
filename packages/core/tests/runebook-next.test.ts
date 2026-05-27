@@ -93,14 +93,14 @@ describe("runebook next action", () => {
       requiredEvidence: ["decision"],
     })
     expect(snapshot.graphs.mission_alpha.tasks.task_alpha_runtime_forge).toMatchObject({
-      title: "Forge: orchestration runtime",
+      title: "Forge: orchestration engine path",
       status: "running",
       assignedAgentId: "agent_atlas",
     })
-    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_interface_forge).toMatchObject({
-      title: "Forge: operator control surface",
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_install_forge).toMatchObject({
+      title: "Forge: direct install surface",
       status: "running",
-      assignedAgentId: "agent_artificer",
+      assignedAgentId: "agent_atlas",
     })
     expect(snapshot.ledgers.mission_alpha.evidence.evidence_plan).toMatchObject({
       taskId: "task_alpha",
