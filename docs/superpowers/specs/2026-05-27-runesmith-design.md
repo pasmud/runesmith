@@ -272,7 +272,7 @@ The first adapter exposes these tools:
 
 - `runesmith_autopilot_prepare`: infer or accept the current goal, start or resume a mission, claim the next dependency-ready task, and persist the capsule.
 - `runesmith_autopilot_tick`: advance the active task through the evidence gate and complete it when the contract is satisfied.
-- `runesmith_covenant_status`: report the active autonomous workflow stages installed by Runesmith.
+- `runesmith_covenant_status`: report the installed autonomous workflow plus the live Control Brief, Loop Pulse, and active Runebook runes from runtime state.
 - `runesmith_mission_start`: create a mission from a user goal.
 - `runesmith_mission_status`: summarize graph state.
 - `runesmith_task_claim`: claim a task with an agent contract.

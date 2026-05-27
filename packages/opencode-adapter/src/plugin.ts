@@ -7,6 +7,8 @@ import {
   createRuntime,
   createRunicCovenant,
   defaultRuntimeCapsulePath,
+  deriveCovenantControlBrief,
+  deriveLoopPulse,
   getRequiredEvidenceForTask,
   loadRuntimeCapsule,
   missingRequiredEvidence,
@@ -206,6 +208,10 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
         description: "Return the active Runic Covenant autonomous workflow installed by Runesmith.",
         parameters: objectSchema({}),
         execute() {
+          const snapshot = runtime.snapshot()
+          const controlBrief = deriveCovenantControlBrief(snapshot, covenant)
+          const loopPulse = deriveLoopPulse(snapshot, covenant)
+
           return formatValue("Runic Covenant active", {
             name: covenant.name,
             version: covenant.version,
@@ -215,8 +221,26 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
               id: stage.id,
               name: stage.name,
               gates: stage.gates,
-              evidence: stage.evidence,
-            })),
+                evidence: stage.evidence,
+              })),
+            controlBrief: {
+              status: controlBrief.status,
+              stage: {
+                id: controlBrief.stage.id,
+                name: controlBrief.stage.name,
+              },
+              missionId: controlBrief.missionId,
+              taskId: controlBrief.taskId,
+              missionGoal: controlBrief.missionGoal,
+              taskTitle: controlBrief.taskTitle,
+              taskStatus: controlBrief.taskStatus,
+              assignedAgentId: controlBrief.assignedAgentId,
+              requiredEvidence: controlBrief.requiredEvidence,
+              missingEvidence: controlBrief.missingEvidence,
+              directives: controlBrief.directives,
+            },
+            loopPulse,
+            activeRunes: controlBrief.runes,
           })
         },
       },

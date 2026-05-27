@@ -106,6 +106,48 @@ describe("opencode adapter", () => {
     expect(second.match(/Runic Covenant/g)).toHaveLength(1)
   })
 
+  test("reports live covenant brief and loop pulse from runtime state", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({ runtime })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Ship live Runesmith OS status",
+    })
+
+    const status = await plugin.tool.runesmith_covenant_status.execute({})
+
+    expect(JSON.parse(status.output)).toMatchObject({
+      ok: true,
+      value: {
+        controlBrief: {
+          status: "active",
+          missionId: "mission_alpha",
+          taskId: "task_alpha",
+          stage: {
+            id: "forge",
+            name: "Forge",
+          },
+          missingEvidence: ["file-change", "test-result"],
+        },
+        loopPulse: {
+          health: "attention",
+          nextAction: {
+            id: "continue-forge",
+            label: "Continue forge",
+          },
+        },
+        activeRunes: [
+          {
+            name: "Forge Trace",
+          },
+          {
+            name: "Proofwright",
+          },
+        ],
+      },
+    })
+  })
+
   test("persists mission mutations to a runtime store", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const writes: string[] = []

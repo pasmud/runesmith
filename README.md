@@ -153,4 +153,5 @@ Once installed and OpenCode is restarted, users do not need to invoke a workflow
 - `event`: recovers stale work and advances the active mission on `session.idle` when evidence gates are satisfied.
 - `runesmith_autopilot_prepare`: starts or resumes the active mission from the latest user goal and claims the next ready Covenant task.
 - `runesmith_autopilot_tick`: manually run the same evidence-gated advance loop.
-- Mission tools for status, claim, evidence, completion, covenant status, and recovery.
+- `runesmith_covenant_status`: returns the installed Covenant, live Control Brief, Loop Pulse, and active Runebook runes from the runtime capsule.
+- Mission tools for status, claim, evidence, completion, and recovery.
