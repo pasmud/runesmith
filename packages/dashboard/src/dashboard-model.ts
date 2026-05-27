@@ -1,8 +1,14 @@
 import {
   createRunicCovenant,
   getNextCovenantStage,
+  type AgentContract,
   type CovenantStage,
   type CovenantStageId,
+  type Evidence,
+  type MissionGraph,
+  type RuntimeCapsule,
+  type RuntimeSnapshot,
+  type TaskStatus,
 } from "@runesmith/core"
 
 export type MissionStatus = "running" | "verified" | "stale" | "blocked"
@@ -103,6 +109,8 @@ export type DashboardAction =
   | { type: "run-autopilot-cycle" }
   | { type: "forge-directive"; prompt: string }
   | { type: "advance-covenant-stage" }
+  | { type: "load-runtime-capsule"; capsule: RuntimeCapsule }
+  | { type: "runtime-capsule-unavailable" }
   | { type: "toggle-policy"; policyId: string }
   | { type: "create-snapshot" }
   | { type: "select-agent"; agentId: string }
@@ -399,6 +407,82 @@ export function buildDashboardModel(): DashboardModel {
   })
 }
 
+export function buildDashboardModelFromRuntimeCapsule(capsule: RuntimeCapsule): DashboardModel {
+  return buildDashboardModelFromRuntimeSnapshot(capsule.runtime, {
+    updatedAt: capsule.updatedAt,
+  })
+}
+
+export function buildDashboardModelFromRuntimeSnapshot(
+  snapshot: RuntimeSnapshot,
+  options: { updatedAt?: string } = {},
+): DashboardModel {
+  const covenantStages = cloneCovenantStages(createRunicCovenant().stages)
+  const graphs = Object.values(snapshot.graphs).sort((left, right) => {
+    return right.mission.updatedAt.localeCompare(left.mission.updatedAt) || left.mission.id.localeCompare(right.mission.id)
+  })
+  const tasks = graphs.flatMap((graph) => buildTaskCardsFromGraph(snapshot, graph))
+
+  if (tasks.length === 0) {
+    return deriveDashboardModel({
+      activeCovenantStageId: "frame",
+      activeView: "missions",
+      agents: cloneAgents(seededAgents),
+      commandLog: prependTimeline([], {
+        label: "Capsule empty",
+        detail: "No persisted missions were found in the runtime capsule.",
+        tone: "verified",
+      }),
+      covenantStages,
+      mode: "guarded",
+      notice: "Runtime capsule is empty.",
+      policies: clonePolicies(seededPolicies),
+      selectedAgentId: seededAgents[0]!.id,
+      selectedTaskId: seededTasks[0]!.id,
+      snapshots: cloneSnapshots(seededSnapshots),
+      tasks: cloneTasks(seededTasks),
+      timeline: cloneTimeline(seededTimeline),
+    })
+  }
+
+  const agents = buildAgentsFromSnapshot(snapshot, tasks)
+  const evidenceCount = Object.values(snapshot.ledgers).reduce((sum, ledger) => sum + Object.keys(ledger.evidence).length, 0)
+  const topGraph = graphs[0]!
+  const snapshots: SnapshotRecord[] = [
+    {
+      id: "snapshot_live_capsule",
+      label: "Live capsule",
+      createdAt: options.updatedAt ?? topGraph.mission.updatedAt,
+      hash: `rs_${graphs.length}_${tasks.length}_${evidenceCount}`,
+      tasks: tasks.length,
+      evidence: evidenceCount,
+      score: 0,
+      tone: tasks.some((task) => task.status === "stale" || task.status === "blocked") ? "running" : "verified",
+    },
+  ]
+  const timeline = buildTimelineFromSnapshot(graphs)
+
+  return deriveDashboardModel({
+    activeCovenantStageId: "frame",
+    activeView: "missions",
+    agents,
+    commandLog: prependTimeline([], {
+      label: "Capsule loaded",
+      detail: `${graphs.length} mission${graphs.length === 1 ? "" : "s"} loaded from the runtime capsule.`,
+      tone: "verified",
+    }),
+    covenantStages,
+    mode: "guarded",
+    notice: `Loaded runtime capsule from ${options.updatedAt ?? "local disk"}.`,
+    policies: buildPoliciesFromSnapshot(snapshot, evidenceCount),
+    selectedAgentId: agents[0]?.id ?? seededAgents[0]!.id,
+    selectedTaskId: tasks[0]!.id,
+    snapshots,
+    tasks,
+    timeline,
+  })
+}
+
 export function reduceDashboardModel(model: DashboardModel, action: DashboardAction): DashboardModel {
   switch (action.type) {
     case "select-task": {
@@ -469,6 +553,15 @@ export function reduceDashboardModel(model: DashboardModel, action: DashboardAct
 
     case "advance-covenant-stage":
       return advanceCovenantStage(model)
+
+    case "load-runtime-capsule":
+      return buildDashboardModelFromRuntimeCapsule(action.capsule)
+
+    case "runtime-capsule-unavailable":
+      return deriveDashboardModel({
+        ...model,
+        notice: "No runtime capsule found; showing seeded mission control.",
+      })
 
     case "toggle-policy":
       return togglePolicy(model, action.policyId)
@@ -578,6 +671,148 @@ function advanceCovenantStage(model: DashboardModel): DashboardModel {
     }),
     notice: `Runic Covenant advanced to ${nextStage.name}.`,
   })
+}
+
+function buildTaskCardsFromGraph(snapshot: RuntimeSnapshot, graph: MissionGraph): TaskCard[] {
+  return Object.values(graph.tasks)
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id))
+    .map((task) => {
+      const contract = task.assignedAgentId ? snapshot.contracts[task.assignedAgentId] : undefined
+      const evidence = evidenceForTask(snapshot, graph.mission.id, task.id)
+
+      return {
+        id: task.id,
+        title: task.title,
+        agent: contract?.displayName ?? task.assignedAgentId ?? "Unassigned",
+        status: mapTaskStatus(task.status),
+        lane: mapTaskLane(task.status),
+        summary: task.description || graph.mission.goal,
+        tools: contract?.allowedTools ?? ["read"],
+        evidence: uniqueEvidenceTypes(evidence),
+      } satisfies TaskCard
+    })
+}
+
+function buildAgentsFromSnapshot(snapshot: RuntimeSnapshot, tasks: TaskCard[]): AgentNode[] {
+  const contracts = Object.values(snapshot.contracts)
+    .sort((left, right) => left.displayName.localeCompare(right.displayName) || left.id.localeCompare(right.id))
+
+  if (contracts.length === 0) {
+    return cloneAgents(seededAgents)
+  }
+
+  return contracts.map((contract, index) => buildAgentFromContract(snapshot, tasks, contract, index))
+}
+
+function buildAgentFromContract(
+  snapshot: RuntimeSnapshot,
+  tasks: TaskCard[],
+  contract: AgentContract,
+  index: number,
+): AgentNode {
+  const assignedTasks = tasks.filter((task) => task.agent === contract.displayName)
+  const activeTask = assignedTasks.find((task) => task.status === "running" || task.status === "stale" || task.status === "blocked")
+  const activeLease = activeTask
+    ? Object.values(snapshot.leases.leases).find((lease) => lease.targetId === activeTask.id && lease.status === "active")
+    : undefined
+
+  return {
+    id: contract.id,
+    name: contract.displayName,
+    role: contract.description,
+    status: activeTask ? (activeTask.status === "stale" ? "stalled" : "active") : "idle",
+    activeLease: activeLease?.targetId ?? activeTask?.id ?? "none",
+    capacity: clamp(72 - index * 7 + assignedTasks.length * 6, 42, 96),
+    queue: assignedTasks.filter((task) => task.status !== "verified").length,
+    model: contract.modelPolicy.fallbacks.length > 0
+      ? `${contract.modelPolicy.primary} -> ${contract.modelPolicy.fallbacks[0]}`
+      : contract.modelPolicy.primary,
+    focus: activeTask?.title ?? "Standing by for the next mission lease",
+    successRate: clamp(88 + assignedTasks.filter((task) => task.status === "verified").length * 3, 70, 99),
+    tools: [...contract.allowedTools],
+  }
+}
+
+function buildTimelineFromSnapshot(graphs: MissionGraph[]): TimelineItem[] {
+  const events = graphs
+    .flatMap((graph) => graph.events.map((event) => ({ event, graph })))
+    .sort((left, right) => right.event.at.localeCompare(left.event.at) || left.event.id.localeCompare(right.event.id))
+    .slice(0, 8)
+    .map(({ event, graph }) => {
+      const task = graph.tasks[event.targetId]
+      return {
+        id: event.id,
+        label: event.message,
+        detail: `${graph.mission.goal}: ${task?.title ?? event.targetId}`,
+        tone: task ? mapTaskStatus(task.status) : mapMissionTone(graph.mission.status),
+      } satisfies TimelineItem
+    })
+
+  if (events.length > 0) return events
+
+  return graphs.slice(0, 8).map((graph) => ({
+    id: `event_${graph.mission.id}`,
+    label: "Mission restored",
+    detail: `${graph.mission.goal}: ${Object.keys(graph.tasks).length} task${Object.keys(graph.tasks).length === 1 ? "" : "s"} loaded.`,
+    tone: mapMissionTone(graph.mission.status),
+  }))
+}
+
+function buildPoliciesFromSnapshot(snapshot: RuntimeSnapshot, evidenceCount: number): PolicyGate[] {
+  const activeLeases = Object.values(snapshot.leases.leases).filter((lease) => lease.status === "active").length
+  const totalTasks = Object.values(snapshot.graphs).reduce((sum, graph) => sum + Object.keys(graph.tasks).length, 0)
+
+  return seededPolicies.map((policy) => {
+    if (policy.id === "policy_evidence_gate") {
+      return {
+        ...policy,
+        signal: `${evidenceCount} evidence record${evidenceCount === 1 ? "" : "s"} in live capsule`,
+        coverage: totalTasks > 0 ? clamp(Math.round((evidenceCount / totalTasks) * 50), 45, 100) : policy.coverage,
+      }
+    }
+
+    if (policy.id === "policy_lease_mutex") {
+      return {
+        ...policy,
+        signal: `${activeLeases} active lease${activeLeases === 1 ? "" : "s"} restored from capsule`,
+      }
+    }
+
+    return { ...policy }
+  })
+}
+
+function evidenceForTask(snapshot: RuntimeSnapshot, missionId: string, taskId: string): Evidence[] {
+  return Object.values(snapshot.ledgers[missionId]?.evidence ?? {})
+    .filter((evidence) => evidence.taskId === taskId)
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id))
+}
+
+function uniqueEvidenceTypes(evidence: Evidence[]): string[] {
+  return [...new Set(evidence.map((item) => item.type))]
+}
+
+function mapTaskStatus(status: TaskStatus): MissionStatus {
+  if (status === "complete" || status === "verifying") return "verified"
+  if (status === "stale") return "stale"
+  if (status === "blocked" || status === "failed" || status === "cancelled") return "blocked"
+
+  return "running"
+}
+
+function mapMissionTone(status: MissionGraph["mission"]["status"]): MissionStatus {
+  if (status === "complete" || status === "verifying") return "verified"
+  if (status === "blocked" || status === "failed" || status === "cancelled") return "blocked"
+
+  return "running"
+}
+
+function mapTaskLane(status: TaskStatus): TaskLane {
+  if (status === "queued") return "Plan"
+  if (status === "complete" || status === "verifying") return "Verify"
+  if (status === "stale" || status === "blocked" || status === "failed" || status === "cancelled") return "Recover"
+
+  return "Build"
 }
 
 function buildMetrics(tasks: TaskCard[]): Record<MissionStatus, number> {

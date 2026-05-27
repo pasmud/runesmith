@@ -79,7 +79,7 @@ Responsibilities:
 - Vite React app.
 - shadcn/ui component conventions.
 - OpenClaw OS-inspired structure: workspace sidebar, mission lanes, live evidence, tool/action timeline, agent/session visibility, direct controls.
-- Uses seeded local data in the first slice, with an API boundary ready for runtime data.
+- Reads the local runtime capsule through a Vite dev API and falls back to seeded data only when no capsule exists.
 
 ### `packages/testbench`
 

@@ -1,4 +1,4 @@
-import { useReducer, useState, type CSSProperties, type Dispatch, type FormEvent, type ReactNode } from "react"
+import { useEffect, useReducer, useState, type CSSProperties, type Dispatch, type FormEvent, type ReactNode } from "react"
 import {
   Activity,
   AlertTriangle,
@@ -17,6 +17,7 @@ import {
   LayoutDashboard,
   Lock,
   PauseCircle,
+  RefreshCw,
   Search,
   ShieldCheck,
   SlidersHorizontal,
@@ -38,6 +39,7 @@ import {
   type SnapshotRecord,
   type TaskCard,
 } from "./dashboard-model"
+import { loadDashboardRuntimeCapsule } from "./runtime-capsule-client"
 
 const lanes = ["Plan", "Build", "Verify", "Recover"] as const
 
@@ -98,7 +100,24 @@ type DashboardModel = ReturnType<typeof buildDashboardModel>
 export function App() {
   const [model, dispatch] = useReducer(reduceDashboardModel, undefined, buildDashboardModel)
   const [directive, setDirective] = useState("")
+  const [capsuleLoading, setCapsuleLoading] = useState(false)
   const activeSection = sectionMeta[model.activeView]
+
+  const refreshRuntimeCapsule = async () => {
+    setCapsuleLoading(true)
+    try {
+      const capsule = await loadDashboardRuntimeCapsule()
+      dispatch(capsule ? { type: "load-runtime-capsule", capsule } : { type: "runtime-capsule-unavailable" })
+    } catch {
+      dispatch({ type: "runtime-capsule-unavailable" })
+    } finally {
+      setCapsuleLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void refreshRuntimeCapsule()
+  }, [])
 
   const forgeDirective = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -117,6 +136,9 @@ export function App() {
             <p>{activeSection.subtitle}</p>
           </div>
           <div className="topbar-actions">
+            <Button disabled={capsuleLoading} onClick={refreshRuntimeCapsule} variant="outline">
+              <RefreshCw data-icon="inline-start" />{capsuleLoading ? "Loading" : "Capsule"}
+            </Button>
             <Button onClick={() => dispatch({ type: "create-snapshot" })} variant="outline">
               <Camera data-icon="inline-start" />Snapshot
             </Button>
@@ -254,7 +276,7 @@ function HomeView({ dispatch, model }: { dispatch: DashboardDispatch; model: Das
   return (
     <section className="home-stack">
       <section>
-        <SectionHeader action="View all 5" title="Top agents" />
+        <SectionHeader action={`View all ${model.agents.length}`} title="Top agents" />
         <div className="top-agent-grid">
           {model.agents.slice(0, 4).map((agent) => (
             <button className="top-agent-card" key={agent.id} onClick={() => dispatch({ type: "select-agent", agentId: agent.id })} type="button">

@@ -50,6 +50,8 @@ The dashboard is intentionally not a static report. It models the working loop a
 - **Policy gates**: toggle evidence, lease, tool-scope, stall-radar, and human-hold guardrails.
 - **Snapshots**: seal replayable mission checkpoints with task, evidence, and readiness counts.
 
+When the local dev dashboard is running, it reads the same runtime capsule through `/api/runtime-capsule` and falls back to seeded data only when no capsule exists yet.
+
 Every dashboard control mutates local OS state today. Runtime-backed streaming can plug into the same model boundary.
 
 ## Development

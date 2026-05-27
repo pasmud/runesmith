@@ -1,6 +1,131 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildDashboardModel, reduceDashboardModel } from "../src/dashboard-model"
+import type { RuntimeCapsule } from "@runesmith/core"
+import {
+  buildDashboardModel,
+  buildDashboardModelFromRuntimeCapsule,
+  reduceDashboardModel,
+} from "../src/dashboard-model"
+
+const capsule: RuntimeCapsule = {
+  version: 1,
+  updatedAt: "2026-05-27T00:00:00.000Z",
+  runtime: {
+    graphs: {
+      mission_live: {
+        mission: {
+          id: "mission_live",
+          goal: "Ship live dashboard",
+          status: "running",
+          rootTaskId: "task_live",
+          createdAt: "2026-05-27T00:00:00.000Z",
+          updatedAt: "2026-05-27T00:05:00.000Z",
+        },
+        tasks: {
+          task_live: {
+            id: "task_live",
+            missionId: "mission_live",
+            title: "Wire capsule feed",
+            description: "Render persisted OpenCode mission state in the dashboard.",
+            status: "running",
+            requiredCapabilities: ["typescript"],
+            assignedAgentId: "agent_atlas",
+            createdAt: "2026-05-27T00:00:00.000Z",
+            updatedAt: "2026-05-27T00:05:00.000Z",
+          },
+          task_review: {
+            id: "task_review",
+            missionId: "mission_live",
+            title: "Review dashboard adapter",
+            description: "Check capsule mapping and UI behavior.",
+            status: "complete",
+            requiredCapabilities: ["testing"],
+            assignedAgentId: "agent_oracle",
+            createdAt: "2026-05-27T00:00:00.000Z",
+            updatedAt: "2026-05-27T00:05:00.000Z",
+          },
+        },
+        events: [
+          {
+            id: "event_live",
+            type: "task.claimed",
+            at: "2026-05-27T00:05:00.000Z",
+            targetId: "task_live",
+            message: "Atlas claimed the capsule adapter task",
+          },
+        ],
+      },
+    },
+    ledgers: {
+      mission_live: {
+        evidence: {
+          evidence_file: {
+            id: "evidence_file",
+            taskId: "task_live",
+            type: "file-change",
+            summary: "Added capsule adapter",
+            payload: {},
+            createdAt: "2026-05-27T00:04:00.000Z",
+          },
+          evidence_test: {
+            id: "evidence_test",
+            taskId: "task_review",
+            type: "test-result",
+            summary: "Dashboard tests passed",
+            payload: {},
+            createdAt: "2026-05-27T00:05:00.000Z",
+          },
+        },
+      },
+    },
+    leases: {
+      leases: {
+        lease_live: {
+          id: "lease_live",
+          targetId: "task_live",
+          holder: "atlas",
+          purpose: "task.claim",
+          idempotencyKey: "claim-live",
+          expiresAt: "2026-05-27T00:10:00.000Z",
+          status: "active",
+          createdAt: "2026-05-27T00:05:00.000Z",
+        },
+      },
+    },
+    contracts: {
+      agent_atlas: {
+        id: "agent_atlas",
+        displayName: "Atlas",
+        description: "Runtime implementer",
+        capabilities: ["typescript"],
+        allowedTools: ["read", "edit", "test"],
+        modelPolicy: {
+          primary: "gpt-5.1-codex",
+          fallbacks: ["claude-sonnet"],
+        },
+        fileScope: ["packages/dashboard/**"],
+        completionCriteria: ["Adapter renders capsule tasks"],
+        requiredEvidence: ["file-change", "test-result"],
+        fallbacks: ["agent_oracle"],
+      },
+      agent_oracle: {
+        id: "agent_oracle",
+        displayName: "Oracle",
+        description: "Verification agent",
+        capabilities: ["testing"],
+        allowedTools: ["read", "test"],
+        modelPolicy: {
+          primary: "gpt-5.1-codex",
+          fallbacks: [],
+        },
+        fileScope: ["packages/dashboard/**"],
+        completionCriteria: ["Tests passed"],
+        requiredEvidence: ["test-result"],
+        fallbacks: [],
+      },
+    },
+  },
+}
 
 describe("dashboard model", () => {
   test("derives mission counts from seeded mission tasks", () => {
@@ -157,5 +282,47 @@ describe("dashboard model", () => {
     expect(next.activeCovenantStage.id).toBe("map")
     expect(next.commandLog.at(0)?.label).toBe("Covenant advanced")
     expect(next.notice).toBe("Runic Covenant advanced to Mission Map.")
+  })
+
+  test("builds dashboard state from a persisted runtime capsule", () => {
+    const model = buildDashboardModelFromRuntimeCapsule(capsule)
+
+    expect(model.tasks.map((task) => task.id)).toEqual(["task_live", "task_review"])
+    expect(model.selectedTask.title).toBe("Wire capsule feed")
+    expect(model.selectedTask.evidence).toEqual(["file-change"])
+    expect(model.metrics).toEqual({
+      running: 1,
+      verified: 1,
+      stale: 0,
+      blocked: 0,
+    })
+    expect(model.agents.map((agent) => agent.name)).toEqual(["Atlas", "Oracle"])
+    expect(model.agents[0]?.activeLease).toBe("task_live")
+    expect(model.snapshots[0]?.label).toBe("Live capsule")
+    expect(model.notice).toBe("Loaded runtime capsule from 2026-05-27T00:00:00.000Z.")
+  })
+
+  test("hydrates the dashboard from a runtime capsule action", () => {
+    const model = buildDashboardModel()
+
+    const next = reduceDashboardModel(model, {
+      type: "load-runtime-capsule",
+      capsule,
+    })
+
+    expect(next.tasks).toHaveLength(2)
+    expect(next.selectedTask.id).toBe("task_live")
+    expect(next.commandLog.at(0)?.label).toBe("Capsule loaded")
+    expect(next.timeline.at(0)?.detail).toContain("Ship live dashboard")
+  })
+
+  test("keeps seeded dashboard state when no runtime capsule is available", () => {
+    const model = buildDashboardModel()
+
+    const next = reduceDashboardModel(model, { type: "runtime-capsule-unavailable" })
+
+    expect(next.tasks).toHaveLength(model.tasks.length)
+    expect(next.selectedTask.id).toBe(model.selectedTask.id)
+    expect(next.notice).toBe("No runtime capsule found; showing seeded mission control.")
   })
 })
