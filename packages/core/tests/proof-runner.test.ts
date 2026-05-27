@@ -166,4 +166,50 @@ describe("proof runner", () => {
       ]),
     )
   })
+
+  test("bounds proof command output before persisting diagnostic evidence", async () => {
+    const runtime = createRuntime({ snapshot })
+    const plan = deriveProofPlan(snapshot, {
+      packageManager: "bun@1.3.13",
+      scripts: {
+        test: "bun test",
+      },
+    })
+
+    const result = await runProofPlan(runtime, plan, {
+      nextEvidenceId: () => "evidence_bounded_diagnostic",
+      now: () => new Date("2026-05-27T00:02:00.000Z"),
+      maxOutputLength: 12,
+      async runCommand() {
+        return {
+          exitCode: 1,
+          stdout: "0123456789abcdefghijklmnopqrstuvwxyz",
+          stderr: "abcdefghijklmnopqrstuvwxyz0123456789",
+        }
+      },
+    })
+
+    expect(result).toMatchObject({
+      status: "failed",
+      commands: [
+        {
+          command: "bun test",
+          evidenceType: "diagnostic",
+          stdout: "0123456789ab...",
+          stderr: "abcdefghijkl...",
+          stdoutTruncated: true,
+          stderrTruncated: true,
+        },
+      ],
+    })
+    expect(runtime.snapshot().ledgers.mission_alpha.evidence.evidence_bounded_diagnostic).toMatchObject({
+      type: "diagnostic",
+      payload: {
+        stdout: "0123456789ab...",
+        stderr: "abcdefghijkl...",
+        stdoutTruncated: true,
+        stderrTruncated: true,
+      },
+    })
+  })
 })

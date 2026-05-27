@@ -36,7 +36,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - Runesmith Review Lens turns proof, risk, and decision state into a pre-seal checklist with findings, so autonomous Review carries inspectable reasoning instead of a vague approval note.
 - Runesmith Seal Audit binds proof, scope, review, and the final Sealmark decision into one completion gate, so OpenCode sees whether it may claim done, must run proof, must repair, or must resolve drift before sealing.
 - Runesmith Proof Plan turns missing proof or failed diagnostics into concrete verification commands, so agents can rerun the failing command, typecheck, lint, test, and build without the user remembering a workflow ritual.
-- Runesmith Proof Runner can execute those Proof Plan commands, capture passing `test-result` evidence or failing `diagnostic` evidence, and advance the mission through the same evidence gate.
+- Runesmith Proof Runner can execute those Proof Plan commands, capture passing `test-result` evidence or failing `diagnostic` evidence with bounded logs, and advance the mission through the same evidence gate.
 - Runesmith Ignite is the least-ceremony terminal entrypoint: one command installs/configures the OpenCode package plugin, prepares or resumes the matching Covenant mission, claims the active task, and runs the OS loop once.
 - Runesmith Heal repairs the local OS install by regenerating missing config, backing up and replacing invalid runtime capsules, restoring plugin wiring, and rerunning doctor checks.
 - Runesmith Next is the hands-off router over the Runebook: one CLI command, one OpenCode tool, and one dashboard button that proves, repairs, resolves a supplied risk decision, recovers, or advances whichever card is active.
@@ -84,7 +84,7 @@ Mission Memory is the durable handoff layer above the pulse. It summarizes wheth
 
 Proof Plan is the command layer above Mission Memory. It detects when the active task is missing passing `test-result` proof, has stale passing proof, or has a failed diagnostic, then emits the next verification recipe: rerun the latest failing command first during repair, rerun the last stale targeted proof command after newer edits, then run the repo's typecheck, lint, test, and build scripts when available. The active Runebook card embeds those commands so OpenCode prompt injection, compaction, CLI status, CLI mission inspect, and the dashboard all read the same proof recipe.
 
-Proof Runner executes that recipe when OpenCode, the CLI, or the dashboard asks Runesmith to prove the active task. Passing commands become `test-result` evidence; failed commands become `diagnostic` evidence and stop the run so Repair Gate stays focused on the first failing proof. A passing proof run immediately calls the shared mission loop, so verified work can advance without a manual evidence command.
+Proof Runner executes that recipe when OpenCode, the CLI, or the dashboard asks Runesmith to prove the active task. Passing commands become `test-result` evidence; failed commands become `diagnostic` evidence and stop the run so Repair Gate stays focused on the first failing proof. Command output is capped before it enters the runtime capsule, with truncation marked explicitly, so noisy failures do not bloat future prompts or compaction context. A passing proof run immediately calls the shared mission loop, so verified work can advance without a manual evidence command.
 
 Runesmith Ignite sits above setup and mission commands for first use. `runesmith ignite "Ship the feature"` defaults to the direct package-plugin install path, writes or refreshes OpenCode config, creates the runtime capsule, starts or resumes the matching Covenant mission, claims the current task, and runs Runeweave once. The command is intentionally higher level than `up`, `mission start`, and `run`: new users get one useful entrypoint, while operators can still drop to lower-level controls when debugging.
 
@@ -228,7 +228,7 @@ Run the active proof plan and let Runesmith write evidence:
 bun packages/cli/src/index.ts prove
 ```
 
-`prove` reads the runtime capsule, runs the active Proof Plan commands, records each passing command as `test-result` evidence, records the first failing command as `diagnostic` evidence, saves the capsule, and advances the shared mission loop when proof passes.
+`prove` reads the runtime capsule, runs the active Proof Plan commands, records each passing command as `test-result` evidence, records the first failing command as `diagnostic` evidence with bounded stdout/stderr, saves the capsule, and advances the shared mission loop when proof passes.
 
 Resolve the active risk hold without looking up mission or task ids:
 

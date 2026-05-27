@@ -19,6 +19,8 @@ export type ProofRunCommandResult = {
   evidenceType: EvidenceType
   stdout?: string
   stderr?: string
+  stdoutTruncated?: boolean
+  stderrTruncated?: boolean
 }
 
 export type ProofRunStatus = "idle" | "passed" | "failed"
@@ -34,7 +36,10 @@ export type RunProofPlanOptions = {
   nextEvidenceId: () => string
   now?: () => Date
   runCommand: ProofCommandRunner
+  maxOutputLength?: number
 }
+
+const defaultProofOutputLimit = 4_000
 
 export async function runProofPlan(
   runtime: RunesmithRuntime,
@@ -51,11 +56,14 @@ export async function runProofPlan(
   }
 
   const results: ProofRunCommandResult[] = []
+  const maxOutputLength = normalizeOutputLimit(options.maxOutputLength)
   for (const command of plan.commands) {
     const execution = await options.runCommand(command)
     const passed = execution.exitCode === 0
     const evidenceType: EvidenceType = passed ? "test-result" : "diagnostic"
     const evidenceId = options.nextEvidenceId()
+    const stdout = truncateProofOutput(execution.stdout, maxOutputLength)
+    const stderr = truncateProofOutput(execution.stderr, maxOutputLength)
     const result: ProofRunCommandResult = {
       evidenceId,
       command: command.command,
@@ -63,8 +71,10 @@ export async function runProofPlan(
       label: command.label,
       exitCode: execution.exitCode,
       evidenceType,
-      stdout: execution.stdout,
-      stderr: execution.stderr,
+      stdout: stdout.value,
+      stderr: stderr.value,
+      stdoutTruncated: stdout.truncated || undefined,
+      stderrTruncated: stderr.truncated || undefined,
     }
 
     const recorded = runtime.addTaskEvidence({
@@ -80,8 +90,10 @@ export async function runProofPlan(
           label: command.label,
           exitCode: execution.exitCode,
           mode: "runesmith-proof-runner",
-          stdout: execution.stdout,
-          stderr: execution.stderr,
+          stdout: stdout.value,
+          stderr: stderr.value,
+          stdoutTruncated: stdout.truncated || undefined,
+          stderrTruncated: stderr.truncated || undefined,
         },
         createdAt: (options.now?.() ?? new Date()).toISOString(),
       },
@@ -111,5 +123,24 @@ export async function runProofPlan(
     missionId: plan.missionId,
     taskId: plan.taskId,
     commands: results,
+  }
+}
+
+function normalizeOutputLimit(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    return defaultProofOutputLimit
+  }
+
+  return value
+}
+
+function truncateProofOutput(value: string | undefined, maxLength: number): { value?: string; truncated: boolean } {
+  if (value === undefined || value.length <= maxLength) {
+    return { value, truncated: false }
+  }
+
+  return {
+    value: `${value.slice(0, maxLength)}...`,
+    truncated: true,
   }
 }
