@@ -65,7 +65,7 @@ describe("package publish contracts", () => {
       bun: "./packages/opencode-adapter/src/plugin.ts",
       import: "./packages/opencode-adapter/dist/plugin.js",
     })
-    expect(pkg.scripts?.prepare).toBe("bun run build:packages")
+    expect(pkg.scripts?.prepare).toBe("bun run build")
     expect(pkg.dependencies?.["@runesmith/core"]).toBe("file:packages/core")
     expect(pkg.dependencies?.["jsonc-parser"]).toBe("^3.3.1")
     expect(pkg.files).toEqual([
@@ -77,6 +77,7 @@ describe("package publish contracts", () => {
       "packages/core/dist",
       "packages/core/src",
       "packages/core/package.json",
+      "packages/dashboard/dist",
       "packages/opencode-adapter/dist",
       "packages/opencode-adapter/src",
       "packages/opencode-adapter/package.json",

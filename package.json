@@ -24,6 +24,7 @@
     "packages/core/dist",
     "packages/core/src",
     "packages/core/package.json",
+    "packages/dashboard/dist",
     "packages/opencode-adapter/dist",
     "packages/opencode-adapter/src",
     "packages/opencode-adapter/package.json",
@@ -38,7 +39,7 @@
     "build": "bun run build:packages && bun run --cwd packages/dashboard build",
     "build:packages": "tsc -b packages/core packages/opencode-adapter packages/cli packages/testbench",
     "dev:dashboard": "bun run --cwd packages/dashboard dev",
-    "prepare": "bun run build:packages",
+    "prepare": "bun run build",
     "test": "bun test",
     "typecheck": "tsc -b packages/core packages/opencode-adapter packages/cli packages/testbench packages/dashboard"
   },

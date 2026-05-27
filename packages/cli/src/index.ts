@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { dirname } from "node:path"
-import { pathToFileURL } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import {
   advanceRunicMissionLoop,
@@ -245,6 +245,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     return launchOpenCode(args.slice(1), host)
   }
 
+  if (command === "dashboard") {
+    return runesmithDashboard(args.slice(1), host)
+  }
+
   if (command === "prove") {
     return runProofFromCli(host)
   }
@@ -358,7 +362,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     ].join("\n"))
   }
 
-  return failure("Usage: runesmith <ignite|heal|up|status|run|next|launch|prove|install|init|doctor|risk resolve|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
+  return failure("Usage: runesmith <ignite|heal|up|status|run|next|launch|dashboard|prove|install|init|doctor|risk resolve|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
 }
 
 function success(stdout: string): CliResult {
@@ -519,9 +523,39 @@ async function runesmithUp(args: string[], host: CliHost): Promise<CliResult> {
       ? `opencode: found ${openCodeCli}`
       : "opencode: missing (install OpenCode CLI, then run `runesmith doctor`)",
     "covenant: automatic",
-    "dashboard: bun run dev:dashboard",
+    "dashboard: runesmith dashboard",
     "",
   ].join("\n"))
+}
+
+async function runesmithDashboard(args: string[], host: CliHost): Promise<CliResult> {
+  if (!host.runCommand) {
+    return failure("Dashboard launch requires a command runner.\n")
+  }
+
+  await repairProjectConfig(host)
+  const runtimeCapsulePath = await ensureRuntimeCapsule(host)
+  const options = parseFlagOptions(args)
+  const hostName = options.host ?? "127.0.0.1"
+  const port = options.port ?? "4177"
+
+  const launched = await host.runCommand("bun", [
+    resolveDashboardServerScript(),
+    "--host",
+    hostName,
+    "--port",
+    port,
+    "--runtime",
+    runtimeCapsulePath,
+    "--dist",
+    resolveDashboardDistDir(),
+  ])
+
+  return {
+    exitCode: launched.exitCode,
+    stdout: launched.stdout ?? "",
+    stderr: launched.stderr ?? "",
+  }
 }
 
 async function runesmithStatus(host: CliHost): Promise<CliResult> {
@@ -569,7 +603,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     `runebook: ${formatRunebookCard(runebook)}`,
     `runebook commands: ${formatRunebookCommands(runebook)}`,
     `protocol: ${formatRunicProtocol(protocolDeck)}`,
-    "dashboard: bun run dev:dashboard",
+    "dashboard: runesmith dashboard",
     "launch: runesmith launch -- <opencode args>",
     "",
   ].join("\n"))
@@ -666,7 +700,7 @@ async function runesmithIgnite(args: string[], host: CliHost): Promise<CliResult
       `next: ${value.finalPulse.nextAction.label} [${value.finalPulse.health}/${value.finalPulse.nextAction.priority}]`,
       ...formatPulseDiagnostics(value.finalPulse),
       `runtime: ${runtimeCapsulePath}`,
-      "dashboard: bun run dev:dashboard",
+      "dashboard: runesmith dashboard",
       "launch: runesmith launch -- <opencode args>",
       "",
     ].join("\n"),
@@ -1583,6 +1617,16 @@ async function installNpmPlugin(
 
 function resolveRepoPluginSource(): string {
   return new URL("../../opencode-adapter/src/plugin.ts", import.meta.url).pathname
+}
+
+function resolveDashboardServerScript(): string {
+  const extension = import.meta.url.endsWith(".ts") ? "ts" : "js"
+
+  return fileURLToPath(new URL(`./dashboard-server.${extension}`, import.meta.url))
+}
+
+function resolveDashboardDistDir(): string {
+  return fileURLToPath(new URL("../../dashboard/dist", import.meta.url))
 }
 
 if (import.meta.main) {

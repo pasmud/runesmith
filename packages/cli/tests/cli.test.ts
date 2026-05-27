@@ -447,7 +447,7 @@ describe("runesmith cli", () => {
         "runtime: .runesmith/runtime/capsule.json",
         "opencode: found E:/tools/opencode.exe",
         "covenant: automatic",
-        "dashboard: bun run dev:dashboard",
+        "dashboard: runesmith dashboard",
         "",
       ].join("\n"),
       stderr: "",
@@ -483,7 +483,7 @@ describe("runesmith cli", () => {
         "runtime: .runesmith/runtime/capsule.json",
         "opencode: found E:/tools/opencode.exe",
         "covenant: automatic",
-        "dashboard: bun run dev:dashboard",
+        "dashboard: runesmith dashboard",
         "",
       ].join("\n"),
       stderr: "",
@@ -549,7 +549,7 @@ describe("runesmith cli", () => {
         "runtime: .runesmith/runtime/capsule.json",
         "opencode: missing (install OpenCode CLI, then run `runesmith doctor`)",
         "covenant: automatic",
-        "dashboard: bun run dev:dashboard",
+        "dashboard: runesmith dashboard",
         "",
       ].join("\n"),
       stderr: "",
@@ -692,7 +692,7 @@ describe("runesmith cli", () => {
         "runebook: Proofwright proof gate [auto]",
         "runebook commands: bun test",
         "protocol: Proofwright Proof Protocol [auto]",
-        "dashboard: bun run dev:dashboard",
+        "dashboard: runesmith dashboard",
         "launch: runesmith launch -- <opencode args>",
         "",
       ].join("\n"),
@@ -756,12 +756,69 @@ describe("runesmith cli", () => {
         "runebook: Pathfinder mission intake [auto]",
         "runebook commands: none",
         "protocol: Pathfinder Intake Protocol [auto]",
-        "dashboard: bun run dev:dashboard",
+        "dashboard: runesmith dashboard",
         "launch: runesmith launch -- <opencode args>",
         "",
       ].join("\n"),
       stderr: "",
     })
+  })
+
+  test("dashboard bootstraps runtime state and launches the packaged dashboard server", async () => {
+    const launched: Array<{ command: string; args: string[] }> = []
+    const host = createMemoryHost(
+      {},
+      {
+        runCommand(command, args) {
+          launched.push({ command, args })
+
+          return {
+            exitCode: 0,
+            stdout: [
+              "Runesmith dashboard",
+              "url: http://127.0.0.1:4888",
+              "runtime: .runesmith/runtime/capsule.json",
+              "",
+            ].join("\n"),
+            stderr: "",
+          }
+        },
+      },
+    )
+
+    const result = await runCli(["dashboard", "--host", "127.0.0.1", "--port", "4888"], host)
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Runesmith dashboard",
+        "url: http://127.0.0.1:4888",
+        "runtime: .runesmith/runtime/capsule.json",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+    expect(JSON.parse(host.readText(".runesmith/config.json"))).toEqual({
+      version: 1,
+      runtimeDir: ".runesmith/runtime",
+      defaultStaleAfterMs: 120000,
+    })
+    expect(JSON.parse(host.readText(".runesmith/runtime/capsule.json")).runtime).toEqual({
+      graphs: {},
+      ledgers: {},
+      leases: { leases: {} },
+      contracts: {},
+    })
+    expect(launched).toHaveLength(1)
+    expect(launched[0]?.command).toBe("bun")
+    expect(launched[0]?.args).toContain("--host")
+    expect(launched[0]?.args).toContain("127.0.0.1")
+    expect(launched[0]?.args).toContain("--port")
+    expect(launched[0]?.args).toContain("4888")
+    expect(launched[0]?.args).toContain("--runtime")
+    expect(launched[0]?.args).toContain(".runesmith/runtime/capsule.json")
+    expect(launched[0]?.args).toContain("--dist")
+    expect(launched[0]?.args.some((arg) => arg.includes("packages") && arg.includes("dashboard") && arg.includes("dist"))).toBe(true)
   })
 
   test("launch bootstraps Runesmith and runs OpenCode with pass-through args", async () => {
@@ -803,7 +860,7 @@ describe("runesmith cli", () => {
         "runtime: .runesmith/runtime/capsule.json",
         "opencode: found E:/tools/opencode.exe",
         "covenant: automatic",
-        "dashboard: bun run dev:dashboard",
+        "dashboard: runesmith dashboard",
         "",
         "launch: E:/tools/opencode.exe --help",
         "OpenCode started",
@@ -840,7 +897,7 @@ describe("runesmith cli", () => {
         "runtime: .runesmith/runtime/capsule.json",
         "opencode: missing (install OpenCode CLI, then run `runesmith doctor`)",
         "covenant: automatic",
-        "dashboard: bun run dev:dashboard",
+        "dashboard: runesmith dashboard",
         "",
       ].join("\n"),
       stderr: "OpenCode CLI not found. Install OpenCode CLI, then rerun `runesmith launch`.\n",
