@@ -1,0 +1,165 @@
+import { describe, expect, test } from "bun:test"
+
+import { buildRunebookPrompt, createRuntime, deriveRunebook, type AgentContract } from "../src/index"
+
+const fixedNow = () => new Date("2026-05-27T00:00:00.000Z")
+const ids = (prefix: string) => `${prefix}_alpha`
+
+const atlas: AgentContract = {
+  id: "agent_atlas",
+  displayName: "Atlas",
+  description: "Implementation agent",
+  capabilities: ["typescript", "testing"],
+  allowedTools: ["read", "edit", "bash", "test"],
+  modelPolicy: {
+    primary: "anthropic/claude-sonnet-4.5",
+    fallbacks: ["openai/gpt-5.1-codex"],
+  },
+  fileScope: ["packages/**"],
+  completionCriteria: ["Code compiles", "Tests pass"],
+  requiredEvidence: ["file-change", "test-result"],
+  fallbacks: ["agent_oracle"],
+}
+
+describe("runebook", () => {
+  test("derives a guarded Faultwright repair card with exact proof commands", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Repair runebook proof",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runebook",
+        payload: { filePath: "packages/core/src/runebook.ts" },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_diagnostic",
+        taskId: "task_alpha",
+        type: "diagnostic",
+        summary: "Runebook tests failed",
+        payload: { command: "bun test packages/core/tests/runebook.test.ts", exitCode: 1 },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+
+    const runebook = deriveRunebook(runtime.snapshot(), {
+      proofPlanOptions: {
+        packageManager: "bun@1.3.13",
+        scripts: {
+          test: "bun test",
+        },
+      },
+    })
+    const prompt = buildRunebookPrompt(runtime.snapshot(), {
+      proofPlanOptions: {
+        packageManager: "bun@1.3.13",
+        scripts: {
+          test: "bun test",
+        },
+      },
+    })
+
+    expect(runebook.activeCard).toMatchObject({
+      id: "faultwright-repair",
+      title: "Faultwright repair loop",
+      nextActionId: "repair-diagnostic",
+      autonomy: "guarded",
+      requiredEvidence: ["test-result"],
+      toolHints: ["runesmith_proof_run"],
+    })
+    expect(runebook.activeCard.steps[0]).toContain("Runebook tests failed")
+    expect(runebook.activeCard.commands.map((command) => command.command)).toEqual([
+      "bun test packages/core/tests/runebook.test.ts",
+      "bun test",
+    ])
+    expect(runebook.activeCard.stopConditions).toContain("Hold completion until the rerun records passing test-result evidence.")
+    expect(prompt).toContain("## Runesmith Runebook")
+    expect(prompt).toContain("Active card: Faultwright repair loop [guarded]")
+    expect(prompt).toContain("1. Rerun failing command: bun test packages/core/tests/runebook.test.ts")
+  })
+
+  test("derives a hold-mode risk decision card without raw evidence plumbing", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Resolve runebook risk",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed cleanup code",
+        payload: { filePath: "packages/core/src/runebook.ts" },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Runebook tests passed",
+        payload: { command: "bun test packages/core/tests/runebook.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_risk",
+        taskId: "task_alpha",
+        type: "risk",
+        summary: "Deletes generated user files without confirmation",
+        payload: { severity: "high" },
+        createdAt: "2026-05-27T00:03:00.000Z",
+      },
+    })
+
+    const runebook = deriveRunebook(runtime.snapshot())
+    const prompt = buildRunebookPrompt(runtime.snapshot())
+
+    expect(runebook.activeCard).toMatchObject({
+      id: "mirrorglass-risk-decision",
+      title: "Mirrorglass risk decision",
+      nextActionId: "resolve-risk",
+      autonomy: "hold",
+      requiredEvidence: ["decision"],
+      toolHints: ["runesmith_risk_resolve"],
+    })
+    expect(runebook.summary).toBe("Resolve risk through Mirrorglass risk decision.")
+    expect(runebook.activeCard.steps).toContain("Record accepted or cleared decision evidence through the first-class risk resolver.")
+    expect(runebook.activeCard.stopConditions).toContain("Do not complete the task while risk is newer than decision evidence.")
+    expect(prompt).toContain("Tool hints: runesmith_risk_resolve")
+    expect(prompt).not.toContain("ask the user to invoke")
+  })
+})

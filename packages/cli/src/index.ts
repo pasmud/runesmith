@@ -11,6 +11,7 @@ import {
   deriveLoopPulse,
   deriveMissionMemory,
   deriveProofPlan,
+  deriveRunebook,
   loadRuntimeCapsule,
   resolveRunicRisk,
   runProofPlan,
@@ -23,6 +24,7 @@ import {
   type ProofCommandExecution,
   type ProofRunCommandResult,
   type ProofPlanOptions,
+  type Runebook,
   type RiskResolutionVerdict,
   type RuntimeSnapshot,
 } from "@runesmith/core"
@@ -227,6 +229,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     const pulse = deriveLoopPulse(snapshot.value)
     const memory = deriveMissionMemory(snapshot.value)
     const proofPlan = deriveProofPlan(snapshot.value, proofOptions)
+    const runebook = deriveRunebook(snapshot.value, { proofPlanOptions: proofOptions })
     const taskLines = Object.values(graph.tasks).map((task) => {
       return `- ${task.id} ${task.status} ${task.assignedAgentId ?? "unassigned"} ${task.title}`
     })
@@ -248,6 +251,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
       `Missing evidence: ${formatList(pulse.missingEvidence)}`,
       ...formatPulseDiagnostics(pulse, "Diagnostics"),
       `Active runes: ${formatList(pulse.runes.map((rune) => rune.name))}`,
+      "Runebook:",
+      `Active card: ${formatRunebookCard(runebook)}`,
+      `Commands: ${formatRunebookCommands(runebook)}`,
+      `Tool hints: ${formatList(runebook.activeCard.toolHints)}`,
       "Tasks:",
       ...taskLines,
       "Evidence:",
@@ -377,6 +384,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
   const pulse = deriveLoopPulse(snapshot)
   const memory = deriveMissionMemory(snapshot)
   const proofPlan = deriveProofPlan(snapshot, proofOptions)
+  const runebook = deriveRunebook(snapshot, { proofPlanOptions: proofOptions })
   const mission = pulse.missionId ? snapshot.graphs[pulse.missionId]?.mission : undefined
   const task = mission && pulse.taskId ? snapshot.graphs[mission.id]?.tasks[pulse.taskId] : undefined
   const state = selectInstallState(Boolean(configFound), Boolean(capsule.value), Boolean(openCodeCli))
@@ -395,6 +403,8 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     `missing evidence: ${formatList(pulse.missingEvidence)}`,
     `diagnostics: ${formatList(pulse.diagnostics)}`,
     `active runes: ${formatList(pulse.runes.map((rune) => rune.name))}`,
+    `runebook: ${formatRunebookCard(runebook)}`,
+    `runebook commands: ${formatRunebookCommands(runebook)}`,
     "dashboard: bun run dev:dashboard",
     "launch: runesmith launch -- <opencode args>",
     "",
@@ -931,6 +941,16 @@ function formatProofPlanLines(plan: ReturnType<typeof deriveProofPlan>): string[
   if (plan.commands.length === 0) return ["- none"]
 
   return plan.commands.map((command) => `- ${command.label}: ${command.command}`)
+}
+
+function formatRunebookCard(runebook: Runebook): string {
+  return `${runebook.activeCard.title} [${runebook.activeCard.autonomy}]`
+}
+
+function formatRunebookCommands(runebook: Runebook): string {
+  return runebook.activeCard.commands.length > 0
+    ? runebook.activeCard.commands.map((command) => command.command).join(" -> ")
+    : "none"
 }
 
 function formatProofRunLines(commands: ProofRunCommandResult[]): string[] {

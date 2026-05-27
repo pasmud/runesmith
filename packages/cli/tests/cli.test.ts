@@ -476,6 +476,8 @@ describe("runesmith cli", () => {
         "missing evidence: test-result",
         "diagnostics: none",
         "active runes: Proofwright",
+        "runebook: Proofwright proof gate [auto]",
+        "runebook commands: bun test",
         "dashboard: bun run dev:dashboard",
         "launch: runesmith launch -- <opencode args>",
         "",
@@ -505,6 +507,8 @@ describe("runesmith cli", () => {
         "missing evidence: none",
         "diagnostics: none",
         "active runes: Pathfinder",
+        "runebook: Pathfinder mission intake [auto]",
+        "runebook commands: none",
         "dashboard: bun run dev:dashboard",
         "launch: runesmith launch -- <opencode args>",
         "",
@@ -961,6 +965,9 @@ describe("runesmith cli", () => {
     })
     expect(inspect.stdout).toContain("Diagnostics: CLI tests failed")
     expect(inspect.stdout).toContain("Active runes: Faultwright, Proofwright")
+    expect(inspect.stdout).toContain("Runebook:")
+    expect(inspect.stdout).toContain("Active card: Faultwright repair loop [guarded]")
+    expect(inspect.stdout).toContain("Commands: bun test packages/cli/tests -> bun test")
     expect(inspect.stdout).toContain("Mission memory:")
     expect(inspect.stdout).toContain("Handoff: Repair task_cli_1: CLI tests failed. Rerun proof after the smallest fix.")
     expect(inspect.stdout).toContain("Proof plan:")
@@ -1072,6 +1079,10 @@ describe("runesmith cli", () => {
         "Required evidence: file-change, test-result",
         "Missing evidence: test-result",
         "Active runes: Proofwright",
+        "Runebook:",
+        "Active card: Proofwright proof gate [auto]",
+        "Commands: bun test",
+        "Tool hints: runesmith_proof_run",
         "Tasks:",
         "- task_alpha running agent_atlas Mission root",
         "Evidence:",
@@ -1111,6 +1122,10 @@ describe("runesmith cli", () => {
         "Required evidence: file-change, test-result",
         "Missing evidence: test-result",
         "Active runes: Proofwright",
+        "Runebook:",
+        "Active card: Proofwright proof gate [auto]",
+        "Commands: bun test",
+        "Tool hints: runesmith_proof_run",
         "Tasks:",
         "- task_alpha running agent_atlas Mission root",
         "Evidence:",

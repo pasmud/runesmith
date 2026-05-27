@@ -764,6 +764,8 @@ function MissionMemoryPanel({ model }: { model: DashboardModel }) {
 
 function LoopPulsePanel({ model }: { model: DashboardModel }) {
   const pulse = model.loopPulse
+  const activeCard = model.runebook.activeCard
+  const runebookCommands = activeCard.commands.slice(0, 2)
   const tone: MissionStatus = pulse.health === "critical" ? "blocked" : pulse.health === "attention" ? "stale" : "verified"
 
   return (
@@ -788,6 +790,24 @@ function LoopPulsePanel({ model }: { model: DashboardModel }) {
         {pulse.runes.slice(0, 3).map((rune) => (
           <span key={rune.id}>{rune.name}</span>
         ))}
+      </div>
+      <div className="runebook-card" aria-label="Active runebook card">
+        <span className="runebook-heading">
+          <strong>{activeCard.title}</strong>
+          <em>{activeCard.autonomy}</em>
+        </span>
+        <p>{activeCard.intent}</p>
+        <div className="runebook-meta">
+          <span>{activeCard.toolHints[0] ?? "engine-owned"}</span>
+          <span>{activeCard.requiredEvidence.length > 0 ? activeCard.requiredEvidence.join(", ") : "no evidence"}</span>
+        </div>
+        {runebookCommands.length > 0 ? (
+          <div className="runebook-commands" aria-label="Runebook commands">
+            {runebookCommands.map((command) => (
+              <code key={command.id}>{command.command}</code>
+            ))}
+          </div>
+        ) : null}
       </div>
       <div className="pulse-plan" aria-label="Execution plan">
         {pulse.executionPlan.slice(0, 3).map((step, index) => (

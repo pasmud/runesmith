@@ -142,6 +142,13 @@ describe("opencode adapter", () => {
             label: "Continue forge",
           },
         },
+        runebook: {
+          activeCard: {
+            id: "forge-trace",
+            title: "Forge Trace implementation loop",
+            autonomy: "auto",
+          },
+        },
         activeRunes: [
           {
             name: "Forge Trace",
@@ -190,6 +197,7 @@ describe("opencode adapter", () => {
     expect(systemOutput.system.join("\n")).toContain("Runesmith Autopilot")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Mission Memory")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Proof Plan")
+    expect(systemOutput.system.join("\n")).toContain("Runesmith Runebook")
 
     await plugin.tool.runesmith_mission_start.execute({
       goal: "Carry state through compaction",
@@ -203,6 +211,7 @@ describe("opencode adapter", () => {
     expect(compactOutput.context.join("\n")).toContain("Runesmith Control Brief")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Mission Memory")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Proof Plan")
+    expect(compactOutput.context.join("\n")).toContain("Runesmith Runebook")
     expect(compactOutput.context.join("\n")).toContain("Handoff:")
   })
 
@@ -259,6 +268,8 @@ describe("opencode adapter", () => {
     expect(prompt).toContain("Proofwright")
     expect(prompt).toContain("Runesmith Loop Pulse")
     expect(prompt).toContain("Next action: Continue forge")
+    expect(prompt).toContain("Runesmith Runebook")
+    expect(prompt).toContain("Active card: Forge Trace implementation loop [auto]")
   })
 
   test("autopilot prepares and claims a mission from the latest user message once", async () => {
@@ -543,6 +554,20 @@ describe("opencode adapter", () => {
               kind: "test",
             },
           ],
+        },
+        runebook: {
+          activeCard: {
+            id: "faultwright-repair",
+            autonomy: "guarded",
+            commands: [
+              {
+                command: "bun test packages/opencode-adapter/tests/plugin.test.ts",
+              },
+              {
+                command: "bun test",
+              },
+            ],
+          },
         },
         loopPulse: {
           nextAction: {

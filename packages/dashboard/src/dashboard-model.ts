@@ -3,6 +3,7 @@ import {
   deriveMissionMemory,
   deriveLoopPulse,
   deriveProofPlan,
+  deriveRunebook,
   getNextCovenantStage,
   type AgentContract,
   type CovenantStage,
@@ -13,6 +14,7 @@ import {
   type MissionMemory,
   type MissionGraph,
   type ProofPlan,
+  type Runebook,
   type RiskResolutionVerdict,
   type RuntimeCapsule,
   type RuntimeSnapshot,
@@ -96,6 +98,7 @@ export type DashboardModel = {
   loopPulse: LoopPulse
   missionMemory: MissionMemory
   proofPlan: ProofPlan
+  runebook: Runebook
   metrics: Record<MissionStatus, number>
   mode: OsMode
   notice: string
@@ -654,6 +657,9 @@ function deriveDashboardModel(input: {
   const proofPlan = input.runtimeSnapshot
     ? deriveProofPlan(input.runtimeSnapshot)
     : buildSeededProofPlan(input.tasks)
+  const runebook = input.runtimeSnapshot
+    ? deriveRunebook(input.runtimeSnapshot)
+    : buildSeededRunebook(input.tasks)
 
   return {
     ...input,
@@ -662,6 +668,7 @@ function deriveDashboardModel(input: {
     loopPulse,
     missionMemory,
     proofPlan,
+    runebook,
     metrics,
     operationalScore: buildOperationalScore(input.tasks, metrics, input.policies),
     selectedAgent,
@@ -698,6 +705,14 @@ function buildSeededProofPlan(tasks: TaskCard[]): ProofPlan {
   }
 
   return deriveProofPlan(buildSeededRuntimeSnapshot(tasks))
+}
+
+function buildSeededRunebook(tasks: TaskCard[]): Runebook {
+  if (tasks.length === 0) {
+    return deriveRunebook(emptyRuntimeSnapshot())
+  }
+
+  return deriveRunebook(buildSeededRuntimeSnapshot(tasks))
 }
 
 function buildSeededRuntimeSnapshot(tasks: TaskCard[]): RuntimeSnapshot {

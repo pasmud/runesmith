@@ -5,6 +5,7 @@ import {
   buildLoopPulsePrompt,
   buildMissionMemoryPrompt,
   buildProofPlanPrompt,
+  buildRunebookPrompt,
   createCovenantTaskPlan,
   createRuntime,
   createRunicCovenant,
@@ -13,6 +14,7 @@ import {
   deriveLoopPulse,
   deriveMissionMemory,
   deriveProofPlan,
+  deriveRunebook,
   loadRuntimeCapsule,
   resolveRunicRisk,
   runProofPlan,
@@ -274,6 +276,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           const loopPulse = deriveLoopPulse(snapshot, covenant)
           const missionMemory = deriveMissionMemory(snapshot, covenant)
           const proofPlan = deriveProofPlan(snapshot, proofPlanOptions)
+          const runebook = deriveRunebook(snapshot, { proofPlanOptions, covenant })
 
           return formatValue("Runic Covenant active", {
             name: covenant.name,
@@ -305,6 +308,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             loopPulse,
             missionMemory,
             proofPlan,
+            runebook,
             activeRunes: controlBrief.runes,
           })
         },
@@ -467,19 +471,12 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
         system: {
           transform(_input, systemPrompt) {
             const snapshot = runtime.snapshot()
-            return upsertPromptSection(
-              upsertPromptSection(
-                upsertPromptSection(
-                  upsertPromptSection(
-                    appendPromptSections(systemPrompt, [covenantPrompt, autopilotPrompt]),
-                    buildCovenantControlBrief(snapshot, covenant),
-                  ),
-                  buildLoopPulsePrompt(snapshot, covenant),
-                ),
-              buildMissionMemoryPrompt(snapshot, covenant),
-            ),
-              buildProofPlanPrompt(snapshot, proofPlanOptions, covenant),
-            )
+            let prompt = appendPromptSections(systemPrompt, [covenantPrompt, autopilotPrompt])
+            prompt = upsertPromptSection(prompt, buildCovenantControlBrief(snapshot, covenant))
+            prompt = upsertPromptSection(prompt, buildLoopPulsePrompt(snapshot, covenant))
+            prompt = upsertPromptSection(prompt, buildRunebookPrompt(snapshot, { proofPlanOptions, covenant }))
+            prompt = upsertPromptSection(prompt, buildMissionMemoryPrompt(snapshot, covenant))
+            return upsertPromptSection(prompt, buildProofPlanPrompt(snapshot, proofPlanOptions, covenant))
           },
         },
       },
@@ -489,6 +486,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       appendSystemSections(output, [covenantPrompt, autopilotPrompt])
       upsertSystemSection(output, buildCovenantControlBrief(snapshot, covenant))
       upsertSystemSection(output, buildLoopPulsePrompt(snapshot, covenant))
+      upsertSystemSection(output, buildRunebookPrompt(snapshot, { proofPlanOptions, covenant }))
       upsertSystemSection(output, buildMissionMemoryPrompt(snapshot, covenant))
       upsertSystemSection(output, buildProofPlanPrompt(snapshot, proofPlanOptions, covenant))
     },
@@ -762,6 +760,7 @@ async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<T
   const loopPulse = deriveLoopPulse(input.runtime.snapshot())
   const missionMemory = deriveMissionMemory(input.runtime.snapshot())
   const proofPlan = deriveProofPlan(input.runtime.snapshot(), input.proofPlanOptions)
+  const runebook = deriveRunebook(input.runtime.snapshot(), { proofPlanOptions: input.proofPlanOptions })
 
   return formatValue(formatAutopilotLoopTitle(advanced.value.status), {
     status: advanced.value.status,
@@ -773,6 +772,7 @@ async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<T
     diagnostics: loopPulse.diagnostics,
     missionMemory,
     proofPlan,
+    runebook,
     loopPulse,
   })
 }
@@ -823,6 +823,7 @@ async function runProofFromOpenCode(input: RunProofFromOpenCodeInput): Promise<T
   const loopPulse = deriveLoopPulse(nextSnapshot)
   const missionMemory = deriveMissionMemory(nextSnapshot)
   const nextProofPlan = deriveProofPlan(nextSnapshot, input.proofPlanOptions)
+  const runebook = deriveRunebook(nextSnapshot, { proofPlanOptions: input.proofPlanOptions })
 
   return formatValue(proofRun.status === "failed" ? "Proof plan failed" : "Proof plan executed", {
     status,
@@ -834,6 +835,7 @@ async function runProofFromOpenCode(input: RunProofFromOpenCodeInput): Promise<T
     diagnostics: loopPulse.diagnostics,
     missionMemory,
     proofPlan: nextProofPlan,
+    runebook,
     loopPulse,
   })
 }
@@ -856,6 +858,7 @@ async function resolveRiskFromOpenCode(input: ResolveRiskFromOpenCodeInput): Pro
   const loopPulse = deriveLoopPulse(snapshot)
   const missionMemory = deriveMissionMemory(snapshot)
   const proofPlan = deriveProofPlan(snapshot, input.proofPlanOptions)
+  const runebook = deriveRunebook(snapshot, { proofPlanOptions: input.proofPlanOptions })
 
   return formatValue("Risk resolved", {
     status: resolved.value.status,
@@ -868,6 +871,7 @@ async function resolveRiskFromOpenCode(input: ResolveRiskFromOpenCodeInput): Pro
     missingEvidence: loopPulse.missingEvidence,
     missionMemory,
     proofPlan,
+    runebook,
     loopPulse,
   })
 }
@@ -1110,7 +1114,7 @@ function buildAutopilotPrompt(): string {
     "When the user asks for coding, repo, debugging, UI, or research-to-implementation work, call `runesmith_autopilot_prepare` with the latest user goal or message list before starting edits.",
     "If you reach a session-idle point before preparation, Runesmith can infer the latest user goal from chat context and prepare the mission automatically.",
     "Continue under the returned mission, task, and lease. New autopilot missions are planned as Forge, Review, and Seal tasks. Runesmith records shell, test, file-change, and safe Covenant decision evidence automatically; use `runesmith_task_evidence` for risks, diagnostics, external proof, or decisions the tool hooks cannot infer.",
-    "Follow the Active runes in the live Runesmith Control Brief as automatic procedure cards. Do not ask the user to invoke them by name.",
+    "Follow the active Runesmith Runebook card and Active runes as automatic procedure, not as user-invoked workflows.",
     "When proof is missing or repair is active, call `runesmith_proof_run` to execute the live Runesmith Proof Plan before asking for completion.",
     "When Loop Pulse says `Resolve risk`, call `runesmith_risk_resolve` with a short decision summary instead of asking the user to find mission ids or manually attach decision evidence.",
     "When the active task has required evidence, call `runesmith_autopilot_tick` or let session-idle events advance it. The tick may complete the task only after the evidence gate is satisfied, synthesize Review and Seal decisions when safe, then claim the next dependency-ready task.",
@@ -1199,6 +1203,7 @@ function appendCompactionContext(
   }
   upsertTextListSection(context, buildCovenantControlBrief(snapshot))
   upsertTextListSection(context, buildLoopPulsePrompt(snapshot))
+  upsertTextListSection(context, buildRunebookPrompt(snapshot, { proofPlanOptions }))
   upsertTextListSection(context, buildMissionMemoryPrompt(snapshot))
   upsertTextListSection(context, buildProofPlanPrompt(snapshot, proofPlanOptions))
   output.context = context

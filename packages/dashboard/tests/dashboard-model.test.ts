@@ -324,6 +324,12 @@ describe("dashboard model", () => {
       "Advance evidence gate",
     ])
     expect(model.loopPulse.runes.map((rune) => rune.name)).toContain("Proofwright")
+    expect(model.runebook.activeCard).toMatchObject({
+      id: "proofwright-proof-gate",
+      title: "Proofwright proof gate",
+      autonomy: "auto",
+    })
+    expect(model.runebook.activeCard.commands.map((command) => command.command)).toEqual(["bun test"])
     expect(model.missionMemory.status).toBe("needs-proof")
     expect(model.missionMemory.handoff).toBe(
       "Capture proof for task_live: record test-result evidence before completion.",
@@ -370,6 +376,15 @@ describe("dashboard model", () => {
       "rerun-failing-command",
     ])
     expect(model.loopPulse.runes.map((rune) => rune.name)).toContain("Faultwright")
+    expect(model.runebook.activeCard).toMatchObject({
+      id: "faultwright-repair",
+      title: "Faultwright repair loop",
+      autonomy: "guarded",
+    })
+    expect(model.runebook.activeCard.commands.map((command) => command.command)).toEqual([
+      "bun test packages/dashboard/tests",
+      "bun test",
+    ])
     expect(model.missionMemory.status).toBe("needs-repair")
     expect(model.missionMemory.handoff).toBe(
       "Repair task_live: Dashboard capsule tests failed. Rerun proof after the smallest fix.",

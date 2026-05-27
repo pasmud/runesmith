@@ -25,6 +25,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - OpenCode compaction carries the mission capsule forward so long sessions do not lose orchestration state.
 - A live Runesmith Control Brief is injected from runtime state so OpenCode sees the active mission, next Covenant stage, and missing proof without user-managed workflow steps.
 - A Runesmith Loop Pulse is injected beside the control brief, giving OpenCode and the dashboard one authoritative next action, execution plan, health signal, priority, blockers, and active runes.
+- A Runesmith Runebook is derived from the same pulse, turning the current state into one active procedure card such as `Forge Trace implementation loop`, `Proofwright proof gate`, `Faultwright repair loop`, or `Mirrorglass risk decision`.
 - Runesmith Mission Memory condenses the current mission, active task, proof state, latest diagnostics, decisions, and continuation handoff so restarts, compaction, CLI checks, and the dashboard all preserve the same next move.
 - Runesmith Proof Plan turns missing proof or failed diagnostics into concrete verification commands, so agents can rerun the failing command, typecheck, test, and build without the user remembering a workflow ritual.
 - Runesmith Proof Runner can execute those Proof Plan commands, capture passing `test-result` evidence or failing `diagnostic` evidence, and advance the mission through the same evidence gate.
@@ -59,13 +60,13 @@ Each stage has gates and evidence requirements. The point is simple: install onc
 
 The static Covenant is paired with a live `Runesmith Control Brief`. That brief is derived from the runtime capsule and tells the agent the active mission, active task, next Covenant stage, required evidence, and missing evidence. Failed or unknown test runs stay diagnostic, enter Repair Gate, and keep the loop focused on the latest failing command until passing proof exists.
 
-The Control Brief also carries active Runebook runes. These are Runesmith-native procedure cards such as `Forge Trace`, `Proofwright`, `Faultwright`, and `Recovery Loom`. They apply the useful discipline of workflow skills without making the user install, remember, or invoke separate workflows.
+The Control Brief carries active runes, and the Runebook turns those runes into one concrete procedure card. A card includes autonomy mode (`auto`, `guarded`, or `hold`), trigger, intent, steps, required evidence, exact Proof Plan commands, OpenCode tool hints, and stop conditions. This is the Runesmith-native version of workflow skills: the user does not install, remember, or invoke process names, because the engine derives the card from the runtime capsule.
 
 The Loop Pulse is the runtime's heartbeat for agentic work. It derives the next OS action from the same mission capsule, including `Wait for goal`, `Continue forge`, `Capture proof`, `Repair diagnostic`, `Resolve risk`, `Recover stale work`, `Review change`, and `Seal mission`. It also expands that action into a small execution plan with active, queued, and blocked steps, required evidence, and active runes. This keeps OpenCode prompts, compaction context, CLI status, and dashboard status aligned around one loop decision instead of separate prompt-side heuristics.
 
 Mission Memory is the durable handoff layer above the pulse. It summarizes whether the mission is idle, active, blocked, waiting for proof, focused on repair, recovering, or sealed; carries latest file-change, diagnostic, test-result, and decision evidence; and writes a single continuation sentence for the agent and operator. This is the Runesmith-owned version of workflow continuity: the user does not install a separate skill pack or remember process steps, because the engine derives the handoff from runtime state.
 
-Proof Plan is the command layer above Mission Memory. It detects when the active task is missing passing `test-result` proof, has stale passing proof, or has a failed diagnostic, then emits the next verification recipe: rerun the latest failing command first during repair, rerun the last stale targeted proof command after newer edits, then run the repo's typecheck, test, and build scripts when available. OpenCode prompt injection, compaction, CLI status, CLI mission inspect, and the dashboard all read the same plan.
+Proof Plan is the command layer above Mission Memory. It detects when the active task is missing passing `test-result` proof, has stale passing proof, or has a failed diagnostic, then emits the next verification recipe: rerun the latest failing command first during repair, rerun the last stale targeted proof command after newer edits, then run the repo's typecheck, test, and build scripts when available. The active Runebook card embeds those commands so OpenCode prompt injection, compaction, CLI status, CLI mission inspect, and the dashboard all read the same proof recipe.
 
 Proof Runner executes that recipe when OpenCode, the CLI, or the dashboard asks Runesmith to prove the active task. Passing commands become `test-result` evidence; failed commands become `diagnostic` evidence and stop the run so Repair Gate stays focused on the first failing proof. A passing proof run immediately calls the shared mission loop, so verified work can advance without a manual evidence command.
 
@@ -88,6 +89,7 @@ The dashboard is intentionally not a static report. It models the working loop a
 - **Autopilot cycle**: recover stale work first, then verify running work under policy.
 - **Runic Covenant**: inspect and advance the built-in autonomous coding loop that ships with the plugin.
 - **Mission Memory**: see the durable handoff, proof state, latest diagnostic, and sealed mission status without reading the transcript.
+- **Runebook card**: see the current procedure card, autonomy mode, tool hint, evidence requirement, and exact commands Runesmith wants the agent to follow.
 - **Proof Plan**: see the exact verification commands Runesmith wants next, including focused diagnostic reruns before broad proof.
 - **Proof Runner**: run the active proof plan from the dashboard and persist the resulting proof or diagnostic evidence.
 - **Risk Resolver**: when Loop Pulse says `Resolve risk`, record the decision and re-enter the shared mission loop from the dashboard or OpenCode tool.
@@ -109,7 +111,7 @@ For OpenCode users, the direct path is a single plugin entry:
 }
 ```
 
-Add it to your global or project `opencode.json`, restart OpenCode, and let OpenCode install the package at startup. The repo root exports the Runesmith OpenCode plugin, runs the package build during git-package preparation, and loads the same Runic Covenant, Control Brief, Loop Pulse, tool hooks, runtime capsule, and evidence-gated autopilot described above.
+Add it to your global or project `opencode.json`, restart OpenCode, and let OpenCode install the package at startup. The repo root exports the Runesmith OpenCode plugin, runs the package build during git-package preparation, and loads the same Runic Covenant, Control Brief, Loop Pulse, Runebook, tool hooks, runtime capsule, and evidence-gated autopilot described above.
 
 This is the Runesmith-native version of the useful Superpowers install lesson: one line for the user, automatic behavior inside the harness. Users should not need to manually load skills, invoke workflows, or remember process names for normal coding work.
 
@@ -152,7 +154,7 @@ Check the operating loop without learning the mission subcommands:
 bun packages/cli/src/index.ts status
 ```
 
-`status` prints the Runesmith install state, OpenCode CLI readiness, Loop Pulse next action, execution plan, active mission and task, missing evidence, diagnostics, active runes, and Proof Plan commands from the runtime capsule. It also stays useful before bootstrap by showing the idle engine state and the next launch/dashboard commands.
+`status` prints the Runesmith install state, OpenCode CLI readiness, Loop Pulse next action, execution plan, active mission and task, missing evidence, diagnostics, active runes, active Runebook card, and Proof Plan commands from the runtime capsule. It also stays useful before bootstrap by showing the idle engine state and the next launch/dashboard commands.
 
 Run the active proof plan and let Runesmith write evidence:
 
@@ -199,7 +201,7 @@ bun packages/cli/src/index.ts mission inspect <mission-id>
 
 `mission evidence` records proof on a task, and `mission tick` advances the persisted capsule through the same evidence gate used by OpenCode. When diagnostics are attached, both commands print the active repair summary so the next action is visible at the terminal. When Forge proof is satisfied, the tick can complete Forge, synthesize safe Review and Seal decisions, and finish the mission.
 
-`mission inspect` prints the mission status, Loop Pulse next action, Proof Plan commands, required and missing evidence, active diagnostics, active runes, task list, evidence ledger entries, and active leases for that mission.
+`mission inspect` prints the mission status, Loop Pulse next action, Proof Plan commands, active Runebook card, required and missing evidence, active diagnostics, active runes, task list, evidence ledger entries, and active leases for that mission.
 
 Runesmith stores the default runtime capsule at `.runesmith/runtime/capsule.json`. The CLI still accepts `--snapshot <path>` for explicit exports, but normal usage does not require it.
 
@@ -251,5 +253,5 @@ Once installed and OpenCode is restarted, users do not need to invoke a workflow
 - `runesmith_autopilot_tick`: manually run the same evidence-gated advance loop and return the live Loop Pulse and Proof Plan, including repair diagnostics when verification failed and risk holds when unresolved risk needs a later decision.
 - `runesmith_proof_run`: execute the active Proof Plan inside OpenCode, record proof or diagnostics, and advance the mission when verification passes.
 - `runesmith_risk_resolve`: record a decision for the active unresolved risk and advance the shared mission loop without raw evidence plumbing.
-- `runesmith_covenant_status`: returns the installed Covenant, live Control Brief, Loop Pulse, Proof Plan, and active Runebook runes from the runtime capsule.
+- `runesmith_covenant_status`: returns the installed Covenant, live Control Brief, Loop Pulse, Runebook card, Proof Plan, and active runes from the runtime capsule.
 - Mission tools for status, claim, evidence, completion, and recovery.
