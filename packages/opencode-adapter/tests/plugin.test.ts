@@ -258,4 +258,50 @@ describe("opencode adapter", () => {
     )
     expect(JSON.parse(writes.at(-1) ?? "{}").ledgers.mission_alpha.evidence).toBeDefined()
   })
+
+  test("autopilot tick completes the active task once captured evidence satisfies the contract", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const writes: string[] = []
+    const plugin = createRunesmithPlugin({
+      runtime,
+      runtimeStore: {
+        save(snapshot) {
+          writes.push(JSON.stringify(snapshot))
+        },
+      },
+    })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Seal automatically after proof",
+    })
+    await plugin["tool.execute.after"]?.(
+      { tool: "edit" },
+      {
+        args: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+        result: { status: "changed" },
+      },
+    )
+
+    const held = await plugin.tool.runesmith_autopilot_tick.execute({})
+    expect(JSON.parse(held.output)).toMatchObject({
+      ok: true,
+      value: {
+        status: "waiting-for-evidence",
+        missingEvidence: ["test-result"],
+      },
+    })
+
+    await plugin["tool.execute.after"]?.(
+      { tool: "bash" },
+      {
+        args: { command: "bun test packages/opencode-adapter/tests/plugin.test.ts" },
+        result: { exitCode: 0, stdout: "7 pass", stderr: "" },
+      },
+    )
+    await plugin.event?.({ event: { type: "session.idle" } })
+
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.status).toBe("complete")
+    expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("complete")
+    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.mission.status).toBe("complete")
+  })
 })

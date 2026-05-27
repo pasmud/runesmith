@@ -31,6 +31,7 @@ export type RunesmithPlugin = {
   name: "runesmith"
   tool: {
     runesmith_autopilot_prepare: ToolDefinition<AutopilotPrepareArgs>
+    runesmith_autopilot_tick: ToolDefinition<AutopilotTickArgs>
     runesmith_covenant_status: ToolDefinition<CovenantStatusArgs>
     runesmith_mission_start: ToolDefinition<MissionStartArgs>
     runesmith_mission_status: ToolDefinition<MissionStatusArgs>
@@ -49,6 +50,7 @@ export type RunesmithPlugin = {
   "experimental.chat.system.transform": (input: unknown, output: OpenCodeSystemOutput) => Promise<void> | void
   "experimental.session.compacting": (input: unknown, output: OpenCodeCompactionOutput) => Promise<void> | void
   "tool.execute.after": (input: OpenCodeToolInput, output: OpenCodeToolOutput) => Promise<void> | void
+  event?: (input: OpenCodeEventInput) => Promise<void> | void
 }
 
 export type PluginOptions = RuntimeOptions & {
@@ -68,6 +70,8 @@ type AutopilotPrepareArgs = {
   goal?: string
   messages?: unknown[]
 }
+
+type AutopilotTickArgs = Record<string, never>
 
 type MissionStartArgs = {
   goal: string
@@ -127,6 +131,11 @@ type OpenCodeToolOutput = {
   [key: string]: unknown
 }
 
+type OpenCodeEventInput = {
+  event?: unknown
+  [key: string]: unknown
+}
+
 const defaultAtlasContract: AgentContract = {
   id: "agent_atlas",
   displayName: "Atlas",
@@ -167,6 +176,17 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             runtime,
             runtimeStore: options.runtimeStore,
             args,
+          })
+        },
+      },
+      runesmith_autopilot_tick: {
+        description:
+          "Advance the active Runesmith mission when the current task has enough automatically captured evidence.",
+        parameters: objectSchema({}),
+        async execute() {
+          return advanceAutopilotLoop({
+            runtime,
+            runtimeStore: options.runtimeStore,
           })
         },
       },
@@ -356,6 +376,14 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
         output,
       })
     },
+    async event(input) {
+      if (getOpenCodeEventType(input) !== "session.idle") return
+
+      await advanceAutopilotLoop({
+        runtime,
+        runtimeStore: options.runtimeStore,
+      })
+    },
   }
 }
 
@@ -468,6 +496,82 @@ async function recordToolExecutionEvidence(input: RecordToolExecutionEvidenceInp
   if (recorded.ok) {
     await persistRuntime(input.runtimeStore, input.runtime)
   }
+}
+
+type AdvanceAutopilotLoopInput = {
+  runtime: RunesmithRuntime
+  runtimeStore?: PluginRuntimeStore
+}
+
+async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<ToolResponse> {
+  const snapshot = input.runtime.snapshot()
+  const target = selectActiveTask(snapshot)
+  if (!target) {
+    return formatValue("Autopilot tick idle", {
+      status: "idle",
+    })
+  }
+
+  const graph = snapshot.graphs[target.missionId]
+  const task = graph?.tasks[target.taskId]
+  if (!graph || !task) {
+    return formatValue("Autopilot tick idle", {
+      status: "idle",
+    })
+  }
+
+  const contractId = task.assignedAgentId ?? defaultAtlasContract.id
+  const contract = snapshot.contracts[contractId] ?? defaultAtlasContract
+  const missingEvidence = getMissingEvidence(snapshot, {
+    missionId: target.missionId,
+    taskId: target.taskId,
+    requiredEvidence: contract.requiredEvidence,
+  })
+
+  if (missingEvidence.length > 0) {
+    return formatValue("Autopilot tick held", {
+      status: "waiting-for-evidence",
+      missionId: target.missionId,
+      taskId: target.taskId,
+      missingEvidence,
+    })
+  }
+
+  const completed = input.runtime.completeTask({
+    missionId: target.missionId,
+    taskId: target.taskId,
+    contractId,
+  })
+  if (!completed.ok) return formatError("Autopilot tick rejected", completed.error)
+
+  await persistRuntime(input.runtimeStore, input.runtime)
+
+  return formatValue("Autopilot tick completed", {
+    status: "completed",
+    missionId: target.missionId,
+    taskId: target.taskId,
+    taskStatus: completed.value.task.status,
+    missionStatus: completed.value.graph.mission.status,
+  })
+}
+
+function getMissingEvidence(
+  snapshot: RuntimeSnapshot,
+  input: { missionId: string; taskId: string; requiredEvidence: EvidenceType[] },
+): EvidenceType[] {
+  const ledger = snapshot.ledgers[input.missionId]
+  const present = new Set(
+    Object.values(ledger?.evidence ?? {})
+      .filter((evidence) => evidence.taskId === input.taskId)
+      .map((evidence) => evidence.type),
+  )
+
+  return input.requiredEvidence.filter((type) => !present.has(type))
+}
+
+function getOpenCodeEventType(input: OpenCodeEventInput): string | undefined {
+  const event = asRecord(input.event) ?? input
+  return normalizeGoal(event.type) ?? normalizeGoal(event.name)
 }
 
 function selectActiveTask(snapshot: RuntimeSnapshot): { missionId: string; taskId: string } | undefined {
@@ -666,6 +770,7 @@ function buildAutopilotPrompt(): string {
     "Runesmith is installed as the orchestration engine for this OpenCode session.",
     "When the user asks for coding, repo, debugging, UI, or research-to-implementation work, call `runesmith_autopilot_prepare` with the latest user goal or message list before starting edits.",
     "Continue under the returned mission, task, and lease. Runesmith records shell, test, and file-change tool evidence automatically; use `runesmith_task_evidence` only for decisions, risks, diagnostics, or external proof the tool hooks cannot see.",
+    "When the active task has required evidence, call `runesmith_autopilot_tick` or let session-idle events advance it. The tick may complete the task only after the evidence gate is satisfied.",
     "Do not ask the user to invoke Runesmith, skills, or a workflow by name. Keep the user experience install-once and direct.",
     "Before claiming completion, attach required evidence and use `runesmith_task_complete`; if state looks stale or conflicting, run `runesmith_recover` first.",
   ].join("\n")
