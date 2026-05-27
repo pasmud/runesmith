@@ -21,8 +21,7 @@ import {
   type RuntimeOptions,
   type RuntimeSnapshot,
 } from "@runesmith/core"
-import { exec } from "node:child_process"
-import { promisify } from "node:util"
+import { spawn } from "node:child_process"
 
 export type DashboardRuntimeAction =
   | {
@@ -108,7 +107,7 @@ const dashboardAtlasContract: AgentContract = {
 }
 
 const dashboardStaleAfterMs = 120_000
-const execAsync = promisify(exec)
+const shellProofCaptureLimit = 64_000
 
 export async function applyDashboardRuntimeAction(
   snapshot: RuntimeSnapshot,
@@ -411,29 +410,51 @@ function mapRuneweaveStatus(status: RuneweaveStatus): DashboardRuntimeActionValu
 }
 
 async function runDashboardShellCommand(command: ProofPlanCommand): Promise<ProofCommandExecution> {
-  try {
-    const result = await execAsync(command.command, {
+  return new Promise((resolve) => {
+    const child = spawn(command.command, {
+      shell: true,
       windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
     })
-
-    return {
-      exitCode: 0,
-      stdout: result.stdout,
-      stderr: result.stderr,
-    }
-  } catch (error) {
-    const failed = error as {
-      code?: unknown
-      stdout?: unknown
-      stderr?: unknown
+    let stdout = ""
+    let stderr = ""
+    let settled = false
+    const settle = (execution: ProofCommandExecution) => {
+      if (settled) return
+      settled = true
+      resolve(execution)
     }
 
-    return {
-      exitCode: typeof failed.code === "number" ? failed.code : 1,
-      stdout: typeof failed.stdout === "string" ? failed.stdout : "",
-      stderr: typeof failed.stderr === "string" ? failed.stderr : "",
-    }
-  }
+    child.stdout?.on("data", (chunk) => {
+      stdout = appendBoundedOutput(stdout, chunk, shellProofCaptureLimit)
+    })
+    child.stderr?.on("data", (chunk) => {
+      stderr = appendBoundedOutput(stderr, chunk, shellProofCaptureLimit)
+    })
+    child.on("error", (error) => {
+      settle({
+        exitCode: 1,
+        stdout,
+        stderr: appendBoundedOutput(stderr, error.message, shellProofCaptureLimit),
+      })
+    })
+    child.on("close", (code) => {
+      settle({
+        exitCode: typeof code === "number" ? code : 1,
+        stdout,
+        stderr,
+      })
+    })
+  })
+}
+
+function appendBoundedOutput(current: string, chunk: unknown, maxLength: number): string {
+  if (current.length >= maxLength) return current
+
+  const text = String(chunk)
+  const remaining = maxLength - current.length
+
+  return `${current}${text.slice(0, remaining)}`
 }
 
 function createDashboardEvidenceIdFactory(

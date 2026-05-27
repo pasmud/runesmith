@@ -9,7 +9,12 @@ import {
   saveRuntimeCapsule,
   type RuntimeStoreHost,
 } from "@runesmith/core"
-import { createRunesmithOpenCodePlugin, createRunesmithPlugin, type PluginRuntimeStore } from "../src/plugin"
+import {
+  createRunesmithOpenCodePlugin,
+  createRunesmithPlugin,
+  runOpenCodeShellProofCommand,
+  type PluginRuntimeStore,
+} from "../src/plugin"
 
 const fixedNow = () => new Date("2026-05-27T00:00:00.000Z")
 const ids = (prefix: string) => `${prefix}_alpha`
@@ -1366,6 +1371,22 @@ describe("opencode adapter", () => {
       ]),
     )
     expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.mission.status).toBe("complete")
+  })
+
+  test("default OpenCode shell proof runner handles noisy command output without exec maxBuffer failure", async () => {
+    const noisyCommand = "node -e \"process.stdout.write('x'.repeat(1200000))\""
+    const result = await runOpenCodeShellProofCommand({
+      id: "noisy-proof",
+      kind: "test",
+      label: "Noisy proof",
+      command: noisyCommand,
+      reason: "Exercise bounded shell capture.",
+      evidenceType: "test-result",
+    })
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout?.length).toBe(64_000)
+    expect(result.stderr).toBe("")
   })
 
   test("records OpenCode proof run failures as diagnostics and keeps repair active", async () => {

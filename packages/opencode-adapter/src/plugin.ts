@@ -52,11 +52,10 @@ import {
   type RuntimeStoreHost,
 } from "@runesmith/core"
 import { dirname } from "node:path"
-import { exec } from "node:child_process"
+import { spawn } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
-import { promisify } from "node:util"
 
 export type ToolResponse = {
   title: string
@@ -240,7 +239,7 @@ const defaultAtlasContract: AgentContract = {
 }
 
 const autopilotStaleAfterMs = 120_000
-const execAsync = promisify(exec)
+const shellProofCaptureLimit = 64_000
 const runesmithOpenCodeSkillsPath = fileURLToPath(new URL("../../../.opencode/skills", import.meta.url))
 
 export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlugin {
@@ -942,7 +941,7 @@ async function runNextFromOpenCode(input: RunNextFromOpenCodeInput): Promise<Too
     ttlMs: 30_000,
     staleAfterMs: autopilotStaleAfterMs,
     proofPlanOptions: input.proofPlanOptions,
-    proofCommandRunner: input.proofCommandRunner ?? runShellProofCommand,
+    proofCommandRunner: input.proofCommandRunner ?? runOpenCodeShellProofCommand,
     nextEvidenceId,
     now: input.now,
     risk: {
@@ -968,7 +967,7 @@ async function runOsFromOpenCode(input: RunOsFromOpenCodeInput): Promise<ToolRes
     ttlMs: 30_000,
     staleAfterMs: autopilotStaleAfterMs,
     proofPlanOptions: input.proofPlanOptions,
-    proofCommandRunner: input.proofCommandRunner ?? runShellProofCommand,
+    proofCommandRunner: input.proofCommandRunner ?? runOpenCodeShellProofCommand,
     nextEvidenceId,
     now: input.now,
     maxSteps: parseMaxSteps(input.args.maxSteps),
@@ -996,7 +995,7 @@ async function runIdleRuneweave(input: RunIdleRuneweaveInput): Promise<ToolRespo
     ttlMs: 30_000,
     staleAfterMs: autopilotStaleAfterMs,
     proofPlanOptions: input.proofPlanOptions,
-    proofCommandRunner: input.proofCommandRunner ?? runShellProofCommand,
+    proofCommandRunner: input.proofCommandRunner ?? runOpenCodeShellProofCommand,
     nextEvidenceId,
     now: input.now,
     maxSteps: 8,
@@ -1015,7 +1014,7 @@ async function runProofFromOpenCode(input: RunProofFromOpenCodeInput): Promise<T
   const proofRun = await runProofPlan(input.runtime, proofPlan, {
     nextEvidenceId: createProofEvidenceIdFactory(snapshot, input.idFactory),
     now: input.now,
-    runCommand: input.proofCommandRunner ?? runShellProofCommand,
+    runCommand: input.proofCommandRunner ?? runOpenCodeShellProofCommand,
   })
 
   let status = proofRun.status === "failed" ? "waiting-for-evidence" : proofRun.status
@@ -1757,30 +1756,52 @@ async function persistRuntime(
   }
 }
 
-async function runShellProofCommand(command: ProofPlanCommand): Promise<ProofCommandExecution> {
-  try {
-    const result = await execAsync(command.command, {
+export async function runOpenCodeShellProofCommand(command: ProofPlanCommand): Promise<ProofCommandExecution> {
+  return new Promise((resolve) => {
+    const child = spawn(command.command, {
+      shell: true,
       windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
     })
-
-    return {
-      exitCode: 0,
-      stdout: result.stdout,
-      stderr: result.stderr,
-    }
-  } catch (error) {
-    const failed = error as {
-      code?: unknown
-      stdout?: unknown
-      stderr?: unknown
+    let stdout = ""
+    let stderr = ""
+    let settled = false
+    const settle = (execution: ProofCommandExecution) => {
+      if (settled) return
+      settled = true
+      resolve(execution)
     }
 
-    return {
-      exitCode: typeof failed.code === "number" ? failed.code : 1,
-      stdout: typeof failed.stdout === "string" ? failed.stdout : "",
-      stderr: typeof failed.stderr === "string" ? failed.stderr : "",
-    }
-  }
+    child.stdout?.on("data", (chunk) => {
+      stdout = appendBoundedOutput(stdout, chunk, shellProofCaptureLimit)
+    })
+    child.stderr?.on("data", (chunk) => {
+      stderr = appendBoundedOutput(stderr, chunk, shellProofCaptureLimit)
+    })
+    child.on("error", (error) => {
+      settle({
+        exitCode: 1,
+        stdout,
+        stderr: appendBoundedOutput(stderr, error.message, shellProofCaptureLimit),
+      })
+    })
+    child.on("close", (code) => {
+      settle({
+        exitCode: typeof code === "number" ? code : 1,
+        stdout,
+        stderr,
+      })
+    })
+  })
+}
+
+function appendBoundedOutput(current: string, chunk: unknown, maxLength: number): string {
+  if (current.length >= maxLength) return current
+
+  const text = String(chunk)
+  const remaining = maxLength - current.length
+
+  return `${current}${text.slice(0, remaining)}`
 }
 
 function createProofEvidenceIdFactory(snapshot: RuntimeSnapshot, idFactory: IdFactory | undefined): () => string {
