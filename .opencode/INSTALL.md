@@ -22,6 +22,7 @@ From a cloned checkout:
 
 ```bash
 bun install
+bun packages/cli/src/index.ts go "Build the next feature"
 bun packages/cli/src/index.ts ignite "Build the next feature"
 bun packages/cli/src/index.ts heal
 bun packages/cli/src/index.ts up
@@ -33,9 +34,10 @@ bun packages/cli/src/index.ts next
 bun packages/cli/src/index.ts prove
 bun packages/cli/src/index.ts risk resolve --summary "Operator accepts the active risk after review"
 bun packages/cli/src/index.ts faultline resolve --summary "Split the failing boundary before another repair"
+bun packages/cli/src/index.ts go "Build the next feature" -- <opencode args>
 bun packages/cli/src/index.ts launch -- <opencode args>
 ```
 
-Use `ignite "<goal>"` for the least-ceremony path: it defaults to the direct package plugin, writes OpenCode config, heals missing or invalid local state, creates or resumes the matching Covenant mission, claims the active task, and runs the OS loop once. Use `dashboard` for the packaged mission-control UI; it repairs missing config, creates the configured runtime capsule when needed, builds missing dashboard assets, then serves the dashboard and control API against that capsule. Use `heal` when config, capsule, or plugin wiring looks broken; it backs up invalid local OS files before replacing them. Use plain `up` for a local development shim, or `up --mode npm` to initialize Runesmith and write the direct package plugin entry into OpenCode config. Existing projects can also use only the package entry above; Runesmith will bootstrap the default config and runtime capsule when OpenCode loads the plugin.
+Use `go "<goal>"` for the direct path: it defaults to the package plugin, writes OpenCode config, heals missing or invalid local state, creates or resumes the matching Covenant mission, claims the active task, runs the OS loop once, and can launch OpenCode when args are supplied after `--`. Use `ignite "<goal>"` when you only want the lower-level setup plus mission/loop preparation primitive. Use `dashboard` for the packaged mission-control UI; it repairs missing config, creates the configured runtime capsule when needed, builds missing dashboard assets, then serves the dashboard and control API against that capsule. Use `heal` when config, capsule, or plugin wiring looks broken; it backs up invalid local OS files before replacing them. Use plain `up` for a local development shim, or `up --mode npm` to initialize Runesmith and write the direct package plugin entry into OpenCode config. Existing projects can also use only the package entry above; Runesmith will bootstrap the default config and runtime capsule when OpenCode loads the plugin.
 
 Use `bun packages/cli/src/index.ts doctor` when OpenCode does not load the plugin or the runtime capsule looks invalid.

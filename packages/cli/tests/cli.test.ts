@@ -99,6 +99,7 @@ describe("runesmith cli", () => {
     expect(result.stderr).toBe("")
     expect(result.stdout).toContain("Runesmith OS")
     expect(result.stdout).toContain("state: uninitialized")
+    expect(result.stdout).toContain("go: runesmith go \"<goal>\"")
     expect(result.stdout).toContain("ignite: runesmith ignite \"<goal>\"")
   })
 
@@ -694,6 +695,85 @@ describe("runesmith cli", () => {
     expect(Object.keys(capsule.runtime.graphs)).toEqual(["mission_cli_1"])
   })
 
+  test("go is the direct OS entrypoint for install, mission start, and first loop run", async () => {
+    const host = createMemoryHost(
+      {},
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+      },
+    )
+
+    const result = await runCli([
+      "go",
+      "--config",
+      "opencode.jsonc",
+      "Build direct orchestration",
+    ], host)
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("Runesmith Go")
+    expect(result.stdout).toContain("mode: direct")
+    expect(result.stdout).toContain("setup: ready")
+    expect(result.stdout).toContain("install: package")
+    expect(result.stdout).toContain("opencode config: opencode.jsonc")
+    expect(result.stdout).toContain("mission: mission_cli_1 created")
+    expect(result.stdout).toContain("run: needs-work")
+    expect(result.stdout).toContain("next: Continue forge [attention/high]")
+    expect(result.stdout).toContain("launch: runesmith go \"<goal>\" -- <opencode args>")
+    expect(host.readText("opencode.jsonc")).toContain("\"runesmith@git+https://github.com/pasmud/runesmith.git\"")
+
+    const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
+    expect(capsule.runtime.graphs.mission_cli_1.mission.goal).toBe("Build direct orchestration")
+    expect(capsule.runtime.graphs.mission_cli_1.tasks.task_cli_1.status).toBe("running")
+  })
+
+  test("go can prime the mission capsule and then launch OpenCode with pass-through args", async () => {
+    const launched: Array<{ command: string; args: string[] }> = []
+    const host = createMemoryHost(
+      {},
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+        runCommand(command, args) {
+          launched.push({ command, args })
+
+          return {
+            exitCode: 0,
+            stdout: "OpenCode started\n",
+            stderr: "",
+          }
+        },
+      },
+    )
+
+    const result = await runCli([
+      "go",
+      "--config",
+      "opencode.jsonc",
+      "Build inside OpenCode",
+      "--",
+      "--help",
+    ], host)
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("Runesmith Go")
+    expect(result.stdout).toContain("mission: mission_cli_1 created")
+    expect(result.stdout).toContain("launch: E:/tools/opencode.exe --help")
+    expect(result.stdout).toContain("OpenCode started")
+    expect(launched).toEqual([
+      {
+        command: "E:/tools/opencode.exe",
+        args: ["--help"],
+      },
+    ])
+
+    const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
+    expect(capsule.runtime.graphs.mission_cli_1.mission.goal).toBe("Build inside OpenCode")
+  })
+
   test("status prints the install state and current Loop Pulse", async () => {
     const host = createMemoryHost(
       {
@@ -740,6 +820,7 @@ describe("runesmith cli", () => {
         "runebook: Proofwright proof gate [auto]",
         "runebook commands: bun test",
         "protocol: Proofwright Proof Protocol [auto]",
+        "go: runesmith go \"<goal>\"",
         "ignite: runesmith ignite \"<goal>\"",
         "dashboard: runesmith dashboard",
         "launch: runesmith launch -- <opencode args>",
@@ -809,6 +890,7 @@ describe("runesmith cli", () => {
         "runebook: Pathfinder mission intake [auto]",
         "runebook commands: none",
         "protocol: Pathfinder Intake Protocol [auto]",
+        "go: runesmith go \"<goal>\"",
         "ignite: runesmith ignite \"<goal>\"",
         "dashboard: runesmith dashboard",
         "launch: runesmith launch -- <opencode args>",

@@ -21,7 +21,7 @@ The first production slice includes:
 - A dashboard package using shadcn/ui conventions and an OpenClaw OS-inspired layout for mission visibility.
 - A testbench package with deterministic simulations for duplicate prompt leases, stale tasks, missing capabilities, and evidence verification.
 - A root OpenCode package entrypoint so users can install Runesmith with one `opencode.json` plugin line: `runesmith@git+https://github.com/pasmud/runesmith.git`.
-- A root `runesmith` package binary that points at the built CLI, so the same direct install can expose setup, status, proof, run, doctor, and launch commands without requiring users to know the monorepo layout.
+- A root `runesmith` package binary that points at the built CLI, so the same direct install can expose go, setup, status, proof, run, doctor, and launch commands without requiring users to know the monorepo layout.
 - A native Runic Covenant workflow layer that installs automatically with the OpenCode plugin and drives frame, map, claim, forge, prove, repair, review, seal, and recovery behavior without manual workflow invocation.
 - A default runtime capsule at `.runesmith/runtime/capsule.json` so mission state survives OpenCode restarts and CLI inspection works without requiring a manual snapshot flag.
 - Runesmith Autopilot hooks for OpenCode system bootstrap and compaction continuity, so the engine can prepare and resume missions without the user loading separate workflow skills.
@@ -104,10 +104,11 @@ Owns local user commands.
 
 Responsibilities:
 
-- `runesmith`: no-argument launchpad that prints the same OS status surface as `runesmith status`, including the first useful `ignite`, dashboard, and launch commands instead of returning a usage error.
+- `runesmith`: no-argument launchpad that prints the same OS status surface as `runesmith status`, including the first useful `go`, `ignite`, dashboard, and launch commands instead of returning a usage error.
 - `runesmith up`: one-command bootstrap that writes project config, installs the Runesmith OpenCode plugin wiring, creates the runtime capsule if needed, and reports whether the host `opencode` CLI is available. `up --mode npm` uses the direct package plugin entry while still creating the Runesmith runtime capsule, so users do not need to learn a separate install command before first launch.
 - `runesmith heal`: self-repair command that recreates missing config, backs up and replaces invalid runtime capsules, restores OpenCode package or shim plugin wiring, reruns doctor, and reports ready versus staged when OpenCode itself is not installed yet.
-- `runesmith ignite "<goal>"`: least-ceremony first use. It defaults to the direct package-plugin install path, writes or refreshes OpenCode config, creates the runtime capsule, prepares or resumes the matching Covenant mission through the shared ignition primitive, claims the active task, and runs Runeweave until the next honest stop.
+- `runesmith go "<goal>"`: install-direct first use. It defaults to the direct package-plugin install path, writes or refreshes OpenCode config, repairs local state, prepares or resumes the matching Covenant mission through the shared ignition primitive, claims the active task, runs Runeweave until the next honest stop, and can launch OpenCode when pass-through args are supplied after `--`.
+- `runesmith ignite "<goal>"`: lower-level ignition primitive under `go`. It defaults to the direct package-plugin install path, writes or refreshes OpenCode config, creates the runtime capsule, prepares or resumes the matching Covenant mission through the shared ignition primitive, claims the active task, and runs Runeweave until the next honest stop.
 - `runesmith launch -- <opencode args>`: run the same bootstrap/readiness path, refuse to continue when `opencode` is missing, then hand off to the OpenCode CLI with pass-through arguments.
 - `runesmith init`: create project config.
 - `runesmith doctor`: validate config, runtime capsule, host OpenCode CLI availability, OpenCode plugin wiring, dashboard launch readiness, and an internal Forge -> Review -> Seal loop smoke test; exit nonzero with an actionable repair hint when setup is incomplete.
@@ -308,7 +309,7 @@ Runesmith Autopilot is the install-once bridge between OpenCode chat and the run
 - Persists the runtime capsule after mission creation and claim.
 - Returns mission, task, lease, replay, and agent metadata for subsequent evidence and completion calls.
 
-The same preparation semantics live in core as Runesmith Mission Ignition. OpenCode Autopilot and the CLI use that shared primitive so package install, terminal `ignite`, tool hooks, and idle orchestration all create or resume missions with the same goal matching, task selection, lease idempotency, and Covenant task graph.
+The same preparation semantics live in core as Runesmith Mission Ignition. OpenCode Autopilot and the CLI use that shared primitive so package install, terminal `go`, terminal `ignite`, tool hooks, and idle orchestration all create or resume missions with the same goal matching, task selection, lease idempotency, and Covenant task graph.
 
 For zero-touch operation, the adapter also uses `tool.execute.before`. When the first mutating or shell tool is about to run, and no active task exists, Runesmith infers the latest user goal from message context and runs the same prepare path. OpenCode `session.idle` events use that same preparation path when no mission exists and chat context is present, so the orchestration loop can start before the first file or shell action. Read-only tools and Runesmith's own tools are ignored to avoid creating noisy missions.
 

@@ -253,6 +253,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     return runesmithHeal(args.slice(1), host)
   }
 
+  if (command === "go") {
+    return runesmithGo(args.slice(1), host)
+  }
+
   if (command === "ignite") {
     return runesmithIgnite(args.slice(1), host)
   }
@@ -411,7 +415,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     ].join("\n"))
   }
 
-  return failure("Usage: runesmith <ignite|heal|up|status|run|next|launch|dashboard|prove|install|init|doctor|risk resolve|faultline resolve|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
+  return failure("Usage: runesmith <go|ignite|heal|up|status|run|next|launch|dashboard|prove|install|init|doctor|risk resolve|faultline resolve|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
 }
 
 function success(stdout: string): CliResult {
@@ -514,7 +518,7 @@ async function runesmithHeal(args: string[], host: CliHost): Promise<CliResult> 
     `opencode: ${openCodeCli ? `found ${openCodeCli}` : "missing"}`,
     `doctor: ${doctorState}`,
     doctorState === "ready"
-      ? "next: runesmith ignite \"<goal>\" or runesmith launch -- <opencode args>"
+      ? "next: runesmith go \"<goal>\" or runesmith go \"<goal>\" -- <opencode args>"
       : "next: install OpenCode CLI, then run `runesmith doctor`.",
     "",
   ].join("\n"))
@@ -667,11 +671,66 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     `runebook: ${formatRunebookCard(runebook)}`,
     `runebook commands: ${formatRunebookCommands(runebook)}`,
     `protocol: ${formatRunicProtocol(protocolDeck)}`,
+    "go: runesmith go \"<goal>\"",
     "ignite: runesmith ignite \"<goal>\"",
     "dashboard: runesmith dashboard",
     "launch: runesmith launch -- <opencode args>",
     "",
   ].join("\n"))
+}
+
+async function runesmithGo(args: string[], host: CliHost): Promise<CliResult> {
+  const split = splitLaunchArgs(args)
+  const ignition = await runesmithIgnite(split.setupArgs, host)
+  const stdout = formatGoOutput(ignition.stdout)
+  if (ignition.exitCode !== 0 || split.openCodeArgs.length === 0) {
+    return {
+      exitCode: ignition.exitCode,
+      stdout,
+      stderr: ignition.stderr,
+    }
+  }
+
+  const openCodeCli = await findOpenCodeCli(host)
+  if (!openCodeCli) {
+    return {
+      exitCode: 1,
+      stdout,
+      stderr: "OpenCode CLI not found. Install OpenCode CLI, then rerun `runesmith go`.\n",
+    }
+  }
+
+  if (!host.runCommand) {
+    return {
+      exitCode: 1,
+      stdout,
+      stderr: "This host cannot launch external commands.\n",
+    }
+  }
+
+  const launched = await host.runCommand(openCodeCli, split.openCodeArgs)
+
+  return {
+    exitCode: launched.exitCode,
+    stdout: `${stdout}launch: ${formatCommandForDisplay(openCodeCli, split.openCodeArgs)}\n${launched.stdout ?? ""}`,
+    stderr: launched.stderr ?? "",
+  }
+}
+
+function formatGoOutput(stdout: string): string {
+  const lines = stdout.trimEnd().split("\n").filter(Boolean)
+  if (lines[0] === "Runesmith Ignite") {
+    lines[0] = "Runesmith Go"
+  } else {
+    lines.unshift("Runesmith Go")
+  }
+  lines.splice(1, 0, "mode: direct")
+
+  return `${lines.map((line) => {
+    return line === "launch: runesmith launch -- <opencode args>"
+      ? "launch: runesmith go \"<goal>\" -- <opencode args>"
+      : line
+  }).join("\n")}\n`
 }
 
 type IgniteArgs = {
