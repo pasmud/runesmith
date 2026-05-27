@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState, type CSSProperties, type Dispatch, type FormEvent, type ReactNode } from "react"
+import { useEffect, useReducer, useRef, useState, type CSSProperties, type Dispatch, type FormEvent, type ReactNode } from "react"
 import {
   Activity,
   AlertTriangle,
@@ -102,6 +102,7 @@ export function App() {
   const [directive, setDirective] = useState("")
   const [capsuleLoading, setCapsuleLoading] = useState(false)
   const [controlLoading, setControlLoading] = useState(false)
+  const workspaceRef = useRef<HTMLElement | null>(null)
   const activeSection = sectionMeta[model.activeView]
 
   const refreshRuntimeCapsule = async () => {
@@ -119,6 +120,10 @@ export function App() {
   useEffect(() => {
     void refreshRuntimeCapsule()
   }, [])
+
+  useEffect(() => {
+    workspaceRef.current?.scrollTo({ top: 0, left: 0 })
+  }, [model.activeView])
 
   const runRuntimeControl = async (action: DashboardAction) => {
     setControlLoading(true)
@@ -147,7 +152,7 @@ export function App() {
     <main className="app-shell">
       <Sidebar dispatch={dispatch} model={model} />
 
-      <section className="workspace">
+      <section className="workspace" ref={workspaceRef}>
         <header className="workspace-header">
           <div>
             <h1>{activeSection.title}</h1>
