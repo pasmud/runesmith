@@ -1,25 +1,21 @@
 import {
+  advanceRunicMissionLoop,
   buildCovenantControlBrief,
   buildCovenantPrompt,
   buildLoopPulsePrompt,
-  createCovenantDecisionDraft,
   createCovenantTaskPlan,
   createRuntime,
   createRunicCovenant,
   defaultRuntimeCapsulePath,
   deriveCovenantControlBrief,
   deriveLoopPulse,
-  getRequiredEvidenceForTask,
   loadRuntimeCapsule,
-  missingRequiredEvidence,
   saveRuntimeCapsule,
-  taskDependenciesComplete,
+  selectRunicLoopTask,
   type AgentContract,
   type EvidenceType,
-  type MissionTask,
   type RunicCovenant,
   type RunesmithRuntime,
-  type RuntimeError,
   type RuntimeOptions,
   type RuntimeSnapshot,
 } from "@runesmith/core"
@@ -488,7 +484,7 @@ async function prepareAutopilotMission(input: PrepareAutopilotMissionInput): Pro
   const existing = findActiveMissionForGoal(input.runtime.snapshot(), goal)
   let missionId = existing?.mission.id
   let taskId = missionId
-    ? selectActiveTask(input.runtime.snapshot(), missionId)?.taskId ?? existing?.mission.rootTaskId
+    ? selectRunicLoopTask(input.runtime.snapshot(), missionId)?.taskId ?? existing?.mission.rootTaskId
     : undefined
   let missionCreated = false
 
@@ -541,7 +537,7 @@ async function prepareBeforeToolExecution(input: PrepareBeforeToolExecutionInput
 
   const lowerTool = tool.toLowerCase()
   if (tool.startsWith("runesmith_") || isReadOnlyTool(lowerTool)) return
-  if (selectActiveTask(input.runtime.snapshot())) return
+  if (selectRunicLoopTask(input.runtime.snapshot())) return
 
   const messages = extractMessages(input.input) ?? extractMessages(input.output)
   const goal = normalizeGoal(input.input.goal) ?? normalizeGoal(input.output.goal) ?? extractLatestUserGoal(messages)
@@ -569,7 +565,7 @@ async function recordToolExecutionEvidence(input: RecordToolExecutionEvidenceInp
   if (!tool || tool.startsWith("runesmith_")) return
 
   const snapshot = input.runtime.snapshot()
-  const target = selectActiveTask(snapshot)
+  const target = selectRunicLoopTask(snapshot)
   if (!target) return
 
   const args = asRecord(input.output.args) ?? {}
@@ -604,257 +600,40 @@ type AdvanceAutopilotLoopInput = {
 }
 
 async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<ToolResponse> {
-  if (input.recoverStale ?? true) {
-    const recovered = recoverAutopilotStaleWork(input.runtime)
-    if (!recovered.ok) return formatError("Autopilot recovery rejected", recovered.error)
-
-    if (recovered.value.recovered) {
-      const recoveredSnapshot = input.runtime.snapshot()
-      const target = selectActiveTask(recoveredSnapshot, recovered.value.missionId)
-      const task = target ? recoveredSnapshot.graphs[target.missionId]?.tasks[target.taskId] : undefined
-      const claimed = task?.status === "queued"
-        ? claimAutopilotTask(input.runtime, {
-            missionId: target!.missionId,
-            task,
-            contractId: task.assignedAgentId ?? defaultAtlasContract.id,
-          })
-        : undefined
-      if (claimed && !claimed.ok) return formatError("Autopilot recovery claim rejected", claimed.error)
-
-      await persistRuntime(input.runtimeStore, input.runtime)
-
-      return formatValue("Autopilot recovered stale work", {
-        status: "recovered",
-        missionId: recovered.value.missionId,
-        taskId: claimed?.ok ? claimed.value.task.id : target?.taskId,
-        taskStatus: claimed?.ok ? claimed.value.task.status : task?.status,
-        leaseId: claimed?.ok ? claimed.value.lease.id : undefined,
-        agentId: claimed?.ok ? claimed.value.task.assignedAgentId : task?.assignedAgentId,
-        recoveredTasks: recovered.value.taskIds,
-      })
-    }
-  }
-
-  const snapshot = input.runtime.snapshot()
-  const target = selectActiveTask(snapshot)
-  if (!target) {
-    return formatValue("Autopilot tick idle", {
-      status: "idle",
-    })
-  }
-
-  const graph = snapshot.graphs[target.missionId]
-  const task = graph?.tasks[target.taskId]
-  if (!graph || !task) {
-    return formatValue("Autopilot tick idle", {
-      status: "idle",
-    })
-  }
-
-  const contractId = task.assignedAgentId ?? defaultAtlasContract.id
-  const contract = snapshot.contracts[contractId] ?? defaultAtlasContract
-  if (task.status === "queued") {
-    const claimed = claimAutopilotTask(input.runtime, {
-      missionId: target.missionId,
-      task,
-      contractId,
-    })
-    if (!claimed.ok) return formatError("Autopilot tick claim rejected", claimed.error)
-
-    await persistRuntime(input.runtimeStore, input.runtime)
-
-    return formatValue("Autopilot tick claimed", {
-      status: "claimed",
-      missionId: target.missionId,
-      taskId: target.taskId,
-      leaseId: claimed.value.lease.id,
-      agentId: claimed.value.task.assignedAgentId,
-      replayed: claimed.value.replayed,
-    })
-  }
-
-  const missingEvidence = getMissingEvidence(snapshot, {
-    missionId: target.missionId,
-    taskId: target.taskId,
-    requiredEvidence: getRequiredEvidenceForTask(task, contract),
+  const advanced = advanceRunicMissionLoop(input.runtime, {
+    contract: defaultAtlasContract,
+    holder: "runesmith-autopilot",
+    idempotencyScope: "autopilot",
+    ttlMs: 30_000,
+    recoverStale: input.recoverStale ?? true,
+    staleAfterMs: autopilotStaleAfterMs,
   })
-  const decisionDraft = createCovenantDecisionDraft(task)
-  if (decisionDraft && missingEvidence.length === 1 && missingEvidence[0] === "decision") {
-    const recorded = input.runtime.addTaskEvidence({
-      missionId: target.missionId,
-      evidence: {
-        id: `evidence_auto_decision_${fingerprint(`${target.missionId}:${target.taskId}:${decisionDraft.stage}`)}`,
-        taskId: target.taskId,
-        type: "decision",
-        summary: decisionDraft.summary,
-        payload: decisionDraft.payload,
-        createdAt: new Date().toISOString(),
-      },
-    })
-    if (!recorded.ok) return formatError("Autopilot decision evidence rejected", recorded.error)
-
-    await persistRuntime(input.runtimeStore, input.runtime)
-    return advanceAutopilotLoop(input)
-  }
-
-  if (missingEvidence.length > 0) {
-    return formatValue("Autopilot tick held", {
-      status: "waiting-for-evidence",
-      missionId: target.missionId,
-      taskId: target.taskId,
-      missingEvidence,
-    })
-  }
-
-  const completed = input.runtime.completeTask({
-    missionId: target.missionId,
-    taskId: target.taskId,
-    contractId,
-  })
-  if (!completed.ok) return formatError("Autopilot tick rejected", completed.error)
-
-  const nextTarget = selectActiveTask(input.runtime.snapshot(), target.missionId)
-  const nextTask = nextTarget ? input.runtime.snapshot().graphs[nextTarget.missionId]?.tasks[nextTarget.taskId] : undefined
-  const nextClaimed = nextTask?.status === "queued"
-    ? claimAutopilotTask(input.runtime, {
-        missionId: target.missionId,
-        task: nextTask,
-        contractId: defaultAtlasContract.id,
-      })
-    : undefined
-  if (nextClaimed && !nextClaimed.ok) return formatError("Autopilot next task claim rejected", nextClaimed.error)
+  if (!advanced.ok) return formatError("Autopilot tick rejected", advanced.error)
 
   await persistRuntime(input.runtimeStore, input.runtime)
 
-  if (nextClaimed?.ok) {
-    return advanceAutopilotLoop(input)
-  }
-
-  return formatValue("Autopilot tick completed", {
-    status: "completed",
-    missionId: target.missionId,
-    taskId: target.taskId,
-    taskStatus: completed.value.task.status,
-    missionStatus: input.runtime.snapshot().graphs[target.missionId]?.mission.status ?? completed.value.graph.mission.status,
+  return formatValue(formatAutopilotLoopTitle(advanced.value.status), {
+    status: advanced.value.status,
+    missionId: advanced.value.missionId,
+    taskId: advanced.value.taskId,
+    taskStatus: advanced.value.nextTaskStatus,
+    missionStatus: advanced.value.missionStatus,
+    missingEvidence: advanced.value.missingEvidence,
   })
 }
 
-type AutopilotRecoveryResult =
-  | {
-      ok: true
-      value: {
-        recovered: boolean
-        missionId?: string
-        taskIds: string[]
-      }
-    }
-  | {
-      ok: false
-      error: RuntimeError
-    }
+function formatAutopilotLoopTitle(status: string): string {
+  if (status === "idle") return "Autopilot tick idle"
+  if (status === "recovered") return "Autopilot recovered stale work"
+  if (status === "claimed") return "Autopilot tick claimed"
+  if (status === "waiting-for-evidence") return "Autopilot tick held"
 
-function recoverAutopilotStaleWork(runtime: RunesmithRuntime): AutopilotRecoveryResult {
-  const terminalMissionStatuses = new Set(["complete", "failed", "cancelled"])
-  const snapshot = runtime.snapshot()
-
-  for (const graph of Object.values(snapshot.graphs)) {
-    if (terminalMissionStatuses.has(graph.mission.status)) continue
-
-    const recovered = runtime.recover({
-      missionId: graph.mission.id,
-      staleAfterMs: autopilotStaleAfterMs,
-      requeueStale: true,
-    })
-    if (!recovered.ok) return recovered
-
-    const taskIds = Object.values(recovered.value.graph.tasks)
-      .filter((task) => {
-        const previous = graph.tasks[task.id]
-        return previous && previous.status !== task.status && ["running", "stale"].includes(previous.status)
-      })
-      .map((task) => task.id)
-
-    if (taskIds.length > 0 || recovered.value.graph.events.length > graph.events.length) {
-      return {
-        ok: true,
-        value: {
-          recovered: true,
-          missionId: graph.mission.id,
-          taskIds,
-        },
-      }
-    }
-  }
-
-  return {
-    ok: true,
-    value: {
-      recovered: false,
-      taskIds: [],
-    },
-  }
-}
-
-function claimAutopilotTask(
-  runtime: RunesmithRuntime,
-  input: { missionId: string; task: MissionTask; contractId: string },
-) {
-  return runtime.claimTask({
-    missionId: input.missionId,
-    taskId: input.task.id,
-    contractId: input.contractId,
-    holder: "runesmith-autopilot",
-    idempotencyKey: `autopilot:${input.missionId}:${input.task.id}`,
-    ttlMs: 30_000,
-  })
-}
-
-function getMissingEvidence(
-  snapshot: RuntimeSnapshot,
-  input: { missionId: string; taskId: string; requiredEvidence: EvidenceType[] },
-): EvidenceType[] {
-  const ledger = snapshot.ledgers[input.missionId]
-  if (!ledger) return input.requiredEvidence
-
-  return missingRequiredEvidence(ledger, input)
+  return "Autopilot tick completed"
 }
 
 function getOpenCodeEventType(input: OpenCodeEventInput): string | undefined {
   const event = asRecord(input.event) ?? input
   return normalizeGoal(event.type) ?? normalizeGoal(event.name)
-}
-
-function selectActiveTask(snapshot: RuntimeSnapshot, missionId?: string): { missionId: string; taskId: string } | undefined {
-  const terminalMissionStatuses = new Set(["complete", "failed", "cancelled"])
-  const terminalTaskStatuses = new Set(["complete", "failed", "cancelled"])
-  const statusRank: Record<string, number> = {
-    running: 0,
-    verifying: 1,
-    queued: 2,
-    stale: 3,
-    blocked: 4,
-  }
-
-  return Object.values(snapshot.graphs)
-    .filter((graph) => !missionId || graph.mission.id === missionId)
-    .filter((graph) => !terminalMissionStatuses.has(graph.mission.status))
-    .flatMap((graph) => {
-      return Object.values(graph.tasks)
-        .filter((task) => {
-          return !terminalTaskStatuses.has(task.status) && (task.status !== "queued" || taskDependenciesComplete(graph, task))
-        })
-        .map((task) => ({
-          missionId: graph.mission.id,
-          taskId: task.id,
-          status: task.status,
-          updatedAt: task.updatedAt,
-        }))
-    })
-    .sort((left, right) => {
-      const statusDelta = (statusRank[left.status] ?? 99) - (statusRank[right.status] ?? 99)
-      if (statusDelta !== 0) return statusDelta
-      return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
-    })[0]
 }
 
 function classifyToolEvidence(

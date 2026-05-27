@@ -4,22 +4,18 @@ import { dirname } from "node:path"
 import { pathToFileURL } from "node:url"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import {
-  createCovenantDecisionDraft,
+  advanceRunicMissionLoop,
   createCovenantTaskPlan,
   createRuntime,
   defaultRuntimeCapsulePath,
   deriveLoopPulse,
-  getRequiredEvidenceForTask,
   loadRuntimeCapsule,
-  missingRequiredEvidence,
   saveRuntimeCapsule,
-  taskDependenciesComplete,
   type AgentContract,
   type Evidence,
   type EvidenceType,
   type IdFactory,
   type Lease,
-  type MissionTask,
   type RuntimeSnapshot,
 } from "@runesmith/core"
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
@@ -454,8 +450,13 @@ async function tickMissionFromCli(host: CliHost): Promise<CliResult> {
   })
   runtime.registerContract(cliAtlasContract)
 
-  const advanced = advanceCliLoop(runtime)
-  if (!advanced.ok) return failure(`${advanced.error}\n`)
+  const advanced = advanceRunicMissionLoop(runtime, {
+    contract: cliAtlasContract,
+    holder: "runesmith-cli",
+    idempotencyScope: "cli",
+    ttlMs: 30_000,
+  })
+  if (!advanced.ok) return failure(`${advanced.error.message}\n`)
 
   const snapshot = runtime.snapshot()
   await saveRuntimeCapsule(host, {
@@ -559,169 +560,6 @@ function isEvidenceType(value: string | undefined): value is EvidenceType {
   if (!value) return false
 
   return ["file-change", "command-output", "test-result", "diagnostic", "decision", "risk"].includes(value)
-}
-
-type CliAdvanceResult =
-  | {
-      ok: true
-      value: {
-        status: "idle" | "waiting-for-evidence" | "claimed" | "completed"
-        missionId?: string
-        taskId?: string
-        missionStatus?: string
-      }
-    }
-  | {
-      ok: false
-      error: string
-    }
-
-function advanceCliLoop(runtime: ReturnType<typeof createRuntime>, depth = 0): CliAdvanceResult {
-  if (depth > 12) return { ok: false, error: "Autopilot tick exceeded the maximum advance depth" }
-
-  const snapshot = runtime.snapshot()
-  const target = selectActiveTask(snapshot)
-  if (!target) return { ok: true, value: { status: "idle" } }
-
-  const graph = snapshot.graphs[target.missionId]
-  const task = graph?.tasks[target.taskId]
-  if (!graph || !task) return { ok: true, value: { status: "idle" } }
-
-  const contractId = task.assignedAgentId ?? cliAtlasContract.id
-  const contract = snapshot.contracts[contractId] ?? cliAtlasContract
-
-  if (task.status === "queued") {
-    const claimed = claimCliTask(runtime, {
-      missionId: target.missionId,
-      task,
-      contractId,
-    })
-    if (!claimed.ok) return { ok: false, error: claimed.error.message }
-
-    return { ok: true, value: { status: "claimed", missionId: target.missionId, taskId: target.taskId } }
-  }
-
-  const missingEvidence = getMissingEvidence(snapshot, {
-    missionId: target.missionId,
-    taskId: target.taskId,
-    requiredEvidence: getRequiredEvidenceForTask(task, contract),
-  })
-  const decisionDraft = createCovenantDecisionDraft(task)
-  if (decisionDraft && missingEvidence.length === 1 && missingEvidence[0] === "decision") {
-    const recorded = runtime.addTaskEvidence({
-      missionId: target.missionId,
-      evidence: {
-        id: `evidence_auto_decision_${fingerprint(`${target.missionId}:${target.taskId}:${decisionDraft.stage}`)}`,
-        taskId: target.taskId,
-        type: "decision",
-        summary: decisionDraft.summary,
-        payload: decisionDraft.payload,
-        createdAt: new Date().toISOString(),
-      },
-    })
-    if (!recorded.ok) return { ok: false, error: recorded.error.message }
-
-    return advanceCliLoop(runtime, depth + 1)
-  }
-
-  if (missingEvidence.length > 0) {
-    return {
-      ok: true,
-      value: {
-        status: "waiting-for-evidence",
-        missionId: target.missionId,
-        taskId: target.taskId,
-        missionStatus: graph.mission.status,
-      },
-    }
-  }
-
-  const completed = runtime.completeTask({
-    missionId: target.missionId,
-    taskId: target.taskId,
-    contractId,
-  })
-  if (!completed.ok) return { ok: false, error: completed.error.message }
-
-  const nextTarget = selectActiveTask(runtime.snapshot(), target.missionId)
-  const nextTask = nextTarget ? runtime.snapshot().graphs[nextTarget.missionId]?.tasks[nextTarget.taskId] : undefined
-  const nextClaimed = nextTask?.status === "queued"
-    ? claimCliTask(runtime, {
-        missionId: target.missionId,
-        task: nextTask,
-        contractId: cliAtlasContract.id,
-      })
-    : undefined
-  if (nextClaimed && !nextClaimed.ok) return { ok: false, error: nextClaimed.error.message }
-
-  if (nextClaimed?.ok) return advanceCliLoop(runtime, depth + 1)
-
-  const finalGraph = runtime.snapshot().graphs[target.missionId]
-  return {
-    ok: true,
-    value: {
-      status: "completed",
-      missionId: target.missionId,
-      taskId: target.taskId,
-      missionStatus: finalGraph?.mission.status ?? completed.value.graph.mission.status,
-    },
-  }
-}
-
-function claimCliTask(
-  runtime: ReturnType<typeof createRuntime>,
-  input: { missionId: string; task: MissionTask; contractId: string },
-) {
-  return runtime.claimTask({
-    missionId: input.missionId,
-    taskId: input.task.id,
-    contractId: input.contractId,
-    holder: "runesmith-cli",
-    idempotencyKey: `cli:${input.missionId}:${input.task.id}`,
-    ttlMs: 30_000,
-  })
-}
-
-function selectActiveTask(snapshot: RuntimeSnapshot, missionId?: string): { missionId: string; taskId: string } | undefined {
-  const rank: Record<string, number> = {
-    running: 0,
-    verifying: 1,
-    queued: 2,
-    blocked: 3,
-    stale: 4,
-  }
-
-  return Object.values(snapshot.graphs)
-    .filter((graph) => !missionId || graph.mission.id === missionId)
-    .filter((graph) => !["complete", "failed", "cancelled"].includes(graph.mission.status))
-    .flatMap((graph) => {
-      return Object.values(graph.tasks)
-        .filter((task) => {
-          return !["complete", "failed", "cancelled"].includes(task.status)
-            && (task.status !== "queued" || taskDependenciesComplete(graph, task))
-        })
-        .map((task) => ({
-          missionId: graph.mission.id,
-          taskId: task.id,
-          status: task.status,
-          updatedAt: task.updatedAt,
-        }))
-    })
-    .sort((left, right) => {
-      const rankDelta = (rank[left.status] ?? 99) - (rank[right.status] ?? 99)
-      if (rankDelta !== 0) return rankDelta
-      return right.updatedAt.localeCompare(left.updatedAt)
-    })[0]
-}
-
-function getMissingEvidence(
-  snapshot: RuntimeSnapshot,
-  input: { missionId: string; taskId: string; requiredEvidence: EvidenceType[] },
-): EvidenceType[] {
-  const ledger = snapshot.ledgers[input.missionId]
-  if (!ledger) return input.requiredEvidence
-
-  return missingRequiredEvidence(ledger, input)
 }
 
 function formatMissionEvidence(snapshot: RuntimeSnapshot, missionId: string): string[] {
