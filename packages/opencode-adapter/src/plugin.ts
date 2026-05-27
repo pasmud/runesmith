@@ -776,7 +776,7 @@ async function recordToolExecutionEvidence(input: RecordToolExecutionEvidenceInp
   const target = selectRunicLoopTask(snapshot)
   if (!target) return
 
-  const args = asRecord(input.output.args) ?? {}
+  const args = extractToolArgs(input.input, input.output)
   const result = asRecord(input.output.result) ?? asRecord(input.output)
   const evidence = classifyToolEvidence(tool, args, result)
   if (!evidence) return
@@ -798,6 +798,13 @@ async function recordToolExecutionEvidence(input: RecordToolExecutionEvidenceInp
 
   if (recorded.ok) {
     await persistRuntime(input.runtimeStore, input.runtime)
+  }
+}
+
+function extractToolArgs(input: OpenCodeToolInput, output: OpenCodeToolOutput): Record<string, unknown> {
+  return {
+    ...(asRecord(input.args) ?? asRecord(input.arguments) ?? asRecord(input.toolArgs) ?? {}),
+    ...(asRecord(output.args) ?? asRecord(output.arguments) ?? asRecord(output.toolArgs) ?? {}),
   }
 }
 

@@ -853,6 +853,52 @@ describe("opencode adapter", () => {
     expect(JSON.parse(writes.at(-1) ?? "{}").ledgers.mission_alpha.evidence).toBeDefined()
   })
 
+  test("records evidence when OpenCode tool args are on the input payload", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({ runtime })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Capture input-side hook arguments",
+    })
+    await plugin["tool.execute.after"]?.(
+      {
+        tool: "bash",
+        args: { command: "bun test packages/opencode-adapter/tests/plugin.test.ts" },
+      },
+      {
+        result: { exitCode: 0, stdout: "7 pass", stderr: "" },
+      },
+    )
+    await plugin["tool.execute.after"]?.(
+      {
+        tool: "edit",
+        args: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+      },
+      {
+        result: { status: "changed" },
+      },
+    )
+
+    const evidence = Object.values(runtime.snapshot().ledgers.mission_alpha.evidence)
+    expect(evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "test-result",
+          payload: expect.objectContaining({
+            command: "bun test packages/opencode-adapter/tests/plugin.test.ts",
+            exitCode: 0,
+          }),
+        }),
+        expect.objectContaining({
+          type: "file-change",
+          payload: expect.objectContaining({
+            filePath: "packages/opencode-adapter/src/plugin.ts",
+          }),
+        }),
+      ]),
+    )
+  })
+
   test("classifies verification shell commands as proof or diagnostic evidence automatically", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const plugin = createRunesmithPlugin({ runtime })
