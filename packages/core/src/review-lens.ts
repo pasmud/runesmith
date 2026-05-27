@@ -117,7 +117,7 @@ export function buildReviewLensPrompt(snapshot: RuntimeSnapshot): string {
     ...checklist,
     "Findings:",
     ...findings,
-    "Directive: Treat Review Lens findings as the pre-seal review surface. Do not seal while critical findings remain.",
+    "Directive: Treat Review Lens findings as the pre-seal review surface. Lead with findings before approval, and do not seal while critical findings remain.",
   ].join("\n")
 }
 

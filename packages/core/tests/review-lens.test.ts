@@ -135,6 +135,7 @@ describe("review lens", () => {
     expect(prompt).toContain("Next action: Approve review or record a risk before seal.")
     expect(prompt).toContain("diff-scope: passed")
     expect(prompt).toContain("proof-freshness: passed")
+    expect(prompt).toContain("Lead with findings before approval")
   })
 
   test("blocks review when implementation evidence leaves the contract file scope", () => {

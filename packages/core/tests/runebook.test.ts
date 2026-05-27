@@ -194,4 +194,57 @@ describe("runebook", () => {
     expect(prompt).toContain("Tool hints: runesmith_risk_resolve")
     expect(prompt).not.toContain("ask the user to invoke")
   })
+
+  test("derives a findings-first Mirrorglass review card after proof is fresh", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Review verified work",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runebook review behavior",
+        payload: { filePath: "packages/core/src/runebook.ts" },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Runebook tests passed",
+        payload: { command: "bun test packages/core/tests/runebook.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+
+    const runebook = deriveRunebook(runtime.snapshot())
+    const prompt = buildRunebookPrompt(runtime.snapshot())
+
+    expect(runebook.activeCard).toMatchObject({
+      id: "mirrorglass-review",
+      title: "Mirrorglass review loop",
+      nextActionId: "review-change",
+      autonomy: "guarded",
+    })
+    expect(runebook.activeCard.steps).toContain("Lead with blocking findings before summary or approval.")
+    expect(runebook.activeCard.steps).toContain("Check Review Lens findings, scope, proof freshness, and unresolved risks before approval.")
+    expect(runebook.activeCard.stopConditions).toContain("Do not record approval until blocking findings are resolved or converted into explicit risk evidence.")
+    expect(prompt).toContain("Lead with blocking findings before summary or approval.")
+  })
 })

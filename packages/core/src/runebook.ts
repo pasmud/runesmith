@@ -282,8 +282,10 @@ function buildActiveRunebookCard(input: {
         nextActionId: input.nextActionId,
         autonomy: "guarded",
         trigger: input.reason,
-        intent: "Inspect the diff and runtime behavior before sealing.",
+        intent: "Inspect the diff and runtime behavior with findings-first review discipline before sealing.",
         steps: [
+          "Lead with blocking findings before summary or approval.",
+          "Check Review Lens findings, scope, proof freshness, and unresolved risks before approval.",
           "Review the diff for integration gaps and unrelated churn.",
           "Inspect user-facing behavior when the task touches UI or runtime flow.",
           "Record a decision only when no blocking gap remains.",
@@ -291,7 +293,10 @@ function buildActiveRunebookCard(input: {
         requiredEvidence: input.missingEvidence.length > 0 ? input.missingEvidence : ["decision"],
         commands: input.commands,
         toolHints: ["runesmith_autopilot_tick", "runesmith_task_evidence"],
-        stopConditions: ["Do not approve review while proof is stale or risk remains unresolved."],
+        stopConditions: [
+          "Do not record approval until blocking findings are resolved or converted into explicit risk evidence.",
+          "Do not approve review while proof is stale or risk remains unresolved.",
+        ],
       })
   }
 }

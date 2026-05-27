@@ -175,4 +175,56 @@ describe("runic protocol deck", () => {
     ])
     expect(deck.active.forbiddenMoves).toContain("Do not mark completion from transcript confidence alone.")
   })
+
+  test("selects a findings-first review protocol for verified work", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Review verified protocol work",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed protocol review behavior",
+        payload: { filePath: "packages/core/src/protocol-deck.ts" },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Protocol tests passed",
+        payload: { command: "bun test packages/core/tests/protocol-deck.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+
+    const deck = deriveRunicProtocolDeck(runtime.snapshot())
+    const prompt = buildRunicProtocolPrompt(runtime.snapshot())
+
+    expect(deck.active).toMatchObject({
+      id: "mirrorglass-review-protocol",
+      name: "Mirrorglass Review Protocol",
+      mode: "guarded",
+    })
+    expect(deck.active.procedure).toContain("Lead with blocking findings before summary or approval.")
+    expect(deck.active.forbiddenMoves).toContain("Do not bury critical findings below a summary or approval.")
+    expect(prompt).toContain("Active protocol: Mirrorglass Review Protocol [guarded]")
+    expect(prompt).toContain("Lead with blocking findings before summary or approval.")
+  })
 })

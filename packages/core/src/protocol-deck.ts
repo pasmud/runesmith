@@ -259,10 +259,13 @@ function buildProtocol(input: {
         name: "Mirrorglass Review Protocol",
         mode: "guarded",
         trigger: input.trigger,
-        objective: "Inspect the diff and runtime behavior before sealing a checkpoint.",
+        objective: "Inspect the diff and runtime behavior with findings-first review discipline before sealing a checkpoint.",
         procedure: input.runebookSteps,
         verification: commandLines(input.commands),
-        forbiddenMoves: ["Do not approve review while proof is stale or unresolved risk remains."],
+        forbiddenMoves: [
+          "Do not bury critical findings below a summary or approval.",
+          "Do not approve review while proof is stale or unresolved risk remains.",
+        ],
         toolHints: input.runebookToolHints,
       })
   }
