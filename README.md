@@ -13,7 +13,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - Runesmith Autopilot prepares a mission from the latest OpenCode user request, claims the root task with a stable lease, and replays the same claim instead of duplicating work.
 - The first mutating OpenCode tool can auto-start orchestration, so the agent does not have to remember a manual mission-start step before editing.
 - Tool execution evidence is captured automatically from OpenCode shell, test, and file-edit hooks.
-- Autopilot ticks can seal the active task automatically once captured evidence satisfies the agent contract.
+- Captured proof immediately triggers the evidence gate, so tasks can seal as soon as file-change and test-result evidence satisfy the agent contract.
 - Runtime state is stored in a local capsule so missions survive OpenCode restarts.
 - OpenCode compaction carries the mission capsule forward so long sessions do not lose orchestration state.
 - The dashboard is an operating surface: forge directives, run guarded autopilot, boost agents, toggle policies, and seal evidence snapshots.
@@ -47,7 +47,7 @@ Runesmith Autopilot is the OpenCode-facing part of that loop. The plugin injects
 
 If the agent reaches for a mutating or shell tool before explicitly calling `runesmith_autopilot_prepare`, Runesmith uses `tool.execute.before` to infer the latest user goal, start or resume the mission, and claim the root task first. Read-only tools are ignored so repo inspection does not create noisy missions.
 
-After that, Runesmith listens to OpenCode tool execution. Shell commands become `command-output` evidence, test commands become `test-result` evidence, and file-edit tools become `file-change` evidence on the active task. Manual evidence calls are still available for decisions, risks, diagnostics, screenshots, review notes, and proof that happens outside OpenCode tools.
+After that, Runesmith listens to OpenCode tool execution. Shell commands become `command-output` evidence, test commands become `test-result` evidence, and file-edit tools become `file-change` evidence on the active task. Each captured evidence event runs the same evidence-gated advance loop, so a task can complete immediately after the required proof appears. Manual evidence calls are still available for decisions, risks, diagnostics, screenshots, review notes, and proof that happens outside OpenCode tools.
 
 When OpenCode reaches an idle point, Runesmith runs an autopilot tick. If the active task still lacks required evidence, the tick holds and reports the missing proof. Once the contract is satisfied, the tick completes the task through the runtime gate and persists the updated capsule.
 
@@ -130,7 +130,7 @@ Once installed and OpenCode is restarted, users do not need to invoke a workflow
 - `experimental.chat.system.transform`: injects the Runic Covenant and Runesmith Autopilot bootstrap.
 - `experimental.session.compacting`: appends the current mission capsule to compaction context.
 - `tool.execute.before`: auto-prepares and claims a mission before the first mutating/shell tool when message context is available.
-- `tool.execute.after`: records useful shell, test, and file-change evidence against the active Runesmith task.
+- `tool.execute.after`: records useful shell, test, and file-change evidence, then runs the evidence-gated advance loop.
 - `event`: advances the active mission on `session.idle` when evidence gates are satisfied.
 - `runesmith_autopilot_prepare`: starts or resumes the active mission from the latest user goal and claims its root task.
 - `runesmith_autopilot_tick`: manually run the same evidence-gated advance loop.

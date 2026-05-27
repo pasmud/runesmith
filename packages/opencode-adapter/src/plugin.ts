@@ -384,6 +384,10 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
         input,
         output,
       })
+      await advanceAutopilotLoop({
+        runtime,
+        runtimeStore: options.runtimeStore,
+      })
     },
     async event(input) {
       if (getOpenCodeEventType(input) !== "session.idle") return
