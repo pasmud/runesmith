@@ -22,6 +22,7 @@ The first production slice includes:
 - A testbench package with deterministic simulations for duplicate prompt leases, stale tasks, missing capabilities, and evidence verification.
 - A native Runic Covenant workflow layer that installs automatically with the OpenCode plugin and drives frame, map, claim, forge, prove, review, seal, and recovery behavior without manual workflow invocation.
 - A default runtime capsule at `.runesmith/runtime/capsule.json` so mission state survives OpenCode restarts and CLI inspection works without requiring a manual snapshot flag.
+- Runesmith Autopilot hooks for OpenCode system bootstrap and compaction continuity, so the engine can prepare and resume missions without the user loading separate workflow skills.
 
 Out of scope for the first slice:
 
@@ -55,6 +56,8 @@ Responsibilities:
 
 - Export an OpenCode plugin module.
 - Register mission tools.
+- Inject the Runic Covenant and Runesmith Autopilot through OpenCode's system transform hook.
+- Inject a mission capsule summary through OpenCode's compaction hook.
 - Translate OpenCode events into core runtime events.
 - Use the core lease scheduler before sending any internal prompt or continuation.
 - Keep OpenCode-specific types and instability out of `packages/core`.
@@ -206,6 +209,18 @@ Stages:
 
 Every stage carries gates and evidence signals. The covenant is a workflow policy layer; the runtime remains the source of truth for mission state, leases, and evidence.
 
+### Runesmith Autopilot
+
+Runesmith Autopilot is the install-once bridge between OpenCode chat and the runtime. The system transform hook tells the coding agent to prepare a mission when a real coding goal appears. The `runesmith_autopilot_prepare` tool then:
+
+- Infers the goal from the explicit tool argument or latest user message.
+- Reuses a matching active mission instead of creating duplicate work.
+- Claims the root task with the default Atlas contract and a stable idempotency key.
+- Persists the runtime capsule after mission creation and claim.
+- Returns mission, task, lease, replay, and agent metadata for subsequent evidence and completion calls.
+
+The compaction hook appends a mission capsule summary containing active missions, tasks, leases, and evidence counts. This gives continuation sessions enough orchestration state to recover or keep working before starting a new loop.
+
 ### Recovery Policies
 
 Recovery policies are pure functions that inspect graph state and events.
@@ -221,6 +236,7 @@ Initial policies:
 
 The first adapter exposes these tools:
 
+- `runesmith_autopilot_prepare`: infer or accept the current goal, start or resume a mission, claim the root task, and persist the capsule.
 - `runesmith_covenant_status`: report the active autonomous workflow stages installed by Runesmith.
 - `runesmith_mission_start`: create a mission from a user goal.
 - `runesmith_mission_status`: summarize graph state.
@@ -230,6 +246,11 @@ The first adapter exposes these tools:
 - `runesmith_recover`: run recovery policies and return suggested actions.
 
 The adapter must not complete tasks directly. It delegates all state transitions to `packages/core`.
+
+The adapter also exposes documented OpenCode hooks:
+
+- `experimental.chat.system.transform`: injects the Runic Covenant and Runesmith Autopilot bootstrap.
+- `experimental.session.compacting`: appends the current mission capsule summary to compaction context.
 
 ## Dashboard Direction
 

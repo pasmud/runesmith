@@ -130,4 +130,70 @@ describe("opencode adapter", () => {
     expect(writes).toHaveLength(2)
     expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.tasks.task_alpha.assignedAgentId).toBe("agent_atlas")
   })
+
+  test("supports documented OpenCode system and compaction hooks", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({ runtime })
+
+    const systemOutput = { system: ["Base system prompt"] }
+    await plugin["experimental.chat.system.transform"]?.({}, systemOutput)
+
+    expect(systemOutput.system.join("\n")).toContain("Runic Covenant")
+    expect(systemOutput.system.join("\n")).toContain("Runesmith Autopilot")
+
+    await plugin.tool.runesmith_mission_start.execute({
+      goal: "Carry state through compaction",
+    })
+
+    const compactOutput = { context: [] as string[] }
+    await plugin["experimental.session.compacting"]?.({}, compactOutput)
+
+    expect(compactOutput.context.join("\n")).toContain("mission_alpha")
+    expect(compactOutput.context.join("\n")).toContain("Carry state through compaction")
+  })
+
+  test("autopilot prepares and claims a mission from the latest user message once", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const writes: string[] = []
+    const plugin = createRunesmithPlugin({
+      runtime,
+      runtimeStore: {
+        save(snapshot) {
+          writes.push(JSON.stringify(snapshot))
+        },
+      },
+    })
+    const messages = [
+      { info: { role: "user" }, parts: [{ type: "text", text: "Build a durable OpenCode harness" }] },
+    ]
+
+    const prepared = await plugin.tool.runesmith_autopilot_prepare.execute({
+      messages,
+    })
+    const replayed = await plugin.tool.runesmith_autopilot_prepare.execute({
+      messages,
+    })
+
+    expect(JSON.parse(prepared.output)).toMatchObject({
+      ok: true,
+      value: {
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        leaseId: "lease_alpha",
+        replayed: false,
+      },
+    })
+    expect(JSON.parse(replayed.output)).toMatchObject({
+      ok: true,
+      value: {
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        leaseId: "lease_alpha",
+        replayed: true,
+      },
+    })
+    expect(runtime.snapshot().graphs.mission_alpha.mission.goal).toBe("Build a durable OpenCode harness")
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.assignedAgentId).toBe("agent_atlas")
+    expect(writes.length).toBeGreaterThanOrEqual(2)
+  })
 })

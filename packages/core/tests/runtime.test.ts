@@ -50,6 +50,42 @@ describe("runesmith runtime", () => {
     expect(claimed.value.lease.id).toBe("lease_alpha")
   })
 
+  test("reports idempotent task claims as replayed", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+
+    const mission = runtime.startMission({
+      goal: "Replay existing task claim",
+      requiredCapabilities: ["typescript"],
+    })
+    if (!mission.ok) throw new Error("mission start failed")
+
+    const first = runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    if (!first.ok) throw new Error("first claim failed")
+
+    const second = runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+
+    expect(first.value.replayed).toBe(false)
+    expect(second.ok).toBe(true)
+    if (!second.ok) return
+    expect(second.value.replayed).toBe(true)
+    expect(second.value.lease.id).toBe("lease_alpha")
+  })
+
   test("rejects completion until required evidence exists", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

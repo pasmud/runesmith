@@ -10,7 +10,9 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - Tasks cannot complete without evidence.
 - Recovery policies can detect stale or unsafe work before it silently disappears.
 - The Runic Covenant is injected automatically so agents frame, map, claim, forge, prove, review, seal, and recover work without the user babysitting the loop.
+- Runesmith Autopilot prepares a mission from the latest OpenCode user request, claims the root task with a stable lease, and replays the same claim instead of duplicating work.
 - Runtime state is stored in a local capsule so missions survive OpenCode restarts.
+- OpenCode compaction carries the mission capsule forward so long sessions do not lose orchestration state.
 - The dashboard is an operating surface: forge directives, run guarded autopilot, boost agents, toggle policies, and seal evidence snapshots.
 
 ## Packages
@@ -37,6 +39,8 @@ Once the OpenCode plugin is installed, Runesmith injects the Covenant into the c
 8. Recovery Sweep
 
 Each stage has gates and evidence requirements. The point is simple: install once, then let the engine drive end-to-end work through leases, proof, review, snapshots, and recovery.
+
+Runesmith Autopilot is the OpenCode-facing part of that loop. The plugin injects a short bootstrap that tells the coding agent to call `runesmith_autopilot_prepare` when a real coding goal appears. That tool reads the latest user message when no explicit goal is provided, starts or resumes the matching active mission, claims the mission root through the lease scheduler, and saves the runtime capsule.
 
 ## Orchestration OS Surface
 
@@ -99,3 +103,10 @@ bun packages/cli/src/index.ts install --plugin-dir .opencode/plugins
 ```
 
 OpenCode loads local plugins from `.opencode/plugins/` and `~/.config/opencode/plugins/` automatically. Npm plugins are added to the `plugin` array in `opencode.json`. See `examples/opencode/runesmith-plugin.json` for the npm-style config shape.
+
+Once installed and OpenCode is restarted, users do not need to invoke a workflow manually. The plugin registers:
+
+- `experimental.chat.system.transform`: injects the Runic Covenant and Runesmith Autopilot bootstrap.
+- `experimental.session.compacting`: appends the current mission capsule to compaction context.
+- `runesmith_autopilot_prepare`: starts or resumes the active mission from the latest user goal and claims its root task.
+- Mission tools for status, claim, evidence, completion, covenant status, and recovery.

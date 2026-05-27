@@ -30,6 +30,7 @@ export type ToolDefinition<TArgs extends Record<string, unknown>> = {
 export type RunesmithPlugin = {
   name: "runesmith"
   tool: {
+    runesmith_autopilot_prepare: ToolDefinition<AutopilotPrepareArgs>
     runesmith_covenant_status: ToolDefinition<CovenantStatusArgs>
     runesmith_mission_start: ToolDefinition<MissionStartArgs>
     runesmith_mission_status: ToolDefinition<MissionStatusArgs>
@@ -45,6 +46,8 @@ export type RunesmithPlugin = {
       }
     }
   }
+  "experimental.chat.system.transform": (input: unknown, output: OpenCodeSystemOutput) => Promise<void> | void
+  "experimental.session.compacting": (input: unknown, output: OpenCodeCompactionOutput) => Promise<void> | void
 }
 
 export type PluginOptions = RuntimeOptions & {
@@ -59,6 +62,11 @@ export type PluginRuntimeStore = {
 }
 
 type CovenantStatusArgs = Record<string, never>
+
+type AutopilotPrepareArgs = {
+  goal?: string
+  messages?: unknown[]
+}
 
 type MissionStartArgs = {
   goal: string
@@ -98,6 +106,15 @@ type RecoverArgs = {
   staleAfterMs?: number
 }
 
+type OpenCodeSystemOutput = {
+  system?: string[] | string
+}
+
+type OpenCodeCompactionOutput = {
+  context?: string[]
+  prompt?: string
+}
+
 const defaultAtlasContract: AgentContract = {
   id: "agent_atlas",
   displayName: "Atlas",
@@ -118,6 +135,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
   const runtime = options.runtime ?? createRuntime(options)
   const covenant = options.covenant ?? createRunicCovenant()
   const covenantPrompt = buildCovenantPrompt(covenant)
+  const autopilotPrompt = buildAutopilotPrompt()
   for (const contract of options.contracts ?? [defaultAtlasContract]) {
     runtime.registerContract(contract)
   }
@@ -125,6 +143,21 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
   return {
     name: "runesmith",
     tool: {
+      runesmith_autopilot_prepare: {
+        description:
+          "Prepare the current OpenCode request as a durable Runesmith mission and claim its root task automatically.",
+        parameters: objectSchema({
+          goal: stringSchema("Optional explicit mission goal. If omitted, Runesmith reads the latest user message."),
+          messages: valueArraySchema("Recent OpenCode chat messages used to infer the mission goal."),
+        }),
+        async execute(args) {
+          return prepareAutopilotMission({
+            runtime,
+            runtimeStore: options.runtimeStore,
+            args,
+          })
+        },
+      },
       runesmith_covenant_status: {
         description: "Return the active Runic Covenant autonomous workflow installed by Runesmith.",
         parameters: objectSchema({}),
@@ -213,6 +246,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             status: result.value.task.status,
             assignedAgentId: result.value.task.assignedAgentId,
             leaseId: result.value.lease.id,
+            replayed: result.value.replayed,
           })
         },
       },
@@ -291,14 +325,16 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       chat: {
         system: {
           transform(_input, systemPrompt) {
-            if (systemPrompt.includes("## Runic Covenant")) {
-              return systemPrompt
-            }
-
-            return `${systemPrompt.trimEnd()}\n\n${covenantPrompt}`
+            return appendPromptSections(systemPrompt, [covenantPrompt, autopilotPrompt])
           },
         },
       },
+    },
+    "experimental.chat.system.transform"(_input, output) {
+      appendSystemSections(output, [covenantPrompt, autopilotPrompt])
+    },
+    "experimental.session.compacting"(_input, output) {
+      appendCompactionContext(output, runtime.snapshot())
     },
   }
 }
@@ -319,6 +355,220 @@ export default async function RunesmithOpenCodePlugin(): Promise<RunesmithPlugin
       },
     },
   })
+}
+
+type PrepareAutopilotMissionInput = {
+  runtime: RunesmithRuntime
+  runtimeStore?: PluginRuntimeStore
+  args: AutopilotPrepareArgs
+}
+
+async function prepareAutopilotMission(input: PrepareAutopilotMissionInput): Promise<ToolResponse> {
+  const goal = normalizeGoal(input.args.goal) ?? extractLatestUserGoal(input.args.messages)
+  if (!goal) {
+    return formatError("Autopilot preparation rejected", {
+      code: "AUTOPILOT_GOAL_MISSING",
+      message: "Runesmith could not infer a user goal from the current OpenCode messages.",
+    })
+  }
+
+  const existing = findActiveMissionForGoal(input.runtime.snapshot(), goal)
+  let missionId = existing?.mission.id
+  let taskId = existing?.mission.rootTaskId
+  let missionCreated = false
+
+  if (!missionId || !taskId) {
+    const started = input.runtime.startMission({ goal })
+    if (!started.ok) return formatError("Autopilot mission start rejected", started.error)
+
+    missionId = started.value.missionId
+    taskId = started.value.rootTaskId
+    missionCreated = true
+    await persistRuntime(input.runtimeStore, input.runtime)
+  }
+
+  const claimed = input.runtime.claimTask({
+    missionId,
+    taskId,
+    contractId: defaultAtlasContract.id,
+    holder: "runesmith-autopilot",
+    idempotencyKey: `autopilot:${fingerprint(goal)}`,
+    ttlMs: 30_000,
+  })
+  if (!claimed.ok) return formatError("Autopilot task claim rejected", claimed.error)
+
+  await persistRuntime(input.runtimeStore, input.runtime)
+
+  return formatValue("Autopilot mission prepared", {
+    missionId,
+    taskId,
+    leaseId: claimed.value.lease.id,
+    agentId: claimed.value.task.assignedAgentId,
+    goal,
+    replayed: claimed.value.replayed,
+    missionCreated,
+  })
+}
+
+function buildAutopilotPrompt(): string {
+  return [
+    "## Runesmith Autopilot",
+    "Runesmith is installed as the orchestration engine for this OpenCode session.",
+    "When the user asks for coding, repo, debugging, UI, or research-to-implementation work, call `runesmith_autopilot_prepare` with the latest user goal or message list before starting edits.",
+    "Continue under the returned mission, task, and lease. Record file-change, command-output, test-result, diagnostic, decision, or risk evidence with `runesmith_task_evidence` as work progresses.",
+    "Do not ask the user to invoke Runesmith, skills, or a workflow by name. Keep the user experience install-once and direct.",
+    "Before claiming completion, attach required evidence and use `runesmith_task_complete`; if state looks stale or conflicting, run `runesmith_recover` first.",
+  ].join("\n")
+}
+
+function appendPromptSections(systemPrompt: string, sections: string[]): string {
+  let next = systemPrompt.trimEnd()
+
+  for (const section of sections) {
+    const heading = sectionHeading(section)
+    if (next.includes(heading)) continue
+    next = next.length > 0 ? `${next}\n\n${section}` : section
+  }
+
+  return next
+}
+
+function appendSystemSections(output: OpenCodeSystemOutput, sections: string[]): void {
+  const system =
+    typeof output.system === "string"
+      ? [output.system]
+      : Array.isArray(output.system)
+        ? output.system
+        : []
+  let joined = system.join("\n")
+
+  for (const section of sections) {
+    const heading = sectionHeading(section)
+    if (joined.includes(heading)) continue
+    system.push(section)
+    joined = `${joined}\n${section}`
+  }
+
+  output.system = system
+}
+
+function appendCompactionContext(output: OpenCodeCompactionOutput, snapshot: RuntimeSnapshot): void {
+  const context = output.context ?? []
+  const summary = buildMissionCapsuleSummary(snapshot)
+  if (!context.join("\n").includes("## Runesmith Mission Capsule")) {
+    context.push(summary)
+  }
+  output.context = context
+}
+
+function buildMissionCapsuleSummary(snapshot: RuntimeSnapshot): string {
+  const graphs = Object.values(snapshot.graphs)
+  if (graphs.length === 0) {
+    return [
+      "## Runesmith Mission Capsule",
+      "No Runesmith missions have been started in this capsule yet.",
+    ].join("\n")
+  }
+
+  const missionBlocks = graphs.map((graph) => {
+    const ledger = snapshot.ledgers[graph.mission.id]
+    const evidenceCount = Object.keys(ledger?.evidence ?? {}).length
+    const taskLines = Object.values(graph.tasks).map((task) => {
+      const assignee = task.assignedAgentId ? `; agent=${task.assignedAgentId}` : ""
+      return `  - ${task.id}: ${task.status}; ${task.title}${assignee}`
+    })
+    const leaseLines = Object.values(snapshot.leases.leases)
+      .filter((lease) => graph.tasks[lease.targetId])
+      .map((lease) => `  - lease ${lease.id}: ${lease.status}; target=${lease.targetId}; holder=${lease.holder}`)
+
+    return [
+      `- ${graph.mission.id}: ${graph.mission.status}; goal=${graph.mission.goal}; root=${graph.mission.rootTaskId}; evidence=${evidenceCount}`,
+      ...taskLines,
+      ...leaseLines,
+    ].join("\n")
+  })
+
+  return [
+    "## Runesmith Mission Capsule",
+    "Preserve this orchestration state across compaction. Continue existing running work before starting duplicate missions.",
+    ...missionBlocks,
+  ].join("\n")
+}
+
+function findActiveMissionForGoal(snapshot: RuntimeSnapshot, goal: string) {
+  const normalizedGoal = normalizeGoal(goal)
+  if (!normalizedGoal) return undefined
+
+  return Object.values(snapshot.graphs).find((graph) => {
+    if (["complete", "failed", "cancelled"].includes(graph.mission.status)) return false
+    return normalizeGoal(graph.mission.goal) === normalizedGoal
+  })
+}
+
+function extractLatestUserGoal(messages: unknown[] | undefined): string | undefined {
+  if (!Array.isArray(messages)) return undefined
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = asRecord(messages[index])
+    if (!message) continue
+
+    const role = stringValue(message.role) ?? stringValue(asRecord(message.info)?.role)
+    if (role !== "user") continue
+
+    const text = extractMessageText(message)
+    const goal = normalizeGoal(text)
+    if (goal) return goal
+  }
+
+  return undefined
+}
+
+function extractMessageText(message: Record<string, unknown>): string | undefined {
+  const candidates = [message.text, message.content, message.parts]
+  const text = candidates.map(extractTextValue).filter(Boolean).join("\n")
+  return text.length > 0 ? text : undefined
+}
+
+function extractTextValue(value: unknown): string {
+  if (typeof value === "string") return value
+  if (Array.isArray(value)) return value.map(extractTextValue).filter(Boolean).join("\n")
+
+  const record = asRecord(value)
+  if (!record) return ""
+
+  return [record.text, record.content].map(extractTextValue).filter(Boolean).join("\n")
+}
+
+function normalizeGoal(goal: unknown): string | undefined {
+  if (typeof goal !== "string") return undefined
+  const normalized = goal.replace(/\s+/g, " ").trim()
+  return normalized.length > 0 ? normalized : undefined
+}
+
+function fingerprint(value: string): string {
+  let hash = 0x811c9dc5
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+
+  return (hash >>> 0).toString(36)
+}
+
+function sectionHeading(section: string): string {
+  return section.split("\n", 1)[0] ?? section
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+
+  return undefined
 }
 
 function formatValue(title: string, value: Record<string, unknown>): ToolResponse {
@@ -343,11 +593,18 @@ async function persistAndFormat(
   title: string,
   value: Record<string, unknown>,
 ): Promise<ToolResponse> {
+  await persistRuntime(runtimeStore, runtime)
+
+  return formatValue(title, value)
+}
+
+async function persistRuntime(
+  runtimeStore: PluginRuntimeStore | undefined,
+  runtime: RunesmithRuntime,
+): Promise<void> {
   if (runtimeStore) {
     await runtimeStore.save(runtime.snapshot())
   }
-
-  return formatValue(title, value)
 }
 
 function createNodeRuntimeStoreHost() {
@@ -399,5 +656,13 @@ function arraySchema(description: string): Record<string, unknown> {
     items: {
       type: "string",
     },
+  }
+}
+
+function valueArraySchema(description: string): Record<string, unknown> {
+  return {
+    type: "array",
+    description,
+    items: {},
   }
 }

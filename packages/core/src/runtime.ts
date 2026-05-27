@@ -41,6 +41,7 @@ export type ClaimTaskValue = {
   graph: MissionGraph
   task: MissionTask
   lease: Lease
+  replayed: boolean
 }
 
 export type AddTaskEvidenceInput = {
@@ -173,6 +174,7 @@ export class RunesmithRuntime {
       graph: nextGraph,
       task: claimedTask,
       lease: lease.value.lease,
+      replayed: lease.value.replayed,
     })
   }
 
