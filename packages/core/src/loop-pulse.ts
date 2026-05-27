@@ -429,9 +429,9 @@ function buildExecutionPlan(
       },
       {
         id: "repair-smallest-cause",
-        label: "Repair smallest cause",
+        label: "Hypothesis repair",
         status: "queued",
-        instruction: "Make the smallest likely fix and avoid unrelated scope expansion.",
+        instruction: "State a falsifiable repair hypothesis, change one repair variable, and link the edit to the active diagnostic.",
         evidence: ["file-change"],
         runes: selectPlanRunes(brief.runes, ["Faultwright"]),
       },

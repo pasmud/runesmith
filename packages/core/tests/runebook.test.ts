@@ -118,13 +118,17 @@ describe("runebook", () => {
       toolHints: ["runesmith_proof_run"],
     })
     expect(runebook.activeCard.steps[0]).toContain("Runebook tests failed")
+    expect(runebook.activeCard.steps).toContain("State a falsifiable repair hypothesis from the latest diagnostic before editing.")
+    expect(runebook.activeCard.steps).toContain("Change one repair variable at a time and explain why it should change the failing output.")
     expect(runebook.activeCard.commands.map((command) => command.command)).toEqual([
       "bun test packages/core/tests/runebook.test.ts",
       "bun test",
     ])
     expect(runebook.activeCard.stopConditions).toContain("Hold completion until the rerun records passing test-result evidence.")
+    expect(runebook.activeCard.stopConditions).toContain("Do not patch symptoms without linking the edit to the active diagnostic.")
     expect(prompt).toContain("## Runesmith Runebook")
     expect(prompt).toContain("Active card: Faultwright repair loop [guarded]")
+    expect(prompt).toContain("State a falsifiable repair hypothesis from the latest diagnostic before editing.")
     expect(prompt).toContain("1. Rerun failing command: bun test packages/core/tests/runebook.test.ts")
   })
 

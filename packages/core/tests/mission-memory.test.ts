@@ -154,7 +154,8 @@ describe("mission memory", () => {
       nextAction: {
         id: "repair-diagnostic",
       },
-      handoff: "Repair task_alpha: bun test packages/core/tests failed. Rerun proof after the smallest fix.",
+      handoff:
+        "Repair task_alpha: bun test packages/core/tests failed. State a falsifiable hypothesis, change one repair variable, then rerun proof.",
     })
   })
 

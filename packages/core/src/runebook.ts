@@ -247,13 +247,17 @@ function buildActiveRunebookCard(input: {
         intent: "Use failed verification as the active repair target, then prove the repair.",
         steps: [
           `Acknowledge active diagnostic: ${latestDiagnostic}.`,
-          "Make the smallest likely fix.",
+          "State a falsifiable repair hypothesis from the latest diagnostic before editing.",
+          "Change one repair variable at a time and explain why it should change the failing output.",
           "Rerun the exact failing command before broader verification.",
         ],
         requiredEvidence: ["test-result"],
         commands: input.commands,
         toolHints: ["runesmith_proof_run"],
-        stopConditions: ["Hold completion until the rerun records passing test-result evidence."],
+        stopConditions: [
+          "Hold completion until the rerun records passing test-result evidence.",
+          "Do not patch symptoms without linking the edit to the active diagnostic.",
+        ],
       })
     }
     case "seal-mission":

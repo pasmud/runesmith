@@ -1163,7 +1163,7 @@ describe("opencode adapter", () => {
           status: "needs-repair",
           latestDiagnostics: ["bash ran bun test packages/opencode-adapter/tests/plugin.test.ts"],
           handoff:
-            "Repair task_alpha: bash ran bun test packages/opencode-adapter/tests/plugin.test.ts. Rerun proof after the smallest fix.",
+            "Repair task_alpha: bash ran bun test packages/opencode-adapter/tests/plugin.test.ts. State a falsifiable hypothesis, change one repair variable, then rerun proof.",
         },
         proofPlan: {
           status: "needs-repair",
@@ -1182,6 +1182,10 @@ describe("opencode adapter", () => {
           activeCard: {
             id: "faultwright-repair",
             autonomy: "guarded",
+            steps: expect.arrayContaining([
+              "State a falsifiable repair hypothesis from the latest diagnostic before editing.",
+              "Change one repair variable at a time and explain why it should change the failing output.",
+            ]),
             commands: [
               {
                 command: "bun test packages/opencode-adapter/tests/plugin.test.ts",
@@ -1204,7 +1208,9 @@ describe("opencode adapter", () => {
             },
             {
               id: "repair-smallest-cause",
+              label: "Hypothesis repair",
               status: "queued",
+              instruction: "State a falsifiable repair hypothesis, change one repair variable, and link the edit to the active diagnostic.",
             },
             {
               id: "rerun-failing-command",

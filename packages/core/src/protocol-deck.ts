@@ -182,12 +182,14 @@ function buildProtocol(input: {
         objective: "Turn failed proof into a focused repair target before another completion attempt.",
         procedure: [
           `Acknowledge active diagnostic: ${latestDiagnostic}.`,
-          "Trace the smallest likely cause before editing.",
-          "Make one focused repair edit, then rerun the exact failing command before broader proof.",
+          "State a falsifiable repair hypothesis from the latest diagnostic before editing.",
+          "Change one repair variable at a time and explain why it should change the failing output.",
+          "Rerun the exact failing command before broader proof.",
         ],
         verification: commandLines(input.commands),
         forbiddenMoves: [
           "Do not rerun the same failing proof before a repair edit is captured.",
+          "Do not patch symptoms without linking the edit to the active diagnostic.",
           "Do not start unrelated work while the diagnostic is the active task target.",
         ],
         toolHints: ["runesmith_proof_run"],

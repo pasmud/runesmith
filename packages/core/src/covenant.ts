@@ -129,8 +129,13 @@ const covenantStages: CovenantStage[] = [
     name: "Repair Gate",
     purpose: "Turn failed verification into focused repair work before another proof attempt.",
     trigger: "The active task has diagnostic evidence or a failed test result and still lacks passing test proof.",
-    behavior: "Use the latest diagnostic to make the smallest likely fix, then rerun the exact failing command.",
-    gates: ["Diagnostic is acknowledged", "Repair is scoped", "The failing command is rerun after the fix"],
+    behavior: "Use the latest diagnostic to state a falsifiable repair hypothesis, change one variable, then rerun the exact failing command.",
+    gates: [
+      "Diagnostic is acknowledged",
+      "Repair hypothesis is falsifiable",
+      "Only one repair variable changes before proof reruns",
+      "The failing command is rerun after the fix",
+    ],
     evidence: ["diagnostic", "file-change", "test-result"],
   },
   {
@@ -207,7 +212,8 @@ const covenantRunes: Record<CovenantRuneId, CovenantRune> = {
     reason: "Treat failed verification as repair input instead of asking the user to restart the workflow.",
     steps: [
       "Read the latest diagnostic and identify the smallest likely cause.",
-      "Repair the smallest likely cause, then rerun the exact failing command.",
+      "State a falsifiable repair hypothesis from the latest diagnostic before editing.",
+      "Change one repair variable at a time, then rerun the exact failing command.",
       "Attach a passing test-result before asking the completion gate to advance.",
     ],
   },
@@ -532,7 +538,9 @@ function buildControlDirectives(
     const latestDiagnostic = diagnostics[diagnostics.length - 1] ?? "the latest diagnostic"
     return [
       `Treat this diagnostic as the active repair target: ${latestDiagnostic}.`,
-      "Repair the smallest likely cause, then rerun the exact failing command.",
+      "State a falsifiable repair hypothesis from the latest diagnostic before editing.",
+      "Change one repair variable at a time, then rerun the exact failing command.",
+      "Do not patch symptoms without linking the edit to the active diagnostic.",
       "Do not call the completion gate until a passing test-result is attached.",
     ]
   }

@@ -1465,7 +1465,9 @@ describe("runesmith cli", () => {
     expect(inspect.stdout).toContain("Active card: Faultwright repair loop [guarded]")
     expect(inspect.stdout).toContain("Commands: bun test packages/cli/tests -> bun test")
     expect(inspect.stdout).toContain("Mission memory:")
-    expect(inspect.stdout).toContain("Handoff: Repair task_cli_1: CLI tests failed. Rerun proof after the smallest fix.")
+    expect(inspect.stdout).toContain(
+      "Handoff: Repair task_cli_1: CLI tests failed. State a falsifiable hypothesis, change one repair variable, then rerun proof.",
+    )
     expect(inspect.stdout).toContain("Proof plan:")
     expect(inspect.stdout).toContain("- Rerun failing command: bun test packages/cli/tests")
   })

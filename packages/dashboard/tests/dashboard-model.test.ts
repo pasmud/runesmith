@@ -423,6 +423,10 @@ describe("dashboard model", () => {
       "repair-smallest-cause",
       "rerun-failing-command",
     ])
+    expect(model.loopPulse.executionPlan[1]).toMatchObject({
+      label: "Hypothesis repair",
+      instruction: "State a falsifiable repair hypothesis, change one repair variable, and link the edit to the active diagnostic.",
+    })
     expect(model.loopPulse.runes.map((rune) => rune.name)).toContain("Faultwright")
     expect(model.runebook.activeCard).toMatchObject({
       id: "faultwright-repair",
@@ -440,7 +444,7 @@ describe("dashboard model", () => {
     ])
     expect(model.missionMemory.status).toBe("needs-repair")
     expect(model.missionMemory.handoff).toBe(
-      "Repair task_live: Dashboard capsule tests failed. Rerun proof after the smallest fix.",
+      "Repair task_live: Dashboard capsule tests failed. State a falsifiable hypothesis, change one repair variable, then rerun proof.",
     )
     expect(model.proofPlan.commands.map((command) => command.command)).toEqual([
       "bun test packages/dashboard/tests",

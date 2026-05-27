@@ -206,6 +206,12 @@ describe("loop pulse", () => {
       evidence: ["diagnostic"],
       runes: ["Faultwright"],
     })
+    expect(pulse.executionPlan[1]).toMatchObject({
+      label: "Hypothesis repair",
+      instruction: "State a falsifiable repair hypothesis, change one repair variable, and link the edit to the active diagnostic.",
+      evidence: ["file-change"],
+      runes: ["Faultwright"],
+    })
     expect(pulse.executionPlan[2]).toMatchObject({
       status: "blocked",
       evidence: ["test-result"],
@@ -214,6 +220,7 @@ describe("loop pulse", () => {
     expect(prompt).toContain("Next action: Repair diagnostic")
     expect(prompt).toContain("Execution plan:")
     expect(prompt).toContain("1. active - Acknowledge diagnostic")
+    expect(prompt).toContain("2. queued - Hypothesis repair")
     expect(prompt).toContain("Active runes: Faultwright, Proofwright")
   })
 

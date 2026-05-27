@@ -115,14 +115,18 @@ describe("runic protocol deck", () => {
     })
     expect(deck.summary).toBe("Repair diagnostic through Faultwright Repair Protocol.")
     expect(deck.active.procedure[0]).toContain("Protocol deck tests failed")
+    expect(deck.active.procedure).toContain("State a falsifiable repair hypothesis from the latest diagnostic before editing.")
+    expect(deck.active.procedure).toContain("Change one repair variable at a time and explain why it should change the failing output.")
     expect(deck.active.verification).toEqual([
       "Rerun failing command: bun test packages/core/tests/protocol-deck.test.ts",
       "Run tests: bun test",
     ])
     expect(deck.active.forbiddenMoves).toContain("Do not rerun the same failing proof before a repair edit is captured.")
+    expect(deck.active.forbiddenMoves).toContain("Do not patch symptoms without linking the edit to the active diagnostic.")
     expect(prompt).toContain("## Runesmith Protocol Deck")
     expect(prompt).toContain("Active protocol: Faultwright Repair Protocol [guarded]")
     expect(prompt).toContain("Engine-selected protocol; do not ask the user to invoke a workflow by name.")
+    expect(prompt).toContain("State a falsifiable repair hypothesis from the latest diagnostic before editing.")
     expect(prompt).not.toContain("Superpowers")
   })
 

@@ -281,7 +281,7 @@ function buildHandoff(input: {
   if (input.status === "needs-repair") {
     const diagnostic = input.latestDiagnostics[0] ?? input.pulse.diagnostics[0] ?? input.pulse.nextAction.reason
 
-    return `Repair ${taskId}: ${diagnostic}. Rerun proof after the smallest fix.`
+    return `Repair ${taskId}: ${diagnostic}. State a falsifiable hypothesis, change one repair variable, then rerun proof.`
   }
 
   if (input.status === "needs-recovery") {

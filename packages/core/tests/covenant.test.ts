@@ -115,7 +115,9 @@ describe("runic covenant", () => {
     expect(brief).toContain("Core tests failed")
     expect(brief).toContain("Active runes:")
     expect(brief).toContain("Faultwright")
-    expect(brief).toContain("Repair the smallest likely cause, then rerun the exact failing command.")
+    expect(brief).toContain("State a falsifiable repair hypothesis from the latest diagnostic before editing.")
+    expect(brief).toContain("Change one repair variable at a time, then rerun the exact failing command.")
+    expect(brief).toContain("Do not patch symptoms without linking the edit to the active diagnostic.")
   })
 
   test("selects a recovery rune when the active task is stale", () => {
