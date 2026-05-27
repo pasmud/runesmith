@@ -25,6 +25,7 @@ The first production slice includes:
 - Runesmith Autopilot hooks for OpenCode system bootstrap and compaction continuity, so the engine can prepare and resume missions without the user loading separate workflow skills.
 - Zero-touch mission preparation from OpenCode `tool.execute.before` when a mutating or shell tool is about to run and no active mission exists.
 - Automatic evidence capture from OpenCode tool execution events for shell commands, test runs, and file edits, followed by an immediate evidence-gated advance attempt.
+- Evidence writes are validated against the mission graph and refresh task heartbeat/timeline state, so active proof collection is not mistaken for stale work.
 - Evidence-gated autopilot ticks that can complete the active task on OpenCode idle events once proof requirements are satisfied.
 - A state-aware Runesmith Control Brief that tells OpenCode the active mission, active task, next Runic Covenant stage, required evidence, and missing proof directly from runtime state.
 - A Runesmith Loop Pulse that derives one authoritative next action, health signal, priority, blockers, and active runes from the runtime capsule.

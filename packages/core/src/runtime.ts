@@ -191,15 +191,57 @@ export class RunesmithRuntime {
   }
 
   addTaskEvidence(input: AddTaskEvidenceInput): Result<EvidenceLedger> {
-    if (!this.graphs.has(input.missionId)) {
+    const graph = this.graphs.get(input.missionId)
+    if (!graph) {
       return err(runtimeError("MISSION_NOT_FOUND", "Mission does not exist", { missionId: input.missionId }))
+    }
+
+    const task = graph.tasks[input.evidence.taskId]
+    if (!task) {
+      return err(runtimeError("TASK_NOT_FOUND", "Task does not exist", { taskId: input.evidence.taskId }))
     }
 
     const ledger = this.ledgers.get(input.missionId) ?? createEvidenceLedger()
     const next = addEvidence(ledger, input.evidence)
     if (!next.ok) return next
 
+    const heartbeatAt = resolveActivityTimestamp([
+      task.lastHeartbeatAt,
+      task.updatedAt,
+      input.evidence.createdAt,
+    ], this.options.now)
+    const updatedGraph: MissionGraph = {
+      ...graph,
+      mission: {
+        ...graph.mission,
+        updatedAt: heartbeatAt,
+      },
+      tasks: {
+        ...graph.tasks,
+        [task.id]: {
+          ...task,
+          updatedAt: heartbeatAt,
+          lastHeartbeatAt: heartbeatAt,
+        },
+      },
+      events: [
+        ...graph.events,
+        {
+          id: this.options.idFactory?.("event") ?? `event_evidence_${input.evidence.id}`,
+          type: "task.evidence.recorded",
+          at: heartbeatAt,
+          targetId: task.id,
+          message: "Task evidence recorded",
+          data: {
+            evidenceId: input.evidence.id,
+            evidenceType: input.evidence.type,
+          },
+        },
+      ],
+    }
+
     this.ledgers.set(input.missionId, next.value)
+    this.graphs.set(input.missionId, updatedGraph)
     return next
   }
 
@@ -280,4 +322,15 @@ export class RunesmithRuntime {
 
 export function createRuntime(options?: RuntimeOptions): RunesmithRuntime {
   return new RunesmithRuntime(options)
+}
+
+function resolveActivityTimestamp(values: Array<string | undefined>, now: Clock | undefined): string {
+  const fallback = (now ?? (() => new Date()))().toISOString()
+  const timestamps = values
+    .map((value) => value ? new Date(value).getTime() : Number.NaN)
+    .filter(Number.isFinite)
+
+  if (timestamps.length === 0) return fallback
+
+  return new Date(Math.max(...timestamps)).toISOString()
 }

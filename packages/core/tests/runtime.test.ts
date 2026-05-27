@@ -124,6 +124,89 @@ describe("runesmith runtime", () => {
     })
   })
 
+  test("rejects evidence for tasks outside the mission graph", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    const mission = runtime.startMission({
+      goal: "Reject stray proof",
+      requiredCapabilities: ["typescript"],
+    })
+    if (!mission.ok) throw new Error("mission start failed")
+
+    const recorded = runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_stray",
+        taskId: "task_missing",
+        type: "file-change",
+        summary: "Evidence for a task that does not exist",
+        payload: {},
+        createdAt: "2026-05-27T00:00:30.000Z",
+      },
+    })
+
+    expect(recorded).toEqual({
+      ok: false,
+      error: {
+        code: "TASK_NOT_FOUND",
+        message: "Task does not exist",
+        details: {
+          taskId: "task_missing",
+        },
+      },
+    })
+  })
+
+  test("treats recorded evidence as task activity before stale recovery", () => {
+    let current = new Date("2026-05-27T00:00:00.000Z")
+    const runtime = createRuntime({
+      idFactory: ids,
+      now: () => current,
+    })
+    runtime.registerContract(atlas)
+    const mission = runtime.startMission({
+      goal: "Keep active proof from going stale",
+      requiredCapabilities: ["typescript"],
+    })
+    if (!mission.ok) throw new Error("mission start failed")
+    const claimed = runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    if (!claimed.ok) throw new Error("claim failed")
+
+    current = new Date("2026-05-27T00:01:30.000Z")
+    const recorded = runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runtime files",
+        payload: { files: ["packages/core/src/runtime.ts"] },
+        createdAt: current.toISOString(),
+      },
+    })
+    expect(recorded.ok).toBe(true)
+
+    current = new Date("2026-05-27T00:02:00.000Z")
+    const recovered = runtime.recover({
+      missionId: "mission_alpha",
+      now: () => current,
+      staleAfterMs: 60_000,
+    })
+
+    expect(recovered.ok).toBe(true)
+    if (!recovered.ok) return
+    expect(recovered.value.graph.tasks.task_alpha?.status).toBe("running")
+    expect(recovered.value.graph.tasks.task_alpha?.lastHeartbeatAt).toBe("2026-05-27T00:01:30.000Z")
+    expect(recovered.value.graph.events.map((event) => event.type)).toContain("task.evidence.recorded")
+  })
+
   test("completes a task once required evidence exists", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

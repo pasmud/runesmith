@@ -13,6 +13,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - Runesmith Autopilot prepares a mission from the latest OpenCode user request, creates a Forge -> Review -> Seal task plan, claims the next ready task with a stable lease, and replays the same claim instead of duplicating work.
 - The first mutating OpenCode tool can auto-start orchestration, so the agent does not have to remember a manual mission-start step before editing.
 - Tool execution evidence is captured automatically from OpenCode shell, test, and file-edit hooks.
+- Evidence is validated against real mission tasks and refreshes task heartbeat state, so recovery does not reclaim active work just because the agent is producing proof instead of chat.
 - Captured proof immediately triggers the evidence gate, so tasks can seal as soon as file-change evidence and passing test-result evidence satisfy the active task contract.
 - Idle recovery requeues dependency-ready stale tasks, clears stale ownership, and claims a fresh lease so work can continue without a manual reset.
 - Runtime state is stored in a local capsule so missions survive OpenCode restarts.
