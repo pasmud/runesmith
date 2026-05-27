@@ -20,6 +20,7 @@ import { runtimeError } from "./errors"
 export type RuntimeOptions = {
   idFactory?: IdFactory
   now?: Clock
+  snapshot?: RuntimeSnapshot
 }
 
 export type StartMissionInput = {
@@ -72,12 +73,19 @@ export type RuntimeSnapshot = {
 }
 
 export class RunesmithRuntime {
-  private readonly contracts = new Map<string, AgentContract>()
-  private readonly graphs = new Map<string, MissionGraph>()
-  private readonly ledgers = new Map<string, EvidenceLedger>()
+  private contracts = new Map<string, AgentContract>()
+  private graphs = new Map<string, MissionGraph>()
+  private ledgers = new Map<string, EvidenceLedger>()
   private leases = createLeaseBook()
 
-  constructor(private readonly options: RuntimeOptions = {}) {}
+  constructor(private readonly options: RuntimeOptions = {}) {
+    if (options.snapshot) {
+      this.contracts = new Map(Object.entries(options.snapshot.contracts))
+      this.graphs = new Map(Object.entries(options.snapshot.graphs))
+      this.ledgers = new Map(Object.entries(options.snapshot.ledgers))
+      this.leases = options.snapshot.leases
+    }
+  }
 
   registerContract(contract: AgentContract): void {
     this.contracts.set(contract.id, contract)

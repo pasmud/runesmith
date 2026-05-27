@@ -169,4 +169,58 @@ describe("runesmith runtime", () => {
     if (!recovered.ok) return
     expect(recovered.value.graph.tasks.task_alpha?.status).toBe("stale")
   })
+
+  test("hydrates mission state, evidence, leases, and contracts from a snapshot", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+
+    const mission = runtime.startMission({
+      goal: "Persist mission state",
+      requiredCapabilities: ["typescript"],
+    })
+    if (!mission.ok) throw new Error("mission start failed")
+
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runtime",
+        payload: {},
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Tests passed",
+        payload: {},
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+
+    const hydrated = createRuntime({ snapshot: runtime.snapshot(), now: fixedNow })
+    const completed = hydrated.completeTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+    })
+
+    expect(completed.ok).toBe(true)
+    if (!completed.ok) throw new Error("completion failed")
+    expect(completed.value.graph.mission.status).toBe("complete")
+    expect(hydrated.snapshot().leases.leases.lease_alpha?.holder).toBe("atlas")
+  })
 })

@@ -2,12 +2,18 @@ import {
   buildCovenantPrompt,
   createRuntime,
   createRunicCovenant,
+  defaultRuntimeCapsulePath,
+  loadRuntimeCapsule,
+  saveRuntimeCapsule,
   type AgentContract,
   type EvidenceType,
   type RunicCovenant,
   type RunesmithRuntime,
   type RuntimeOptions,
+  type RuntimeSnapshot,
 } from "@runesmith/core"
+import { dirname } from "node:path"
+import { mkdir, readFile, writeFile } from "node:fs/promises"
 
 export type ToolResponse = {
   title: string
@@ -45,6 +51,11 @@ export type PluginOptions = RuntimeOptions & {
   runtime?: RunesmithRuntime
   contracts?: AgentContract[]
   covenant?: RunicCovenant
+  runtimeStore?: PluginRuntimeStore
+}
+
+export type PluginRuntimeStore = {
+  save(snapshot: RuntimeSnapshot): Promise<void> | void
 }
 
 type CovenantStatusArgs = Record<string, never>
@@ -138,7 +149,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           goal: stringSchema("Mission goal"),
           requiredCapabilities: arraySchema("Capabilities required by the root task"),
         }),
-        execute(args) {
+        async execute(args) {
           const result = runtime.startMission({
             goal: args.goal,
             requiredCapabilities: args.requiredCapabilities,
@@ -146,7 +157,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
 
           if (!result.ok) return formatError("Mission start rejected", result.error)
 
-          return formatValue("Mission started", {
+          return persistAndFormat(options.runtimeStore, runtime, "Mission started", {
             missionId: result.value.missionId,
             rootTaskId: result.value.rootTaskId,
             status: result.value.graph.mission.status,
@@ -186,7 +197,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           idempotencyKey: stringSchema("Stable idempotency key for this claim attempt"),
           ttlMs: numberSchema("Lease time to live in milliseconds"),
         }),
-        execute(args) {
+        async execute(args) {
           const result = runtime.claimTask({
             missionId: args.missionId,
             taskId: args.taskId,
@@ -197,7 +208,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           })
           if (!result.ok) return formatError("Task claim rejected", result.error)
 
-          return formatValue("Task claimed", {
+          return persistAndFormat(options.runtimeStore, runtime, "Task claimed", {
             taskId: result.value.task.id,
             status: result.value.task.status,
             assignedAgentId: result.value.task.assignedAgentId,
@@ -215,7 +226,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           payload: objectSchema({}),
           evidenceId: stringSchema("Optional stable evidence id"),
         }),
-        execute(args) {
+        async execute(args) {
           const result = runtime.addTaskEvidence({
             missionId: args.missionId,
             evidence: {
@@ -229,7 +240,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           })
           if (!result.ok) return formatError("Evidence rejected", result.error)
 
-          return formatValue("Evidence recorded", {
+          return persistAndFormat(options.runtimeStore, runtime, "Evidence recorded", {
             taskId: args.taskId,
             type: args.type,
           })
@@ -242,11 +253,11 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           taskId: stringSchema("Task id"),
           contractId: stringSchema("Agent contract id"),
         }),
-        execute(args) {
+        async execute(args) {
           const result = runtime.completeTask(args)
           if (!result.ok) return formatError("Task completion rejected", result.error)
 
-          return formatValue("Task completed", {
+          return persistAndFormat(options.runtimeStore, runtime, "Task completed", {
             taskId: result.value.task.id,
             status: result.value.task.status,
             missionStatus: result.value.graph.mission.status,
@@ -259,14 +270,14 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           missionId: stringSchema("Mission id"),
           staleAfterMs: numberSchema("Heartbeat threshold in milliseconds"),
         }),
-        execute(args) {
+        async execute(args) {
           const result = runtime.recover({
             missionId: args.missionId,
             staleAfterMs: args.staleAfterMs ?? 120_000,
           })
           if (!result.ok) return formatError("Recovery rejected", result.error)
 
-          return formatValue("Recovery complete", {
+          return persistAndFormat(options.runtimeStore, runtime, "Recovery complete", {
             missionId: result.value.graph.mission.id,
             status: result.value.graph.mission.status,
             staleTasks: Object.values(result.value.graph.tasks)
@@ -293,7 +304,21 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
 }
 
 export default async function RunesmithOpenCodePlugin(): Promise<RunesmithPlugin> {
-  return createRunesmithPlugin()
+  const host = createNodeRuntimeStoreHost()
+  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  const snapshot = capsule.ok ? capsule.value?.runtime : undefined
+
+  return createRunesmithPlugin({
+    snapshot,
+    runtimeStore: {
+      async save(nextSnapshot) {
+        await saveRuntimeCapsule(host, {
+          path: defaultRuntimeCapsulePath,
+          snapshot: nextSnapshot,
+        })
+      },
+    },
+  })
 }
 
 function formatValue(title: string, value: Record<string, unknown>): ToolResponse {
@@ -309,6 +334,39 @@ function formatError(title: string, error: Record<string, unknown>): ToolRespons
     title,
     output: JSON.stringify({ ok: false, error }, null, 2),
     metadata: { error },
+  }
+}
+
+async function persistAndFormat(
+  runtimeStore: PluginRuntimeStore | undefined,
+  runtime: RunesmithRuntime,
+  title: string,
+  value: Record<string, unknown>,
+): Promise<ToolResponse> {
+  if (runtimeStore) {
+    await runtimeStore.save(runtime.snapshot())
+  }
+
+  return formatValue(title, value)
+}
+
+function createNodeRuntimeStoreHost() {
+  return {
+    async exists(path: string): Promise<boolean> {
+      try {
+        await readFile(path, "utf8")
+        return true
+      } catch {
+        return false
+      }
+    },
+    readText(path: string): Promise<string> {
+      return readFile(path, "utf8")
+    },
+    async writeText(path: string, text: string): Promise<void> {
+      await mkdir(dirname(path), { recursive: true })
+      await writeFile(path, text, "utf8")
+    },
   }
 }
 

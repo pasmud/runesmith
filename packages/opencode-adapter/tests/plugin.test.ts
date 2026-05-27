@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { createRuntime } from "@runesmith/core"
-import { createRunesmithPlugin } from "../src/plugin"
+import { createRunesmithPlugin, type PluginRuntimeStore } from "../src/plugin"
 
 const fixedNow = () => new Date("2026-05-27T00:00:00.000Z")
 const ids = (prefix: string) => `${prefix}_alpha`
@@ -104,5 +104,30 @@ describe("opencode adapter", () => {
     expect(first).toContain("Base system prompt")
     expect(first).toContain("Runic Covenant")
     expect(second.match(/Runic Covenant/g)).toHaveLength(1)
+  })
+
+  test("persists mission mutations to a runtime store", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const writes: string[] = []
+    const store: PluginRuntimeStore = {
+      async save(snapshot) {
+        writes.push(JSON.stringify(snapshot))
+      },
+    }
+    const plugin = createRunesmithPlugin({ runtime, runtimeStore: store })
+
+    await plugin.tool.runesmith_mission_start.execute({
+      goal: "Persist OpenCode mission",
+    })
+    await plugin.tool.runesmith_task_claim.execute({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+    })
+
+    expect(writes).toHaveLength(2)
+    expect(JSON.parse(writes.at(-1) ?? "{}").graphs.mission_alpha.tasks.task_alpha.assignedAgentId).toBe("agent_atlas")
   })
 })

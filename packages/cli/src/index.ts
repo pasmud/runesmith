@@ -4,7 +4,7 @@ import { dirname } from "node:path"
 import { homedir } from "node:os"
 import { pathToFileURL } from "node:url"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
-import type { RuntimeSnapshot } from "@runesmith/core"
+import { defaultRuntimeCapsulePath, loadRuntimeCapsule, type RuntimeSnapshot } from "@runesmith/core"
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
 
 export type CliResult = {
@@ -145,13 +145,28 @@ type SnapshotReadResult =
       result: CliResult
     }
 
+const emptySnapshot: RuntimeSnapshot = {
+  graphs: {},
+  ledgers: {},
+  leases: { leases: {} },
+  contracts: {},
+}
+
 async function readSnapshot(host: CliHost, args: string[]): Promise<SnapshotReadResult> {
   const snapshotFlagIndex = args.indexOf("--snapshot")
   const snapshotPath = snapshotFlagIndex >= 0 ? args[snapshotFlagIndex + 1] : undefined
   if (!snapshotPath) {
+    const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+    if (!capsule.ok) {
+      return {
+        ok: false,
+        result: failure(`${capsule.error.message}\n`),
+      }
+    }
+
     return {
-      ok: false,
-      result: failure("Missing --snapshot <path>\n"),
+      ok: true,
+      value: capsule.value?.runtime ?? emptySnapshot,
     }
   }
 

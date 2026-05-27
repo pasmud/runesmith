@@ -142,12 +142,55 @@ describe("runesmith cli", () => {
     })
   })
 
+  test("mission list reads the default runtime capsule without a snapshot flag", async () => {
+    const host = createMemoryHost({
+      ".runesmith/runtime/capsule.json": JSON.stringify({
+        version: 1,
+        updatedAt: "2026-05-27T00:00:00.000Z",
+        runtime: snapshot,
+      }),
+    })
+
+    const result = await runCli(["mission", "list"], host)
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: "mission_alpha running Build Runesmith\n",
+      stderr: "",
+    })
+  })
+
   test("mission inspect prints graph details from a snapshot", async () => {
     const host = createMemoryHost({
       "snapshot.json": JSON.stringify(snapshot),
     })
 
     const result = await runCli(["mission", "inspect", "mission_alpha", "--snapshot", "snapshot.json"], host)
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Mission mission_alpha",
+        "Status: running",
+        "Goal: Build Runesmith",
+        "Tasks:",
+        "- task_alpha running agent_atlas Mission root",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+  })
+
+  test("mission inspect reads the default runtime capsule without a snapshot flag", async () => {
+    const host = createMemoryHost({
+      ".runesmith/runtime/capsule.json": JSON.stringify({
+        version: 1,
+        updatedAt: "2026-05-27T00:00:00.000Z",
+        runtime: snapshot,
+      }),
+    })
+
+    const result = await runCli(["mission", "inspect", "mission_alpha"], host)
 
     expect(result).toEqual({
       exitCode: 0,

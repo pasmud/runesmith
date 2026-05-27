@@ -10,6 +10,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - Tasks cannot complete without evidence.
 - Recovery policies can detect stale or unsafe work before it silently disappears.
 - The Runic Covenant is injected automatically so agents frame, map, claim, forge, prove, review, seal, and recover work without the user babysitting the loop.
+- Runtime state is stored in a local capsule so missions survive OpenCode restarts.
 - The dashboard is an operating surface: forge directives, run guarded autopilot, boost agents, toggle policies, and seal evidence snapshots.
 
 ## Packages
@@ -66,6 +67,15 @@ Run the dashboard:
 bun run dev:dashboard
 ```
 
+Inspect persisted missions:
+
+```bash
+bun packages/cli/src/index.ts mission list
+bun packages/cli/src/index.ts mission inspect <mission-id>
+```
+
+Runesmith stores the default runtime capsule at `.runesmith/runtime/capsule.json`. The CLI still accepts `--snapshot <path>` for explicit exports, but normal usage does not require it.
+
 ## OpenCode
 
 Runesmith supports two install paths:
@@ -73,7 +83,7 @@ Runesmith supports two install paths:
 ```bash
 # Local development install. This writes a generated plugin shim to the
 # OpenCode global plugin directory and points it at this checkout.
-# The Runic Covenant bootstrap is included automatically.
+# The Runic Covenant bootstrap and runtime capsule persistence are included automatically.
 bun packages/cli/src/index.ts install
 
 # Future npm-style install, matching the OpenCode `plugin` array flow.

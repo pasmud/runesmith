@@ -21,6 +21,7 @@ The first production slice includes:
 - A dashboard package using shadcn/ui conventions and an OpenClaw OS-inspired layout for mission visibility.
 - A testbench package with deterministic simulations for duplicate prompt leases, stale tasks, missing capabilities, and evidence verification.
 - A native Runic Covenant workflow layer that installs automatically with the OpenCode plugin and drives frame, map, claim, forge, prove, review, seal, and recovery behavior without manual workflow invocation.
+- A default runtime capsule at `.runesmith/runtime/capsule.json` so mission state survives OpenCode restarts and CLI inspection works without requiring a manual snapshot flag.
 
 Out of scope for the first slice:
 
@@ -168,6 +169,21 @@ Evidence types:
 - `risk`
 
 A task cannot move to `complete` unless its contract-required evidence exists. This is the primary guard against false completion.
+
+### Runtime Capsule
+
+The runtime capsule is the default durable state file for a local project. It is a versioned JSON envelope containing graphs, ledgers, leases, and contracts. OpenCode plugin mutations save the capsule after successful mission, claim, evidence, completion, and recovery operations.
+
+Default path:
+
+- `.runesmith/runtime/capsule.json`
+
+CLI commands read this capsule automatically:
+
+- `runesmith mission list`
+- `runesmith mission inspect <id>`
+
+Explicit `--snapshot <path>` remains available for exported or test fixtures.
 
 ### Tool Router
 
