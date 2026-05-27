@@ -1610,7 +1610,7 @@ function extractTextValue(value: unknown): string {
 
 function normalizeGoal(goal: unknown): string | undefined {
   if (typeof goal !== "string") return undefined
-  const normalized = goal.replace(/\s+/g, " ").trim()
+  const normalized = stripRunesmithBootstrapBlocks(goal).replace(/\s+/g, " ").trim()
   return normalized.length > 0 ? normalized : undefined
 }
 

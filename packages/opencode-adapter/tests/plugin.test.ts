@@ -363,6 +363,22 @@ describe("opencode adapter", () => {
     expect(runtime.snapshot().graphs.mission_alpha.mission.goal).toBe("Build a bootstrap-safe mission loop")
   })
 
+  test("sanitizes explicit goal values that accidentally include Runesmith bootstrap text", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({ runtime })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: [
+        "<RUNESMITH_BOOTSTRAP>",
+        "Runesmith is installed as the OpenCode orchestration OS.",
+        "</RUNESMITH_BOOTSTRAP>",
+        "Build a direct-goal bootstrap guard",
+      ].join("\n"),
+    })
+
+    expect(runtime.snapshot().graphs.mission_alpha.mission.goal).toBe("Build a direct-goal bootstrap guard")
+  })
+
   test("registers bundled Runesmith protocol docs with OpenCode skills config", async () => {
     const plugin = createRunesmithPlugin()
     const config: any = {}
