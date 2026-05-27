@@ -702,6 +702,7 @@ function RightRail({ dispatch, model }: { dispatch: DashboardDispatch; model: Da
       <LoopPulsePanel model={model} />
       <MissionMapPanel model={model} />
       <PlanContractPanel model={model} />
+      <DispatchMatrixPanel model={model} />
       <ScopeSentinelPanel model={model} />
       <RedlineProofPanel model={model} />
       <RepairContractPanel model={model} />
@@ -855,6 +856,53 @@ function PlanContractPanel({ model }: { model: DashboardModel }) {
           <span data-status={contract.status}>
             <strong>No execution slices</strong>
             <small>{contract.missing[0] ?? "Start a mission to arm the plan contract."}</small>
+          </span>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function DispatchMatrixPanel({ model }: { model: DashboardModel }) {
+  const matrix = model.dispatchMatrix
+  const tone: MissionStatus =
+    matrix.status === "blocked"
+      ? "blocked"
+      : matrix.status === "parallel"
+        ? "running"
+        : matrix.status === "idle" || matrix.status === "drained"
+          ? "verified"
+          : "stale"
+  const slots = matrix.slots.filter((slot) => slot.lane !== "complete").slice(0, 4)
+
+  return (
+    <section className="dispatch-matrix-panel" aria-label="Runesmith dispatch matrix">
+      <div className="inspector-header">
+        <p className="eyebrow">Dispatch Matrix</p>
+        <Badge tone={tone}>{matrix.status}</Badge>
+      </div>
+      <div className="dispatch-matrix-head">
+        <span className={`tile-icon tile-icon-${tone}`}><Bot aria-hidden="true" /></span>
+        <div>
+          <h2>{matrix.goal ?? "No dispatch"}</h2>
+          <p>{matrix.summary}</p>
+        </div>
+      </div>
+      <div className="dispatch-matrix-counts">
+        <span>{matrix.readySlotCount} ready</span>
+        <span>{matrix.activeSlotCount} active</span>
+        <span>{matrix.blockedSlotCount} blocked</span>
+      </div>
+      <div className="dispatch-slots" aria-label="Dispatch matrix slots">
+        {slots.length > 0 ? slots.map((slot) => (
+          <span data-lane={slot.lane} key={slot.taskId}>
+            <strong>{slot.key}</strong>
+            <small>{slot.recommendedAgentId ?? "no matching agent"}</small>
+          </span>
+        )) : (
+          <span data-lane={matrix.status === "blocked" ? "blocked" : "complete"}>
+            <strong>No dispatch slots</strong>
+            <small>{matrix.summary}</small>
           </span>
         )}
       </div>

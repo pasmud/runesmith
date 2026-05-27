@@ -1,5 +1,6 @@
 export * from "./contracts.js"
 export * from "./covenant.js"
+export * from "./dispatch-matrix.js"
 export * from "./errors.js"
 export * from "./evidence-ledger.js"
 export * from "./lease-scheduler.js"

@@ -9,6 +9,7 @@ import {
   createRuntime,
   defaultProjectConfigPath,
   defaultRuntimeCapsulePath,
+  deriveDispatchMatrix,
   deriveLoopPulse,
   deriveMissionMap,
   deriveMissionMemory,
@@ -35,6 +36,7 @@ import {
   saveProjectConfig,
   saveRuntimeCapsule,
   type AgentContract,
+  type DispatchMatrix,
   type Evidence,
   type EvidenceType,
   type IdFactory,
@@ -331,6 +333,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     const pulse = deriveLoopPulse(snapshot.value)
     const missionMap = deriveMissionMap(snapshot.value)
     const planContract = derivePlanContract(snapshot.value)
+    const dispatchMatrix = deriveDispatchMatrix(snapshot.value)
     const scopeSentinel = deriveScopeSentinel(snapshot.value)
     const redlineProof = deriveRedlineProof(snapshot.value)
     const repairContract = deriveRepairContract(snapshot.value)
@@ -363,6 +366,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
       "Plan contract:",
       `Status: ${planContract.status}`,
       `Summary: ${planContract.summary}`,
+      "Dispatch matrix:",
+      `Status: ${dispatchMatrix.status}`,
+      `Summary: ${dispatchMatrix.summary}`,
+      ...formatDispatchMatrixSlotLines(dispatchMatrix),
       "Scope sentinel:",
       `Summary: ${scopeSentinel.summary}`,
       ...formatScopeSentinelChangeLines(scopeSentinel),
@@ -627,6 +634,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
   const pulse = deriveLoopPulse(snapshot)
   const missionMap = deriveMissionMap(snapshot)
   const planContract = derivePlanContract(snapshot)
+  const dispatchMatrix = deriveDispatchMatrix(snapshot)
   const scopeSentinel = deriveScopeSentinel(snapshot)
   const redlineProof = deriveRedlineProof(snapshot)
   const repairContract = deriveRepairContract(snapshot)
@@ -651,6 +659,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     `proof plan: ${formatProofPlanCommands(proofPlan)}`,
     `mission map: ${formatMissionMapSummary(missionMap)}`,
     `plan contract: ${formatPlanContractSummary(planContract)}`,
+    `dispatch matrix: ${formatDispatchMatrixSummary(dispatchMatrix)}`,
     `scope sentinel: ${formatScopeSentinelSummary(scopeSentinel)}`,
     `redline proof: ${formatRedlineProofSummary(redlineProof)}`,
     `repair contract: ${formatRepairContractSummary(repairContract)}`,
@@ -1564,6 +1573,18 @@ function formatRepairContractSummary(repairContract: RepairContract): string {
 
 function formatPlanContractSummary(planContract: PlanContract): string {
   return `${planContract.status}; ${planContract.summary}`
+}
+
+function formatDispatchMatrixSummary(dispatchMatrix: DispatchMatrix): string {
+  return `${dispatchMatrix.status}; ${dispatchMatrix.summary}`
+}
+
+function formatDispatchMatrixSlotLines(dispatchMatrix: DispatchMatrix): string[] {
+  if (dispatchMatrix.slots.length === 0) return ["- none"]
+
+  return dispatchMatrix.slots.map((slot) => {
+    return `- ${slot.lane} ${slot.key} ${slot.taskId}: agent=${slot.recommendedAgentId ?? "none"}; lease=${slot.activeLeaseId ?? "none"}; blockers=${formatList(slot.blockers)}`
+  })
 }
 
 function formatReviewLensSummary(lens: ReviewLens): string {

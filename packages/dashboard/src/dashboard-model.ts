@@ -1,5 +1,6 @@
 import {
   createRunicCovenant,
+  deriveDispatchMatrix,
   deriveMissionMap,
   deriveMissionMemory,
   deriveLoopPulse,
@@ -16,6 +17,7 @@ import {
   type AgentContract,
   type CovenantStage,
   type CovenantStageId,
+  type DispatchMatrix,
   type Evidence,
   type EvidenceType,
   type LoopPulse,
@@ -111,6 +113,7 @@ export type DashboardModel = {
   agents: AgentNode[]
   commandLog: CommandLogItem[]
   covenantStages: CovenantStage[]
+  dispatchMatrix: DispatchMatrix
   loopPulse: LoopPulse
   missionMap: MissionMap
   missionMemory: MissionMemory
@@ -696,6 +699,9 @@ function deriveDashboardModel(input: {
   const planContract = input.runtimeSnapshot
     ? derivePlanContract(input.runtimeSnapshot)
     : buildSeededPlanContract(input.tasks)
+  const dispatchMatrix = input.runtimeSnapshot
+    ? deriveDispatchMatrix(input.runtimeSnapshot)
+    : buildSeededDispatchMatrix(input.tasks)
   const proofPlan = input.runtimeSnapshot
     ? deriveProofPlan(input.runtimeSnapshot)
     : buildSeededProofPlan(input.tasks)
@@ -725,6 +731,7 @@ function deriveDashboardModel(input: {
     ...input,
     activeCovenantStage,
     activeCovenantStageId: activeCovenantStage.id,
+    dispatchMatrix,
     loopPulse,
     missionMap,
     missionMemory,
@@ -760,6 +767,14 @@ function buildSeededPlanContract(tasks: TaskCard[]): PlanContract {
   }
 
   return derivePlanContract(buildSeededRuntimeSnapshot(tasks))
+}
+
+function buildSeededDispatchMatrix(tasks: TaskCard[]): DispatchMatrix {
+  if (tasks.length === 0) {
+    return deriveDispatchMatrix(emptyRuntimeSnapshot())
+  }
+
+  return deriveDispatchMatrix(buildSeededRuntimeSnapshot(tasks))
 }
 
 function buildSeededReviewLens(tasks: TaskCard[]): ReviewLens {
@@ -850,6 +865,7 @@ function buildSeededProtocolDeck(tasks: TaskCard[]): RunicProtocolDeck {
 function buildSeededRuntimeSnapshot(tasks: TaskCard[]): RuntimeSnapshot {
   const missionId = "mission_dashboard_seed"
   const now = "2026-05-27T00:00:00.000Z"
+  const contracts = buildSeededAgentContracts(tasks)
   const evidenceEntries = tasks.flatMap((task) => {
     return task.evidence
       .filter(isEvidenceType)
@@ -880,15 +896,16 @@ function buildSeededRuntimeSnapshot(tasks: TaskCard[]): RuntimeSnapshot {
         tasks: Object.fromEntries(
           tasks.map((task) => {
             const requiredEvidence = task.evidence.filter(isEvidenceType)
+            const assignedAgentId = findSeededAgentContractId(task.agent)
             return [task.id, {
               id: task.id,
               missionId,
               title: task.title,
               description: task.summary,
               status: mapMissionStatusToTaskStatus(task.status),
-              requiredCapabilities: ["typescript"],
+              requiredCapabilities: [...task.tools],
               requiredEvidence,
-              assignedAgentId: task.agent === "Unassigned" ? undefined : `agent_${task.agent.toLowerCase()}`,
+              ...(assignedAgentId ? { assignedAgentId } : {}),
               createdAt: now,
               updatedAt: now,
             }]
@@ -902,9 +919,74 @@ function buildSeededRuntimeSnapshot(tasks: TaskCard[]): RuntimeSnapshot {
         evidence: Object.fromEntries(evidenceEntries),
       },
     },
-    leases: { leases: {} },
-    contracts: {},
+    leases: { leases: buildSeededTaskLeases(tasks, now) },
+    contracts,
   }
+}
+
+function buildSeededAgentContracts(tasks: TaskCard[]): Record<string, AgentContract> {
+  return Object.fromEntries(seededAgents.map((agent) => {
+    const assignedTasks = tasks.filter((task) => task.agent === agent.name)
+    const requiredEvidence = uniqueEvidenceTypesForTasks(assignedTasks)
+    const contract: AgentContract = {
+      id: agent.id,
+      displayName: agent.name,
+      description: agent.role,
+      capabilities: [...agent.tools],
+      allowedTools: [...agent.tools],
+      modelPolicy: {
+        primary: agent.model,
+        fallbacks: agent.model.includes("gpt-5.1-codex") ? [] : ["gpt-5.1-codex"],
+      },
+      fileScope: buildSeededFileScope(agent),
+      completionCriteria: assignedTasks.length > 0
+        ? assignedTasks.map((task) => `Complete ${task.title} with ${task.evidence.join(", ") || "decision"} evidence`)
+        : [`Keep ${agent.name} available for matching dispatch slots`],
+      requiredEvidence,
+      fallbacks: agent.id === "agent_oracle" ? [] : ["agent_oracle"],
+    }
+
+    return [agent.id, contract]
+  }))
+}
+
+function buildSeededTaskLeases(tasks: TaskCard[], now: string): RuntimeSnapshot["leases"]["leases"] {
+  return Object.fromEntries(
+    tasks
+      .filter((task) => task.status === "running")
+      .flatMap((task) => {
+        const holder = findSeededAgentContractId(task.agent)
+        if (!holder) return []
+
+        return [[`lease_${task.id}`, {
+          id: `lease_${task.id}`,
+          targetId: task.id,
+          holder,
+          purpose: "task.claim",
+          idempotencyKey: `seeded-${task.id}`,
+          expiresAt: "2026-05-27T00:30:00.000Z",
+          status: "active",
+          createdAt: now,
+        }]]
+      }),
+  )
+}
+
+function findSeededAgentContractId(agentName: string): string | undefined {
+  return seededAgents.find((agent) => agent.name === agentName)?.id
+}
+
+function buildSeededFileScope(agent: AgentNode): string[] {
+  if (agent.id === "agent_artificer") return ["packages/dashboard/**"]
+  if (agent.id === "agent_steward") return ["README.md", ".opencode/**", "docs/**"]
+  if (agent.id === "agent_scout") return ["packages/**", ".runesmith/**"]
+  if (agent.id === "agent_oracle") return ["packages/**/tests/**", "packages/**/*.test.ts"]
+
+  return ["packages/core/**", "packages/cli/**", "packages/opencode-adapter/**"]
+}
+
+function uniqueEvidenceTypesForTasks(tasks: TaskCard[]): EvidenceType[] {
+  return [...new Set(tasks.flatMap((task) => task.evidence).filter(isEvidenceType))]
 }
 
 function advanceCovenantStage(model: DashboardModel): DashboardModel {

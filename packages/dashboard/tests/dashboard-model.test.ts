@@ -139,6 +139,19 @@ describe("dashboard model", () => {
     })
     expect(model.selectedTask.id).toBe("task_runtime_kernel")
     expect(model.timeline.at(0)?.label).toBe("Lease granted")
+    expect(model.dispatchMatrix).toMatchObject({
+      status: "serial",
+      activeSlotCount: 2,
+      blockedSlotCount: 2,
+    })
+    expect(model.dispatchMatrix.slots.map((slot) => [slot.taskId, slot.lane, slot.recommendedAgentId])).toEqual([
+      ["task_runtime_kernel", "active", "agent_atlas"],
+      ["task_contract_gate", "complete", "agent_oracle"],
+      ["task_dashboard_shell", "active", "agent_artificer"],
+      ["task_harness_tests", "complete", "agent_oracle"],
+      ["task_publish_repo", "blocked", "agent_steward"],
+      ["task_windows_paths", "blocked", "agent_scout"],
+    ])
   })
 
   test("selects a mission task for inspection", () => {
@@ -366,6 +379,14 @@ describe("dashboard model", () => {
       taskCount: 2,
       implementationTaskCount: 1,
       summary: "Plan contract ready for mission_live: 1 focused implementation slice is mapped with proof evidence.",
+    })
+    expect(model.dispatchMatrix).toMatchObject({
+      status: "serial",
+      missionId: "mission_live",
+      readySlotCount: 0,
+      activeSlotCount: 1,
+      blockedSlotCount: 0,
+      summary: "Dispatch Matrix serial for mission_live: 1 dispatch slot is active or ready.",
     })
     expect(model.repairContract).toMatchObject({
       status: "idle",
