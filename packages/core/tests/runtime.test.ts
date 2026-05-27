@@ -331,6 +331,99 @@ describe("runesmith runtime", () => {
     })
   })
 
+  test("rejects completion until unresolved risk has a later decision", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    const mission = runtime.startMission({
+      goal: "Resolve risky operation",
+      requiredCapabilities: ["typescript"],
+    })
+    if (!mission.ok) throw new Error("mission start failed")
+    const claimed = runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    if (!claimed.ok) throw new Error("claim failed")
+
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runtime files",
+        payload: { files: ["packages/core/src/runtime.ts"] },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Core tests passed",
+        payload: { command: "bun test packages/core/tests", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_risk",
+        taskId: "task_alpha",
+        type: "risk",
+        summary: "Deletes generated user files without confirmation",
+        payload: { severity: "high" },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+
+    const blocked = runtime.completeTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+    })
+
+    expect(blocked).toEqual({
+      ok: false,
+      error: {
+        code: "EVIDENCE_REQUIRED",
+        message: "Task is missing required evidence",
+        details: {
+          taskId: "task_alpha",
+          missingEvidence: ["decision"],
+        },
+      },
+    })
+
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_decision",
+        taskId: "task_alpha",
+        type: "decision",
+        summary: "Human approved deletion of generated files",
+        payload: { verdict: "approved" },
+        createdAt: "2026-05-27T00:03:00.000Z",
+      },
+    })
+
+    const completed = runtime.completeTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+    })
+
+    expect(completed.ok).toBe(true)
+    if (!completed.ok) return
+    expect(completed.value.graph.mission.status).toBe("complete")
+  })
+
   test("uses task-level evidence and keeps planned missions running until every task is complete", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

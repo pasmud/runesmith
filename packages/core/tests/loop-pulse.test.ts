@@ -217,6 +217,78 @@ describe("loop pulse", () => {
     expect(prompt).toContain("Active runes: Faultwright, Proofwright")
   })
 
+  test("holds unresolved risk for an explicit decision", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Hold risky automation",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed loop pulse",
+        payload: { filePath: "packages/core/src/loop-pulse.ts" },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Loop pulse tests passed",
+        payload: { command: "bun test packages/core/tests/loop-pulse.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_risk",
+        taskId: "task_alpha",
+        type: "risk",
+        summary: "Deletes generated user files without confirmation",
+        payload: { severity: "high" },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+
+    const pulse = deriveLoopPulse(runtime.snapshot())
+    const prompt = buildLoopPulsePrompt(runtime.snapshot())
+
+    expect(pulse).toMatchObject({
+      status: "active",
+      health: "critical",
+      risks: ["Deletes generated user files without confirmation"],
+      missingEvidence: ["decision"],
+      nextAction: {
+        id: "resolve-risk",
+        label: "Resolve risk",
+        priority: "critical",
+      },
+    })
+    expect(pulse.blockers).toContain("risk: Deletes generated user files without confirmation")
+    expect(pulse.executionPlan.map((step) => step.id)).toEqual([
+      "inspect-risk",
+      "clear-or-hold-risk",
+    ])
+    expect(prompt).toContain("Risks: Deletes generated user files without confirmation")
+    expect(prompt).toContain("Next action: Resolve risk")
+  })
+
   test("prioritizes stale recovery before blocked work", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

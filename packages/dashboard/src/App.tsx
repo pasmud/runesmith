@@ -787,6 +787,14 @@ function LoopPulsePanel({ model }: { model: DashboardModel }) {
           ))}
         </div>
       ) : null}
+      {pulse.risks.length > 0 ? (
+        <div className="pulse-diagnostics" aria-label="Active risks">
+          <strong>Risks</strong>
+          {pulse.risks.slice(0, 2).map((risk) => (
+            <span key={risk}>{risk}</span>
+          ))}
+        </div>
+      ) : null}
     </section>
   )
 }

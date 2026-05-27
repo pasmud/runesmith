@@ -15,6 +15,7 @@ export type LoopPulseActionId =
   | "wait-for-goal"
   | "recover-stale"
   | "resolve-blocker"
+  | "resolve-risk"
   | "claim-task"
   | "continue-forge"
   | "capture-proof"
@@ -51,6 +52,7 @@ export type LoopPulse = {
   requiredEvidence: EvidenceType[]
   missingEvidence: EvidenceType[]
   diagnostics: string[]
+  risks: string[]
   runes: CovenantRune[]
   blockers: string[]
   nextAction: LoopPulseAction
@@ -72,6 +74,7 @@ export function deriveLoopPulse(
       requiredEvidence: [],
       missingEvidence: [],
       diagnostics: [],
+      risks: [],
       runes: brief.runes,
       blockers: [],
       nextAction: {
@@ -93,7 +96,7 @@ export function deriveLoopPulse(
     }
   }
 
-  const blockers = buildBlockers(brief.taskId, brief.taskStatus, brief.missingEvidence, brief.diagnostics)
+  const blockers = buildBlockers(brief.taskId, brief.taskStatus, brief.missingEvidence, brief.diagnostics, brief.risks)
   const nextAction = selectNextAction(brief)
 
   return {
@@ -107,6 +110,7 @@ export function deriveLoopPulse(
     requiredEvidence: brief.requiredEvidence,
     missingEvidence: brief.missingEvidence,
     diagnostics: brief.diagnostics,
+    risks: brief.risks,
     runes: brief.runes,
     blockers,
     nextAction,
@@ -122,6 +126,7 @@ export function buildLoopPulsePrompt(
   const requiredEvidence = pulse.requiredEvidence.length > 0 ? pulse.requiredEvidence.join(", ") : "none"
   const missingEvidence = pulse.missingEvidence.length > 0 ? pulse.missingEvidence.join(", ") : "none"
   const diagnostics = pulse.diagnostics.length > 0 ? pulse.diagnostics.join("; ") : "none"
+  const risks = pulse.risks.length > 0 ? pulse.risks.join("; ") : "none"
   const blockers = pulse.blockers.length > 0 ? pulse.blockers.join("; ") : "none"
   const runes = pulse.runes.length > 0 ? pulse.runes.map((rune) => rune.name).join(", ") : "none"
   const missionLine = pulse.missionId ? `Mission: ${pulse.missionId}` : "Mission: none"
@@ -146,6 +151,7 @@ export function buildLoopPulsePrompt(
     `Required evidence: ${requiredEvidence}`,
     `Missing evidence: ${missingEvidence}`,
     `Diagnostics: ${diagnostics}`,
+    `Risks: ${risks}`,
     `Blockers: ${blockers}`,
     `Active runes: ${runes}`,
     "Execution plan:",
@@ -158,6 +164,7 @@ function buildBlockers(
   taskStatus: string | undefined,
   missingEvidence: EvidenceType[],
   diagnostics: string[],
+  risks: string[],
 ): string[] {
   const blockers: string[] = []
 
@@ -171,6 +178,10 @@ function buildBlockers(
 
   for (const diagnostic of diagnostics) {
     blockers.push(`diagnostic: ${diagnostic}`)
+  }
+
+  for (const risk of risks) {
+    blockers.push(`risk: ${risk}`)
   }
 
   if (missingEvidence.length > 0) {
@@ -196,6 +207,15 @@ function selectNextAction(brief: ReturnType<typeof deriveCovenantControlBrief>):
       label: "Resolve blocker",
       priority: "critical",
       reason: "The active task is blocked and needs explicit evidence, recovery, or user input.",
+    }
+  }
+
+  if (brief.risks.length > 0 && brief.missingEvidence.includes("decision")) {
+    return {
+      id: "resolve-risk",
+      label: "Resolve risk",
+      priority: "critical",
+      reason: "Unresolved risk evidence requires an explicit later decision before completion.",
     }
   }
 
@@ -305,6 +325,29 @@ function buildExecutionPlan(
         instruction: "Attach explicit evidence for the unblock path, or hold for user input when recovery is unsafe.",
         evidence: brief.missingEvidence,
         runes: selectPlanRunes(brief.runes, ["Recovery Loom", "Proofwright"]),
+      },
+    ]
+  }
+
+  if (nextAction.id === "resolve-risk") {
+    const latestRisk = brief.risks[brief.risks.length - 1] ?? "the latest risk"
+
+    return [
+      {
+        id: "inspect-risk",
+        label: "Inspect risk",
+        status: "active",
+        instruction: `Review this unresolved risk before completion: ${latestRisk}.`,
+        evidence: ["risk"],
+        runes: selectPlanRunes(brief.runes, ["Mirrorglass"]),
+      },
+      {
+        id: "clear-or-hold-risk",
+        label: "Clear or hold risk",
+        status: "blocked",
+        instruction: "Attach a decision that explicitly clears, accepts, or holds the risk before completion.",
+        evidence: ["decision"],
+        runes: selectPlanRunes(brief.runes, ["Mirrorglass", "Sealmark"]),
       },
     ]
   }

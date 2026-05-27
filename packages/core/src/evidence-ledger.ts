@@ -29,10 +29,15 @@ export function evidenceForTask(ledger: EvidenceLedger, taskId: string): Evidenc
 
 export function missingRequiredEvidence(ledger: EvidenceLedger, input: RequiredEvidenceInput): EvidenceType[] {
   const taskEvidence = evidenceForTask(ledger, input.taskId)
-
-  return input.requiredEvidence.filter((type) => {
+  const missingEvidence = input.requiredEvidence.filter((type) => {
     return !taskEvidence.some((evidence, index) => evidenceSatisfiesRequiredType(evidence, type, taskEvidence, index))
   })
+
+  if (hasUnresolvedRisk(taskEvidence) && !missingEvidence.includes("decision")) {
+    missingEvidence.push("decision")
+  }
+
+  return missingEvidence
 }
 
 export function assertRequiredEvidence(ledger: EvidenceLedger, input: RequiredEvidenceInput) {
@@ -62,13 +67,35 @@ function evidenceSatisfiesRequiredType(
 }
 
 function isFreshProof(taskEvidence: Evidence[], proofIndex: number): boolean {
-  const latestInvalidatingIndex = taskEvidence.reduce((latestIndex, evidence, index) => {
+  const orderedEvidence = sortEvidenceOldest(taskEvidence)
+  const proof = taskEvidence[proofIndex]
+  const orderedProofIndex = proof ? orderedEvidence.indexOf(proof) : proofIndex
+  const latestInvalidatingIndex = orderedEvidence.reduce((latestIndex, evidence, index) => {
     if (evidence.type !== "file-change" && evidence.type !== "diagnostic") return latestIndex
 
     return Math.max(latestIndex, index)
   }, -1)
 
-  return latestInvalidatingIndex < 0 || proofIndex >= latestInvalidatingIndex
+  return latestInvalidatingIndex < 0 || orderedProofIndex >= latestInvalidatingIndex
+}
+
+function hasUnresolvedRisk(taskEvidence: Evidence[]): boolean {
+  const orderedEvidence = sortEvidenceOldest(taskEvidence)
+  let latestRiskIndex = -1
+  let latestDecisionIndex = -1
+
+  orderedEvidence.forEach((evidence, index) => {
+    if (evidence.type === "risk") latestRiskIndex = index
+    if (evidence.type === "decision") latestDecisionIndex = index
+  })
+
+  return latestRiskIndex >= 0 && latestRiskIndex > latestDecisionIndex
+}
+
+function sortEvidenceOldest(evidence: Evidence[]): Evidence[] {
+  return [...evidence].sort((left, right) => {
+    return left.createdAt.localeCompare(right.createdAt)
+  })
 }
 
 function isPassingTestResult(evidence: Evidence): boolean {

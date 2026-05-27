@@ -66,6 +66,7 @@ export type CovenantControlBrief = {
   requiredEvidence: EvidenceType[]
   missingEvidence: EvidenceType[]
   diagnostics: string[]
+  risks: string[]
   runes: CovenantRune[]
   directives: string[]
 }
@@ -322,6 +323,7 @@ export function deriveCovenantControlBrief(
       requiredEvidence: [],
       missingEvidence: [],
       diagnostics: [],
+      risks: [],
       runes: selectControlRunes("frame", []),
       directives: [
         "Wait for a concrete user goal before creating work.",
@@ -339,7 +341,8 @@ export function deriveCovenantControlBrief(
   })
   const taskEvidence = evidenceForTask(ledger, active.task.id)
   const diagnostics = missingEvidence.includes("test-result") ? collectDiagnosticSummaries(taskEvidence) : []
-  const stageId = selectStageId(active.graph, active.task, missingEvidence, diagnostics)
+  const risks = collectUnresolvedRiskSummaries(taskEvidence)
+  const stageId = selectStageId(active.graph, active.task, missingEvidence, diagnostics, risks)
   const stage = covenant.stages.find((candidate) => candidate.id === stageId) ?? covenant.stages[0]!
 
   return {
@@ -354,8 +357,9 @@ export function deriveCovenantControlBrief(
     requiredEvidence,
     missingEvidence,
     diagnostics,
+    risks,
     runes: selectControlRunes(stage.id, missingEvidence),
-    directives: buildControlDirectives(stage.id, missingEvidence, diagnostics),
+    directives: buildControlDirectives(stage.id, missingEvidence, diagnostics, risks),
   }
 }
 
@@ -369,6 +373,9 @@ export function buildCovenantControlBrief(
   const diagnosticLines = brief.diagnostics.length > 0
     ? ["Diagnostics:", ...brief.diagnostics.map((diagnostic) => `- ${diagnostic}`)]
     : ["Diagnostics: none"]
+  const riskLines = brief.risks.length > 0
+    ? ["Risks:", ...brief.risks.map((risk) => `- ${risk}`)]
+    : ["Risks: none"]
   const runeLines = brief.runes.length > 0
     ? brief.runes.flatMap((rune) => {
         return [
@@ -393,6 +400,7 @@ export function buildCovenantControlBrief(
     `required evidence: ${requiredEvidence}`,
     `missing evidence: ${missingEvidence}`,
     ...diagnosticLines,
+    ...riskLines,
     "Active runes:",
     ...runeLines,
     "Directives:",
@@ -480,12 +488,14 @@ function selectStageId(
   task: MissionTask,
   missingEvidence: EvidenceType[],
   diagnostics: string[],
+  risks: string[],
 ): CovenantStageId {
   if (graph.mission.status === "blocked" || task.status === "blocked" || task.status === "stale") {
     return "recover"
   }
 
   if (task.status === "queued") return "claim"
+  if (risks.length > 0 && missingEvidence.includes("decision")) return "review"
   if (diagnostics.length > 0 && missingEvidence.includes("test-result")) return "repair"
   if (task.status === "verifying") return "review"
   if (missingEvidence.length === 0) return "review"
@@ -496,7 +506,12 @@ function selectStageId(
   return "prove"
 }
 
-function buildControlDirectives(stageId: CovenantStageId, missingEvidence: EvidenceType[], diagnostics: string[]): string[] {
+function buildControlDirectives(
+  stageId: CovenantStageId,
+  missingEvidence: EvidenceType[],
+  diagnostics: string[],
+  risks: string[],
+): string[] {
   if (stageId === "forge") {
     return [
       "Continue the active task before starting duplicate work.",
@@ -522,6 +537,14 @@ function buildControlDirectives(stageId: CovenantStageId, missingEvidence: Evide
   }
 
   if (stageId === "review") {
+    if (risks.length > 0 && missingEvidence.includes("decision")) {
+      return [
+        `Resolve this risk before completion: ${risks[risks.length - 1]}.`,
+        "Attach an explicit decision that clears, accepts, or holds the risk.",
+        "Do not call the completion gate until the risk has a later decision.",
+      ]
+    }
+
     return [
       "Review the diff and runtime behavior before sealing the task.",
       "Use the runtime completion gate only after proof remains satisfied.",
@@ -591,6 +614,21 @@ function collectDiagnosticSummaries(taskEvidence: Evidence[]): string[] {
     .filter((summary) => summary.length > 0)
 }
 
+function collectUnresolvedRiskSummaries(taskEvidence: Evidence[]): string[] {
+  const orderedEvidence = [...taskEvidence].sort(compareEvidenceCreatedAt)
+  let latestDecisionIndex = -1
+  const riskEntries: Array<{ evidence: Evidence; index: number }> = []
+
+  orderedEvidence.forEach((evidence, index) => {
+    if (evidence.type === "decision") latestDecisionIndex = index
+    if (evidence.type === "risk") riskEntries.push({ evidence, index })
+  })
+
+  return riskEntries
+    .filter((entry) => entry.index > latestDecisionIndex)
+    .map((entry) => entry.evidence.summary.trim() || `risk evidence ${entry.evidence.id}`)
+}
+
 function isDiagnosticEvidence(evidence: Evidence): boolean {
   if (evidence.type === "diagnostic") return true
   if (evidence.type !== "test-result") return false
@@ -609,7 +647,7 @@ function isPassingTestResult(evidence: Evidence): boolean {
 }
 
 function compareEvidenceCreatedAt(left: Evidence, right: Evidence): number {
-  return left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
+  return left.createdAt.localeCompare(right.createdAt)
 }
 
 function cloneRune(rune: CovenantRune): CovenantRune {

@@ -158,6 +158,75 @@ describe("mission memory", () => {
     })
   })
 
+  test("holds unresolved risk in the handoff until a later decision exists", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Hold risky mission memory",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed mission memory",
+        payload: { files: ["packages/core/src/mission-memory.ts"] },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Mission memory tests passed",
+        payload: { command: "bun test packages/core/tests/mission-memory.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_risk",
+        taskId: "task_alpha",
+        type: "risk",
+        summary: "Deletes generated user files without confirmation",
+        payload: { severity: "high" },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+
+    const memory = deriveMissionMemory(runtime.snapshot())
+    const prompt = buildMissionMemoryPrompt(runtime.snapshot())
+
+    expect(memory).toMatchObject({
+      status: "blocked",
+      proof: {
+        status: "missing",
+        missing: ["decision"],
+      },
+      nextAction: {
+        id: "resolve-risk",
+        label: "Resolve risk",
+      },
+      handoff: "Resolve risk for task_alpha: Unresolved risk evidence requires an explicit later decision before completion.",
+    })
+    expect(prompt).toContain("Status: blocked")
+    expect(prompt).toContain("Missing evidence: decision")
+    expect(prompt).toContain("Resolve risk for task_alpha")
+  })
+
   test("distinguishes blocked handoff from stale recovery", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

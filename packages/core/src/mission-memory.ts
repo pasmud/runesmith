@@ -235,6 +235,7 @@ function selectMemoryStatus(
   if (graph.mission.status === "complete") return "sealed"
   if (pulse.nextAction.id === "recover-stale") return "needs-recovery"
   if (pulse.nextAction.id === "resolve-blocker") return "blocked"
+  if (pulse.nextAction.id === "resolve-risk") return "blocked"
   if (pulse.nextAction.id === "repair-diagnostic") return "needs-repair"
   if (missing.length > 0) return "needs-proof"
 
@@ -288,7 +289,9 @@ function buildHandoff(input: {
   }
 
   if (input.status === "blocked") {
-    return `Resolve blocker for ${taskId}: ${input.pulse.nextAction.reason}`
+    const label = input.pulse.nextAction.id === "resolve-risk" ? "Resolve risk" : "Resolve blocker"
+
+    return `${label} for ${taskId}: ${input.pulse.nextAction.reason}`
   }
 
   if (input.status === "needs-proof") {
