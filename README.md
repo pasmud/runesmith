@@ -62,7 +62,7 @@ The dashboard is intentionally not a static report. It models the working loop a
 
 When the local dev dashboard is running, it reads the same runtime capsule through `/api/runtime-capsule` and falls back to seeded data only when no capsule exists yet.
 
-Every dashboard control mutates local OS state today. Runtime-backed streaming can plug into the same model boundary.
+The command forge and guarded autopilot controls call `/api/runtime-control`, mutate the same `.runesmith/runtime/capsule.json` used by OpenCode, and reload the dashboard from the saved capsule. If the control API is unavailable, the UI falls back to the local model so demos still work.
 
 ## Development
 

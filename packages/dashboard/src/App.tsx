@@ -39,7 +39,7 @@ import {
   type SnapshotRecord,
   type TaskCard,
 } from "./dashboard-model"
-import { loadDashboardRuntimeCapsule } from "./runtime-capsule-client"
+import { loadDashboardRuntimeCapsule, runDashboardRuntimeAction } from "./runtime-capsule-client"
 
 const lanes = ["Plan", "Build", "Verify", "Recover"] as const
 
@@ -101,6 +101,7 @@ export function App() {
   const [model, dispatch] = useReducer(reduceDashboardModel, undefined, buildDashboardModel)
   const [directive, setDirective] = useState("")
   const [capsuleLoading, setCapsuleLoading] = useState(false)
+  const [controlLoading, setControlLoading] = useState(false)
   const activeSection = sectionMeta[model.activeView]
 
   const refreshRuntimeCapsule = async () => {
@@ -119,9 +120,26 @@ export function App() {
     void refreshRuntimeCapsule()
   }, [])
 
+  const runRuntimeControl = async (action: DashboardAction) => {
+    setControlLoading(true)
+    try {
+      if (action.type === "forge-directive" || action.type === "run-autopilot-cycle") {
+        const capsule = await runDashboardRuntimeAction(action)
+        dispatch({ type: "load-runtime-capsule", capsule })
+        return
+      }
+
+      dispatch(action)
+    } catch {
+      dispatch(action)
+    } finally {
+      setControlLoading(false)
+    }
+  }
+
   const forgeDirective = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    dispatch({ type: "forge-directive", prompt: directive })
+    void runRuntimeControl({ type: "forge-directive", prompt: directive })
     setDirective("")
   }
 
@@ -142,8 +160,8 @@ export function App() {
             <Button onClick={() => dispatch({ type: "create-snapshot" })} variant="outline">
               <Camera data-icon="inline-start" />Snapshot
             </Button>
-            <Button onClick={() => dispatch({ type: "run-autopilot-cycle" })}>
-              <Zap data-icon="inline-start" />Autopilot cycle
+            <Button disabled={controlLoading} onClick={() => void runRuntimeControl({ type: "run-autopilot-cycle" })}>
+              <Zap data-icon="inline-start" />{controlLoading ? "Working" : "Autopilot cycle"}
             </Button>
           </div>
         </header>
@@ -157,7 +175,7 @@ export function App() {
             placeholder="Forge a mission directive, e.g. Add OpenCode replay guard"
             value={directive}
           />
-          <Button type="submit">
+          <Button disabled={controlLoading} type="submit">
             <Hammer data-icon="inline-start" />Forge
           </Button>
         </form>
@@ -168,7 +186,7 @@ export function App() {
           <strong>{activeSection.status}</strong>
         </section>
 
-        <ActiveView dispatch={dispatch} model={model} />
+        <ActiveView dispatch={dispatch} model={model} runRuntimeControl={runRuntimeControl} />
       </section>
 
       <RightRail dispatch={dispatch} model={model} />
@@ -252,7 +270,15 @@ function SidebarGroup({ children, title }: { children: ReactNode; title: string 
   )
 }
 
-function ActiveView({ dispatch, model }: { dispatch: DashboardDispatch; model: DashboardModel }) {
+function ActiveView({
+  dispatch,
+  model,
+  runRuntimeControl,
+}: {
+  dispatch: DashboardDispatch
+  model: DashboardModel
+  runRuntimeControl: (action: DashboardAction) => Promise<void>
+}) {
   if (model.activeView === "agents") {
     return <AgentsView dispatch={dispatch} model={model} />
   }
@@ -269,10 +295,18 @@ function ActiveView({ dispatch, model }: { dispatch: DashboardDispatch; model: D
     return <SnapshotsView dispatch={dispatch} snapshots={model.snapshots} />
   }
 
-  return <HomeView dispatch={dispatch} model={model} />
+  return <HomeView dispatch={dispatch} model={model} runRuntimeControl={runRuntimeControl} />
 }
 
-function HomeView({ dispatch, model }: { dispatch: DashboardDispatch; model: DashboardModel }) {
+function HomeView({
+  dispatch,
+  model,
+  runRuntimeControl,
+}: {
+  dispatch: DashboardDispatch
+  model: DashboardModel
+  runRuntimeControl: (action: DashboardAction) => Promise<void>
+}) {
   return (
     <section className="home-stack">
       <section>
@@ -319,7 +353,7 @@ function HomeView({ dispatch, model }: { dispatch: DashboardDispatch; model: Das
         <JobRow
           detail={`Active · Every 30m · by ${model.selectedAgent.name}`}
           label="Guarded autopilot cycle"
-          onRun={() => dispatch({ type: "run-autopilot-cycle" })}
+          onRun={() => void runRuntimeControl({ type: "run-autopilot-cycle" })}
           tone="verified"
         />
         <JobRow

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import type { RuntimeCapsule } from "@runesmith/core"
-import { loadDashboardRuntimeCapsule } from "../src/runtime-capsule-client"
+import { loadDashboardRuntimeCapsule, runDashboardRuntimeAction } from "../src/runtime-capsule-client"
 
 const capsule: RuntimeCapsule = {
   version: 1,
@@ -35,5 +35,31 @@ describe("runtime capsule client", () => {
     })
 
     expect(loaded).toBeUndefined()
+  })
+
+  test("posts dashboard runtime actions and returns the updated capsule", async () => {
+    const updated = await runDashboardRuntimeAction({ type: "run-autopilot-cycle" }, async (input, init) => {
+      expect(input).toBe("/api/runtime-control")
+      expect(init?.method).toBe("POST")
+      expect(init?.headers).toEqual({ "content-type": "application/json" })
+      expect(init?.body).toBe(JSON.stringify({ type: "run-autopilot-cycle" }))
+
+      return new Response(JSON.stringify({
+        ok: true,
+        value: {
+          action: "run-autopilot-cycle",
+          status: "idle",
+          snapshot: capsule.runtime,
+          capsule,
+        },
+      }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+      })
+    })
+
+    expect(updated).toEqual(capsule)
   })
 })

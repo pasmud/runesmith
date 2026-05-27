@@ -87,6 +87,7 @@ Responsibilities:
 - shadcn/ui component conventions.
 - OpenClaw OS-inspired structure: workspace sidebar, mission lanes, live evidence, tool/action timeline, agent/session visibility, direct controls.
 - Reads the local runtime capsule through a Vite dev API and falls back to seeded data only when no capsule exists.
+- Exposes a runtime control API for dashboard actions that should persist into the same capsule OpenCode uses.
 
 ### `packages/testbench`
 
@@ -273,6 +274,13 @@ Primary layout:
 - Main canvas: mission graph lanes and active task cards.
 - Right inspector: selected task details, evidence, leases, recovery state.
 - Bottom timeline: tool calls, prompts, checks, and state transitions.
+
+Runtime-backed controls:
+
+- `/api/runtime-capsule` reads the local runtime capsule.
+- `/api/runtime-control` accepts dashboard actions and persists the resulting capsule.
+- Command Forge starts a mission from the dashboard directive, registers the default Atlas contract, claims the root task, and saves the capsule.
+- Guarded Autopilot runs an evidence-gated cycle over the persisted mission. It recovers stale work first, holds if proof is missing, and completes through the runtime gate once required evidence exists.
 
 Visual rules:
 
