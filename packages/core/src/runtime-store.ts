@@ -27,6 +27,7 @@ export type SaveRuntimeCapsuleInput = {
   path: string
   snapshot: RuntimeSnapshot
   now?: Clock
+  lastGoodPath?: string
 }
 
 export type RepairRuntimeCapsuleInput = SaveRuntimeCapsuleInput & {
@@ -37,6 +38,7 @@ export type RepairRuntimeCapsuleValue = {
   status: "ok" | "repaired"
   capsule: RuntimeCapsule
   backupPath?: string
+  lastGoodPath?: string
 }
 
 export type RepairProjectConfigInput = {
@@ -171,6 +173,19 @@ export async function repairRuntimeCapsule(
     await host.writeText(backupPath, await host.readText(input.path))
   }
 
+  const lastGoodPath = input.lastGoodPath ?? lastGoodRuntimeCapsulePath(input.path)
+  const lastGood = await loadRuntimeCapsule(host, lastGoodPath)
+  if (lastGood.ok && lastGood.value) {
+    await host.writeText(input.path, await host.readText(lastGoodPath))
+
+    return ok({
+      status: "repaired",
+      capsule: lastGood.value,
+      backupPath,
+      lastGoodPath,
+    })
+  }
+
   const capsule = await saveRuntimeCapsule(host, input)
 
   return ok({
@@ -190,8 +205,26 @@ export async function saveRuntimeCapsule(
     runtime: input.snapshot,
   }
 
+  await preserveLastGoodRuntimeCapsule(host, input.path, input.lastGoodPath)
   await host.writeText(input.path, `${JSON.stringify(capsule, null, 2)}\n`)
   return capsule
+}
+
+async function preserveLastGoodRuntimeCapsule(
+  host: RuntimeStoreHost,
+  path: string,
+  lastGoodPath = lastGoodRuntimeCapsulePath(path),
+): Promise<void> {
+  if (!(await host.exists(path))) return
+
+  const loaded = await loadRuntimeCapsule(host, path)
+  if (!loaded.ok || !loaded.value) return
+
+  await host.writeText(lastGoodPath, await host.readText(path))
+}
+
+function lastGoodRuntimeCapsulePath(path: string): string {
+  return `${path}.runesmith.prev`
 }
 
 function isRuntimeCapsule(value: unknown): value is RuntimeCapsule {

@@ -22,7 +22,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - The Runic mission loop is a shared core kernel used by OpenCode, the CLI, and the dashboard, so recovery, decision synthesis, task claiming, and evidence gates cannot drift between surfaces.
 - Idle recovery requeues dependency-ready stale tasks, clears stale ownership, and claims a fresh lease so work can continue without a manual reset.
 - Runtime state is stored in a local capsule so missions survive OpenCode restarts.
-- Direct OpenCode plugin startup repairs project config and the runtime capsule when either is missing or invalid, backing up corrupt state before recreating usable local OS files.
+- Direct OpenCode plugin startup repairs project config and the runtime capsule when either is missing or invalid, backing up corrupt state and restoring the last known-good capsule when available before recreating usable local OS files.
 - OpenCode compaction carries the mission capsule forward so long sessions do not lose orchestration state.
 - A live Runesmith Control Brief is injected from runtime state so OpenCode sees the active mission, next Covenant stage, and missing proof without user-managed workflow steps.
 - A compact first-user-message bootstrap also carries the current Loop Pulse and active protocol, giving OpenCode a low-bloat fallback when message hooks are more reliable than repeated system prompt injection.
@@ -88,7 +88,7 @@ Proof Runner executes that recipe when OpenCode, the CLI, or the dashboard asks 
 
 Runesmith Ignite sits above setup and mission commands for first use. `runesmith ignite "Ship the feature"` defaults to the direct package-plugin install path, writes or refreshes OpenCode config, creates the runtime capsule, starts or resumes the matching Covenant mission, claims the current task, and runs Runeweave once. The command is intentionally higher level than `up`, `mission start`, and `run`: new users get one useful entrypoint, while operators can still drop to lower-level controls when debugging.
 
-Runesmith Heal is the self-repair path. It preserves valid local state, backs up a corrupt `.runesmith/config.json` or configured runtime capsule to `*.runesmith.bak`, writes fresh files, restores OpenCode plugin wiring, and reports whether doctor is ready or staged because the host OpenCode CLI is still missing.
+Runesmith Heal is the self-repair path. It preserves valid local state, backs up a corrupt `.runesmith/config.json` or configured runtime capsule to `*.runesmith.bak`, restores `.runesmith.prev` last-good runtime capsules when available, writes fresh files only when no valid fallback exists, restores OpenCode plugin wiring, and reports whether doctor is ready or staged because the host OpenCode CLI is still missing.
 
 The direct OpenCode package plugin uses the same config and runtime-capsule repair primitives on startup. If OpenCode loads Runesmith against missing or invalid local OS files, the plugin repairs them before exposing tools, so the normal chat path can still reach Autopilot instead of failing before the user sees a useful action.
 

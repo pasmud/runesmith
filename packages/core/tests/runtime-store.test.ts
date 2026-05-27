@@ -74,6 +74,37 @@ describe("runtime capsule store", () => {
     expect(Object.keys(loaded.value?.runtime.graphs ?? {})).toEqual(["mission_alpha"])
   })
 
+  test("keeps the previous valid runtime capsule as last-good before overwriting", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.startMission({ goal: "Durable mission" })
+    const host = createMemoryHost()
+
+    await saveRuntimeCapsule(host, {
+      path: ".runesmith/runtime/capsule.json",
+      snapshot: runtime.snapshot(),
+      now: fixedNow,
+    })
+    const secondRuntime = createRuntime({
+      idFactory: (prefix) => `${prefix}_beta`,
+      now: fixedNow,
+    })
+    secondRuntime.startMission({ goal: "Second mission" })
+    await saveRuntimeCapsule(host, {
+      path: ".runesmith/runtime/capsule.json",
+      snapshot: secondRuntime.snapshot(),
+      now: () => new Date("2026-05-27T00:01:00.000Z"),
+    })
+
+    const lastGood = await loadRuntimeCapsule(host, ".runesmith/runtime/capsule.json.runesmith.prev")
+    const current = await loadRuntimeCapsule(host, ".runesmith/runtime/capsule.json")
+
+    expect(lastGood.ok).toBe(true)
+    expect(current.ok).toBe(true)
+    if (!lastGood.ok || !current.ok) throw new Error("capsule load failed")
+    expect(Object.keys(lastGood.value?.runtime.graphs ?? {})).toEqual(["mission_alpha"])
+    expect(Object.keys(current.value?.runtime.graphs ?? {})).toEqual(["mission_beta"])
+  })
+
   test("returns no snapshot when the default capsule does not exist", async () => {
     const loaded = await loadRuntimeCapsule(createMemoryHost(), ".runesmith/runtime/capsule.json")
 
@@ -131,6 +162,39 @@ describe("runtime capsule store", () => {
     expect(host.files.get(".runesmith/runtime/capsule.json.runesmith.bak")).toBe("{ broken")
     expect(repaired.value.capsule.runtime.graphs).toEqual({})
     expect(repaired.value.capsule.updatedAt).toBe("2026-05-27T00:00:00.000Z")
+  })
+
+  test("repairs an invalid runtime capsule from the last-good capsule when available", async () => {
+    const lastGoodRuntime = createRuntime({ idFactory: ids, now: fixedNow })
+    lastGoodRuntime.startMission({ goal: "Recover preserved mission" })
+    const lastGoodCapsule = {
+      version: 1,
+      updatedAt: "2026-05-27T00:00:00.000Z",
+      runtime: lastGoodRuntime.snapshot(),
+    }
+    const host = createMemoryHost({
+      ".runesmith/runtime/capsule.json": "{ broken",
+      ".runesmith/runtime/capsule.json.runesmith.prev": `${JSON.stringify(lastGoodCapsule, null, 2)}\n`,
+    })
+
+    const repaired = await repairRuntimeCapsule(host, {
+      path: ".runesmith/runtime/capsule.json",
+      snapshot: {
+        graphs: {},
+        ledgers: {},
+        leases: { leases: {} },
+        contracts: {},
+      },
+      now: fixedNow,
+    })
+
+    expect(repaired.ok).toBe(true)
+    if (!repaired.ok) throw new Error(repaired.error.message)
+    expect(repaired.value.status).toBe("repaired")
+    expect(repaired.value.backupPath).toBe(".runesmith/runtime/capsule.json.runesmith.bak")
+    expect(host.files.get(".runesmith/runtime/capsule.json.runesmith.bak")).toBe("{ broken")
+    expect(Object.keys(repaired.value.capsule.runtime.graphs)).toEqual(["mission_alpha"])
+    expect(host.files.get(".runesmith/runtime/capsule.json")).toBe(host.files.get(".runesmith/runtime/capsule.json.runesmith.prev"))
   })
 
   test("repairs missing and invalid project config files", async () => {
