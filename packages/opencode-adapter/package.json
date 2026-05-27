@@ -1,0 +1,21 @@
+{
+  "name": "@runesmith/opencode-adapter",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/plugin.js",
+  "types": "./dist/plugin.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/plugin.ts",
+      "import": "./src/plugin.ts"
+    }
+  },
+  "dependencies": {
+    "@runesmith/core": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "bun test tests",
+    "typecheck": "tsc -b"
+  }
+}

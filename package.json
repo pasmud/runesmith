@@ -1,0 +1,21 @@
+{
+  "name": "runesmith",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.3.13",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "bun run build:packages && bun run --cwd packages/dashboard build",
+    "build:packages": "tsc -b packages/core packages/opencode-adapter packages/cli packages/testbench",
+    "dev:dashboard": "bun run --cwd packages/dashboard dev",
+    "test": "bun test",
+    "typecheck": "tsc -b packages/core packages/opencode-adapter packages/cli packages/testbench packages/dashboard"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.1",
+    "typescript": "^5.9.3"
+  }
+}

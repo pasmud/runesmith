@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+.turbo/
+.vite/
+.env
+.env.*
+!.env.example
+packages/dashboard/dist/
+packages/dashboard/node_modules/

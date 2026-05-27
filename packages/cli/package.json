@@ -1,0 +1,18 @@
+{
+  "name": "@runesmith/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "runesmith": "./src/index.ts"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "@runesmith/core": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "bun test tests",
+    "typecheck": "tsc -b"
+  }
+}
