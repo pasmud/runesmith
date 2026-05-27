@@ -1,10 +1,31 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  buildCovenantControlBrief,
   buildCovenantPrompt,
   createRunicCovenant,
   getNextCovenantStage,
 } from "../src/covenant"
+import { createRuntime, type AgentContract } from "../src/index"
+
+const fixedNow = () => new Date("2026-05-27T00:00:00.000Z")
+const ids = (prefix: string) => `${prefix}_alpha`
+
+const atlas: AgentContract = {
+  id: "agent_atlas",
+  displayName: "Atlas",
+  description: "Implementation agent",
+  capabilities: ["typescript", "testing"],
+  allowedTools: ["read", "edit", "bash", "test"],
+  modelPolicy: {
+    primary: "anthropic/claude-sonnet-4.5",
+    fallbacks: ["openai/gpt-5.1-codex"],
+  },
+  fileScope: ["packages/**"],
+  completionCriteria: ["Code compiles", "Tests pass"],
+  requiredEvidence: ["file-change", "test-result"],
+  fallbacks: ["agent_oracle"],
+}
 
 describe("runic covenant", () => {
   test("defines an autonomous end-to-end coding loop", () => {
@@ -42,5 +63,52 @@ describe("runic covenant", () => {
     expect(getNextCovenantStage(covenant, "frame")?.id).toBe("map")
     expect(getNextCovenantStage(covenant, "seal")?.id).toBe("recover")
     expect(getNextCovenantStage(covenant, "recover")?.id).toBe("frame")
+  })
+
+  test("builds a state-aware control brief that rejects failed proof", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Harden evidence gates",
+      requiredCapabilities: ["typescript"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed evidence ledger",
+        payload: { filePath: "packages/core/src/evidence-ledger.ts" },
+        createdAt: fixedNow().toISOString(),
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Core tests failed",
+        payload: { command: "bun test packages/core/tests", exitCode: 1 },
+        createdAt: fixedNow().toISOString(),
+      },
+    })
+
+    const brief = buildCovenantControlBrief(runtime.snapshot())
+
+    expect(brief).toContain("## Runesmith Control Brief")
+    expect(brief).toContain("Active mission: mission_alpha")
+    expect(brief).toContain("Next stage: Proof Gate")
+    expect(brief).toContain("missing evidence: test-result")
+    expect(brief).toContain("Failed or unknown test runs do not satisfy completion proof.")
   })
 })

@@ -1,4 +1,5 @@
 import {
+  buildCovenantControlBrief,
   buildCovenantPrompt,
   createRuntime,
   createRunicCovenant,
@@ -359,13 +360,17 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       chat: {
         system: {
           transform(_input, systemPrompt) {
-            return appendPromptSections(systemPrompt, [covenantPrompt, autopilotPrompt])
+            return upsertPromptSection(
+              appendPromptSections(systemPrompt, [covenantPrompt, autopilotPrompt]),
+              buildCovenantControlBrief(runtime.snapshot(), covenant),
+            )
           },
         },
       },
     },
     "experimental.chat.system.transform"(_input, output) {
       appendSystemSections(output, [covenantPrompt, autopilotPrompt])
+      upsertSystemSection(output, buildCovenantControlBrief(runtime.snapshot(), covenant))
     },
     "experimental.session.compacting"(_input, output) {
       appendCompactionContext(output, runtime.snapshot())
@@ -858,12 +863,50 @@ function appendSystemSections(output: OpenCodeSystemOutput, sections: string[]):
   output.system = system
 }
 
+function upsertSystemSection(output: OpenCodeSystemOutput, section: string): void {
+  const system =
+    typeof output.system === "string"
+      ? [output.system]
+      : Array.isArray(output.system)
+        ? output.system
+        : []
+
+  upsertTextListSection(system, section)
+  output.system = system
+}
+
+function upsertTextListSection(target: string[], section: string): void {
+  const heading = sectionHeading(section)
+  const existingIndex = target.findIndex((entry) => entry.includes(heading))
+  if (existingIndex >= 0) {
+    target[existingIndex] = upsertPromptSection(target[existingIndex]!, section)
+    return
+  }
+
+  target.push(section)
+}
+
+function upsertPromptSection(text: string, section: string): string {
+  const heading = sectionHeading(section)
+  const start = text.indexOf(heading)
+  if (start < 0) {
+    return text.trimEnd().length > 0 ? `${text.trimEnd()}\n\n${section}` : section
+  }
+
+  const nextHeading = text.indexOf("\n## ", start + heading.length)
+  const before = text.slice(0, start).trimEnd()
+  const after = nextHeading >= 0 ? text.slice(nextHeading).trimStart() : ""
+
+  return [before, section, after].filter((part) => part.length > 0).join("\n\n")
+}
+
 function appendCompactionContext(output: OpenCodeCompactionOutput, snapshot: RuntimeSnapshot): void {
   const context = output.context ?? []
   const summary = buildMissionCapsuleSummary(snapshot)
   if (!context.join("\n").includes("## Runesmith Mission Capsule")) {
     context.push(summary)
   }
+  upsertTextListSection(context, buildCovenantControlBrief(snapshot))
   output.context = context
 }
 

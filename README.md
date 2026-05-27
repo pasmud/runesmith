@@ -16,6 +16,7 @@ The goal is not to add another prompt pack or make users manually run a workflow
 - Captured proof immediately triggers the evidence gate, so tasks can seal as soon as file-change evidence and passing test-result evidence satisfy the agent contract.
 - Runtime state is stored in a local capsule so missions survive OpenCode restarts.
 - OpenCode compaction carries the mission capsule forward so long sessions do not lose orchestration state.
+- A live Runesmith Control Brief is injected from runtime state so OpenCode sees the active mission, next Covenant stage, and missing proof without user-managed workflow steps.
 - The dashboard is an operating surface: forge directives, run guarded autopilot, boost agents, toggle policies, and seal evidence snapshots.
 
 ## Packages
@@ -42,6 +43,8 @@ Once the OpenCode plugin is installed, Runesmith injects the Covenant into the c
 8. Recovery Sweep
 
 Each stage has gates and evidence requirements. The point is simple: install once, then let the engine drive end-to-end work through leases, proof, review, snapshots, and recovery.
+
+The static Covenant is paired with a live `Runesmith Control Brief`. That brief is derived from the runtime capsule and tells the agent the active mission, active task, next Covenant stage, required evidence, and missing evidence. Failed or unknown test runs stay diagnostic and keep the next stage at Proof Gate until passing proof exists.
 
 Runesmith Autopilot is the OpenCode-facing part of that loop. The plugin injects a short bootstrap that tells the coding agent to call `runesmith_autopilot_prepare` when a real coding goal appears. That tool reads the latest user message when no explicit goal is provided, starts or resumes the matching active mission, claims the mission root through the lease scheduler, and saves the runtime capsule.
 

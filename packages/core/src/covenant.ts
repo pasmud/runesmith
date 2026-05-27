@@ -1,3 +1,7 @@
+import { createEvidenceLedger, missingRequiredEvidence } from "./evidence-ledger"
+import type { RuntimeSnapshot } from "./runtime"
+import type { EvidenceType, MissionGraph, MissionTask } from "./types"
+
 export type CovenantStageId =
   | "frame"
   | "map"
@@ -28,6 +32,20 @@ export type RunicCovenant = {
   thesis: string
   operatingRules: string[]
   stages: CovenantStage[]
+}
+
+export type CovenantControlBrief = {
+  status: "idle" | "active"
+  stage: CovenantStage
+  missionId?: string
+  taskId?: string
+  missionGoal?: string
+  taskTitle?: string
+  taskStatus?: string
+  assignedAgentId?: string
+  requiredEvidence: EvidenceType[]
+  missingEvidence: EvidenceType[]
+  directives: string[]
 }
 
 const covenantStages: CovenantStage[] = [
@@ -147,6 +165,76 @@ export function buildCovenantPrompt(covenant: RunicCovenant = createRunicCovenan
   ].join("\n")
 }
 
+export function deriveCovenantControlBrief(
+  snapshot: RuntimeSnapshot,
+  covenant: RunicCovenant = createRunicCovenant(),
+): CovenantControlBrief {
+  const active = selectCovenantTask(snapshot)
+  if (!active) {
+    return {
+      status: "idle",
+      stage: covenant.stages.find((stage) => stage.id === "frame") ?? covenant.stages[0]!,
+      requiredEvidence: [],
+      missingEvidence: [],
+      directives: [
+        "Wait for a concrete user goal before creating work.",
+        "When coding work appears, prepare or resume a mission automatically before mutating files.",
+      ],
+    }
+  }
+
+  const contract = active.task.assignedAgentId ? snapshot.contracts[active.task.assignedAgentId] : undefined
+  const requiredEvidence = contract?.requiredEvidence ?? []
+  const ledger = snapshot.ledgers[active.graph.mission.id] ?? createEvidenceLedger()
+  const missingEvidence = missingRequiredEvidence(ledger, {
+    taskId: active.task.id,
+    requiredEvidence,
+  })
+  const stageId = selectStageId(active.graph, active.task, missingEvidence)
+  const stage = covenant.stages.find((candidate) => candidate.id === stageId) ?? covenant.stages[0]!
+
+  return {
+    status: "active",
+    stage,
+    missionId: active.graph.mission.id,
+    taskId: active.task.id,
+    missionGoal: active.graph.mission.goal,
+    taskTitle: active.task.title,
+    taskStatus: active.task.status,
+    assignedAgentId: active.task.assignedAgentId,
+    requiredEvidence,
+    missingEvidence,
+    directives: buildControlDirectives(stage.id, missingEvidence),
+  }
+}
+
+export function buildCovenantControlBrief(
+  snapshot: RuntimeSnapshot,
+  covenant: RunicCovenant = createRunicCovenant(),
+): string {
+  const brief = deriveCovenantControlBrief(snapshot, covenant)
+  const requiredEvidence = brief.requiredEvidence.length > 0 ? brief.requiredEvidence.join(", ") : "none"
+  const missingEvidence = brief.missingEvidence.length > 0 ? brief.missingEvidence.join(", ") : "none"
+
+  const missionLines = brief.status === "active"
+    ? [
+        `Active mission: ${brief.missionId} - ${brief.missionGoal}`,
+        `Active task: ${brief.taskId} - ${brief.taskTitle}`,
+        `Task status: ${brief.taskStatus}${brief.assignedAgentId ? `; agent: ${brief.assignedAgentId}` : ""}`,
+      ]
+    : ["Active mission: none"]
+
+  return [
+    "## Runesmith Control Brief",
+    `Next stage: ${brief.stage.name}`,
+    ...missionLines,
+    `required evidence: ${requiredEvidence}`,
+    `missing evidence: ${missingEvidence}`,
+    "Directives:",
+    ...brief.directives.map((directive) => `- ${directive}`),
+  ].join("\n")
+}
+
 export function getNextCovenantStage(
   covenant: RunicCovenant,
   currentStageId: CovenantStageId,
@@ -155,4 +243,90 @@ export function getNextCovenantStage(
   if (index < 0) return undefined
 
   return covenant.stages[(index + 1) % covenant.stages.length]
+}
+
+function selectCovenantTask(snapshot: RuntimeSnapshot): { graph: MissionGraph; task: MissionTask } | undefined {
+  const terminalMissionStatuses = new Set(["complete", "failed", "cancelled"])
+  const terminalTaskStatuses = new Set(["complete", "failed", "cancelled"])
+  const statusRank: Record<string, number> = {
+    blocked: 0,
+    stale: 1,
+    running: 2,
+    verifying: 3,
+    queued: 4,
+  }
+
+  return Object.values(snapshot.graphs)
+    .filter((graph) => !terminalMissionStatuses.has(graph.mission.status))
+    .flatMap((graph) => {
+      return Object.values(graph.tasks)
+        .filter((task) => !terminalTaskStatuses.has(task.status))
+        .map((task) => ({ graph, task }))
+    })
+    .sort((left, right) => {
+      const statusDelta = (statusRank[left.task.status] ?? 99) - (statusRank[right.task.status] ?? 99)
+      if (statusDelta !== 0) return statusDelta
+
+      return new Date(right.task.updatedAt).getTime() - new Date(left.task.updatedAt).getTime()
+    })[0]
+}
+
+function selectStageId(
+  graph: MissionGraph,
+  task: MissionTask,
+  missingEvidence: EvidenceType[],
+): CovenantStageId {
+  if (graph.mission.status === "blocked" || task.status === "blocked" || task.status === "stale") {
+    return "recover"
+  }
+
+  if (task.status === "queued") return "claim"
+  if (task.status === "verifying") return "review"
+  if (missingEvidence.length === 0) return "review"
+  if (missingEvidence.includes("file-change")) return "forge"
+
+  return "prove"
+}
+
+function buildControlDirectives(stageId: CovenantStageId, missingEvidence: EvidenceType[]): string[] {
+  if (stageId === "forge") {
+    return [
+      "Continue the active task before starting duplicate work.",
+      "Make the smallest useful repo change, then run targeted verification.",
+    ]
+  }
+
+  if (stageId === "prove") {
+    return [
+      "Run the strongest practical verification for the current change.",
+      "Failed or unknown test runs do not satisfy completion proof.",
+      `Attach or capture missing evidence before completion: ${missingEvidence.join(", ")}.`,
+    ]
+  }
+
+  if (stageId === "review") {
+    return [
+      "Review the diff and runtime behavior before sealing the task.",
+      "Use the runtime completion gate only after proof remains satisfied.",
+    ]
+  }
+
+  if (stageId === "recover") {
+    return [
+      "Recover stale or blocked work before making unrelated edits.",
+      "Reclaim safe work with a lease; hold unsafe work for explicit evidence or user input.",
+    ]
+  }
+
+  if (stageId === "claim") {
+    return [
+      "Claim the task with the matching agent contract and idempotency key.",
+      "Keep tool scope minimal for the current task.",
+    ]
+  }
+
+  return [
+    "Frame the goal, inspect relevant repo context, and avoid unnecessary clarification blocks.",
+    "Map the work into the mission graph before execution.",
+  ]
 }

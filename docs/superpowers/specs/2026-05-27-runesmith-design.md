@@ -26,6 +26,7 @@ The first production slice includes:
 - Zero-touch mission preparation from OpenCode `tool.execute.before` when a mutating or shell tool is about to run and no active mission exists.
 - Automatic evidence capture from OpenCode tool execution events for shell commands, test runs, and file edits, followed by an immediate evidence-gated advance attempt.
 - Evidence-gated autopilot ticks that can complete the active task on OpenCode idle events once proof requirements are satisfied.
+- A state-aware Runesmith Control Brief that tells OpenCode the active mission, active task, next Runic Covenant stage, required evidence, and missing proof directly from runtime state.
 
 Out of scope for the first slice:
 
@@ -217,6 +218,8 @@ Stages:
 
 Every stage carries gates and evidence signals. The covenant is a workflow policy layer; the runtime remains the source of truth for mission state, leases, and evidence.
 
+The runtime also derives a live Runesmith Control Brief from the current snapshot. This brief does not ask the user to run a skill. It tells the coding agent what stage comes next, which mission and task are active, what proof is required, and which evidence is still missing. Failed or unknown test runs are treated as diagnostics, so the brief keeps the task in Proof Gate until passing test proof exists.
+
 ### Runesmith Autopilot
 
 Runesmith Autopilot is the install-once bridge between OpenCode chat and the runtime. The system transform hook tells the coding agent to prepare a mission when a real coding goal appears. The `runesmith_autopilot_prepare` tool then:
@@ -234,6 +237,8 @@ After a mission is prepared, the `tool.execute.after` hook records routine proof
 The `runesmith_autopilot_tick` tool, and the same loop on OpenCode `session.idle` events, checks the active task's assigned contract. If required evidence is missing, it holds with a missing-evidence list. If proof is present, it calls the runtime completion gate and persists the capsule. This keeps the agent loop automatic while preserving evidence-gated completion.
 
 The compaction hook appends a mission capsule summary containing active missions, tasks, leases, and evidence counts. This gives continuation sessions enough orchestration state to recover or keep working before starting a new loop.
+
+The same compaction path appends the live Runesmith Control Brief, so resumed sessions keep the next stage and proof obligations without requiring the user to install or invoke an external workflow.
 
 ### Recovery Policies
 

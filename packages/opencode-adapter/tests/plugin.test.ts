@@ -150,6 +150,25 @@ describe("opencode adapter", () => {
 
     expect(compactOutput.context.join("\n")).toContain("mission_alpha")
     expect(compactOutput.context.join("\n")).toContain("Carry state through compaction")
+    expect(compactOutput.context.join("\n")).toContain("Runesmith Control Brief")
+  })
+
+  test("injects a live Covenant control brief for the active mission", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({ runtime })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Make orchestration state-aware",
+    })
+
+    const systemOutput = { system: ["Base system prompt"] }
+    await plugin["experimental.chat.system.transform"]?.({}, systemOutput)
+
+    const prompt = systemOutput.system.join("\n")
+    expect(prompt).toContain("Runesmith Control Brief")
+    expect(prompt).toContain("Active mission: mission_alpha")
+    expect(prompt).toContain("Next stage: Forge")
+    expect(prompt).toContain("missing evidence: file-change, test-result")
   })
 
   test("autopilot prepares and claims a mission from the latest user message once", async () => {
