@@ -20,6 +20,7 @@ The first production slice includes:
 - A CLI package with `init`, `doctor`, and mission inspection commands.
 - A dashboard package using shadcn/ui conventions and an OpenClaw OS-inspired layout for mission visibility.
 - A testbench package with deterministic simulations for duplicate prompt leases, stale tasks, missing capabilities, and evidence verification.
+- A root OpenCode package entrypoint so users can install Runesmith with one `opencode.json` plugin line: `runesmith@git+https://github.com/pasmud/runesmith.git`.
 - A native Runic Covenant workflow layer that installs automatically with the OpenCode plugin and drives frame, map, claim, forge, prove, repair, review, seal, and recovery behavior without manual workflow invocation.
 - A default runtime capsule at `.runesmith/runtime/capsule.json` so mission state survives OpenCode restarts and CLI inspection works without requiring a manual snapshot flag.
 - Runesmith Autopilot hooks for OpenCode system bootstrap and compaction continuity, so the engine can prepare and resume missions without the user loading separate workflow skills.
@@ -82,6 +83,8 @@ Responsibilities:
 - `runesmith launch -- <opencode args>`: run the same bootstrap/readiness path, refuse to continue when `opencode` is missing, then hand off to the OpenCode CLI with pass-through arguments.
 - `runesmith init`: create project config.
 - `runesmith doctor`: validate config, runtime capsule, host OpenCode CLI availability, OpenCode plugin wiring, and an internal Forge -> Review -> Seal loop smoke test; exit nonzero with an actionable repair hint when setup is incomplete.
+- `runesmith install --mode npm`: write the default git-installable OpenCode package entry, while keeping `--package` available for pinned tags, forks, or future registry releases.
+- `runesmith status`: print the current OS state, OpenCode CLI readiness, Loop Pulse next action, active mission and task, missing proof, diagnostics, and active runes without requiring users to learn the lower-level mission commands.
 - Published packages expose built `dist` entrypoints, keep Bun source imports for local agent execution, and use publishable internal dependency ranges instead of workspace-only dependency specifiers.
 - `runesmith mission start <goal>`: bootstrap local config if needed, create the default Forge -> Review -> Seal Covenant mission, register Atlas, claim the first task, and persist the runtime capsule for OpenCode/dashboard resumption.
 - `runesmith mission evidence <mission-id> <task-id>` and `runesmith mission tick`: record task proof and advance the persisted capsule through the same evidence gate used by OpenCode, including active repair diagnostics and safe autonomous Review and Seal decisions.

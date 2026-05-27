@@ -82,6 +82,20 @@ When the local dev dashboard is running, it reads the same runtime capsule throu
 
 The command forge and guarded autopilot controls call `/api/runtime-control`, mutate the same `.runesmith/runtime/capsule.json` used by OpenCode, and reload the dashboard from the saved capsule. If the control API is unavailable, the UI falls back to the local model so demos still work.
 
+## Direct OpenCode Install
+
+For OpenCode users, the direct path is a single plugin entry:
+
+```json
+{
+  "plugin": ["runesmith@git+https://github.com/pasmud/runesmith.git"]
+}
+```
+
+Add it to your global or project `opencode.json`, restart OpenCode, and let OpenCode install the package at startup. The repo root exports the Runesmith OpenCode plugin, runs the package build during git-package preparation, and loads the same Runic Covenant, Control Brief, Loop Pulse, tool hooks, runtime capsule, and evidence-gated autopilot described above.
+
+This is the Runesmith-native version of the useful Superpowers install lesson: one line for the user, automatic behavior inside the harness. Users should not need to manually load skills, invoke workflows, or remember process names for normal coding work.
+
 ## Development
 
 ```bash
@@ -106,6 +120,14 @@ bun packages/cli/src/index.ts doctor
 ```
 
 `doctor` validates the project config, runtime capsule, OpenCode CLI command, OpenCode plugin shim, and an internal Forge -> Review -> Seal orchestration smoke test. It exits nonzero when install files are missing or invalid, or when `opencode` is not discoverable, and prints the next command to repair the setup.
+
+Check the operating loop without learning the mission subcommands:
+
+```bash
+bun packages/cli/src/index.ts status
+```
+
+`status` prints the Runesmith install state, OpenCode CLI readiness, Loop Pulse next action, active mission and task, missing evidence, diagnostics, and active runes from the runtime capsule. It also stays useful before bootstrap by showing the idle engine state and the next launch/dashboard commands.
 
 Launch OpenCode through Runesmith after bootstrap:
 
@@ -159,7 +181,7 @@ bun packages/cli/src/index.ts launch -- <opencode args>
 # The Runic Covenant bootstrap and runtime capsule persistence are included automatically.
 bun packages/cli/src/index.ts install
 
-# Npm-style install, matching the OpenCode `plugin` array flow.
+# OpenCode package install, matching the `plugin` array flow.
 bun packages/cli/src/index.ts install --mode npm
 bun packages/cli/src/index.ts doctor --mode npm
 ```
@@ -171,7 +193,7 @@ bun packages/cli/src/index.ts install --plugin-dir .opencode/plugins
 bun packages/cli/src/index.ts doctor --plugin-dir .opencode/plugins
 ```
 
-OpenCode itself must be installed separately so `opencode` resolves on PATH. Runesmith handles its own project config, runtime capsule, and plugin wiring; `doctor` confirms that the host OpenCode CLI is present before reporting ready. OpenCode loads local plugins from `.opencode/plugins/` and `~/.config/opencode/plugins/` automatically. Npm plugins are added to the `plugin` array in `opencode.json`. See `examples/opencode/runesmith-plugin.json` for the npm-style config shape.
+OpenCode itself must be installed separately so `opencode` resolves on PATH. Runesmith handles its own project config, runtime capsule, and plugin wiring; `doctor` confirms that the host OpenCode CLI is present before reporting ready. OpenCode loads local plugins from `.opencode/plugins/` and `~/.config/opencode/plugins/` automatically. Package plugins are added to the `plugin` array in `opencode.json`; by default Runesmith writes `runesmith@git+https://github.com/pasmud/runesmith.git`. See `examples/opencode/runesmith-plugin.json` for the direct package config shape.
 
 Once installed and OpenCode is restarted, users do not need to invoke a workflow manually. The plugin registers:
 

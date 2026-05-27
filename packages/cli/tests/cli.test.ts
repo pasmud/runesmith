@@ -284,7 +284,7 @@ describe("runesmith cli", () => {
     expect(result).toEqual({
       exitCode: 0,
       stdout: [
-        "Installed Runesmith npm plugin",
+        "Installed Runesmith OpenCode package plugin",
         "config: opencode.jsonc",
         "plugin: runesmith@0.2.0",
         "backup: opencode.jsonc.runesmith.bak",
@@ -299,7 +299,7 @@ describe("runesmith cli", () => {
     expect(host.readText("opencode.jsonc.runesmith.bak")).toContain("\"runesmith@0.1.0\"")
   })
 
-  test("install npm mode defaults to the scoped OpenCode adapter package", async () => {
+  test("install npm mode defaults to the git-installable Runesmith package", async () => {
     const host = createMemoryHost()
 
     const result = await runCli([
@@ -313,16 +313,16 @@ describe("runesmith cli", () => {
     expect(result).toEqual({
       exitCode: 0,
       stdout: [
-        "Installed Runesmith npm plugin",
+        "Installed Runesmith OpenCode package plugin",
         "config: opencode.jsonc",
-        "plugin: @runesmith/opencode-adapter@latest",
+        "plugin: runesmith@git+https://github.com/pasmud/runesmith.git",
         "backup: none",
         "covenant: automatic",
         "",
       ].join("\n"),
       stderr: "",
     })
-    expect(host.readText("opencode.jsonc")).toContain("\"@runesmith/opencode-adapter@latest\"")
+    expect(host.readText("opencode.jsonc")).toContain("\"runesmith@git+https://github.com/pasmud/runesmith.git\"")
   })
 
   test("up initializes the workspace, wires OpenCode, and creates the runtime capsule", async () => {
@@ -394,6 +394,72 @@ describe("runesmith cli", () => {
         "opencode: missing (install OpenCode CLI, then run `runesmith doctor`)",
         "covenant: automatic",
         "dashboard: bun run dev:dashboard",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+  })
+
+  test("status prints the install state and current Loop Pulse", async () => {
+    const host = createMemoryHost(
+      {
+        ".runesmith/config.json": "{}",
+        ".runesmith/runtime/capsule.json": JSON.stringify({
+          version: 1,
+          updatedAt: "2026-05-27T00:00:00.000Z",
+          runtime: snapshot,
+        }),
+      },
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+      },
+    )
+
+    const result = await runCli(["status"], host)
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Runesmith OS",
+        "state: ready",
+        "runtime: .runesmith/runtime/capsule.json",
+        "opencode: found E:/tools/opencode.exe",
+        "next: Capture proof [attention/high]",
+        "mission: mission_alpha running Build Runesmith",
+        "task: task_alpha running Mission root",
+        "missing evidence: test-result",
+        "diagnostics: none",
+        "active runes: Proofwright",
+        "dashboard: bun run dev:dashboard",
+        "launch: runesmith launch -- <opencode args>",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+  })
+
+  test("status stays useful before bootstrap", async () => {
+    const host = createMemoryHost()
+
+    const result = await runCli(["status"], host)
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Runesmith OS",
+        "state: uninitialized",
+        "runtime: .runesmith/runtime/capsule.json",
+        "opencode: missing",
+        "next: Wait for goal [clear/low]",
+        "mission: none",
+        "task: none",
+        "missing evidence: none",
+        "diagnostics: none",
+        "active runes: Pathfinder",
+        "dashboard: bun run dev:dashboard",
+        "launch: runesmith launch -- <opencode args>",
         "",
       ].join("\n"),
       stderr: "",

@@ -3,6 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "./packages/opencode-adapter/dist/plugin.js",
+  "types": "./packages/opencode-adapter/dist/plugin.d.ts",
+  "exports": {
+    ".": {
+      "types": "./packages/opencode-adapter/dist/plugin.d.ts",
+      "bun": "./packages/opencode-adapter/src/plugin.ts",
+      "import": "./packages/opencode-adapter/dist/plugin.js"
+    }
+  },
+  "files": [
+    ".opencode/INSTALL.md",
+    "packages/core/dist",
+    "packages/core/src",
+    "packages/core/package.json",
+    "packages/opencode-adapter/dist",
+    "packages/opencode-adapter/src",
+    "packages/opencode-adapter/package.json",
+    "README.md",
+    "LICENSE"
+  ],
   "packageManager": "bun@1.3.13",
   "workspaces": [
     "packages/*"
@@ -11,8 +31,12 @@
     "build": "bun run build:packages && bun run --cwd packages/dashboard build",
     "build:packages": "tsc -b packages/core packages/opencode-adapter packages/cli packages/testbench",
     "dev:dashboard": "bun run --cwd packages/dashboard dev",
+    "prepare": "bun run build:packages",
     "test": "bun test",
     "typecheck": "tsc -b packages/core packages/opencode-adapter packages/cli packages/testbench packages/dashboard"
+  },
+  "dependencies": {
+    "@runesmith/core": "file:packages/core"
   },
   "devDependencies": {
     "@types/bun": "^1.3.1",

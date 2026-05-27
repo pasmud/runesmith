@@ -26,6 +26,31 @@ function readPackage(path: string): PackageJson {
 }
 
 describe("package publish contracts", () => {
+  test("repo root is installable as an OpenCode git plugin package", () => {
+    const pkg = readPackage("package.json")
+
+    expect(pkg.name).toBe("runesmith")
+    expect(pkg.main).toBe("./packages/opencode-adapter/dist/plugin.js")
+    expect(pkg.exports?.["."]).toEqual({
+      types: "./packages/opencode-adapter/dist/plugin.d.ts",
+      bun: "./packages/opencode-adapter/src/plugin.ts",
+      import: "./packages/opencode-adapter/dist/plugin.js",
+    })
+    expect(pkg.scripts?.prepare).toBe("bun run build:packages")
+    expect(pkg.dependencies?.["@runesmith/core"]).toBe("file:packages/core")
+    expect(pkg.files).toEqual([
+      ".opencode/INSTALL.md",
+      "packages/core/dist",
+      "packages/core/src",
+      "packages/core/package.json",
+      "packages/opencode-adapter/dist",
+      "packages/opencode-adapter/src",
+      "packages/opencode-adapter/package.json",
+      "README.md",
+      "LICENSE",
+    ])
+  })
+
   test("published packages expose built entrypoints while keeping Bun source imports available", () => {
     const packages = [
       {

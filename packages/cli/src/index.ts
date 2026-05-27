@@ -132,6 +132,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     return runesmithUp(args.slice(1), host)
   }
 
+  if (command === "status") {
+    return runesmithStatus(host)
+  }
+
   if (command === "launch") {
     return launchOpenCode(args.slice(1), host)
   }
@@ -205,7 +209,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     ].join("\n"))
   }
 
-  return failure("Usage: runesmith <up|launch|install|init|doctor|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
+  return failure("Usage: runesmith <up|status|launch|install|init|doctor|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
 }
 
 function success(stdout: string): CliResult {
@@ -257,6 +261,8 @@ const cliAtlasContract: AgentContract = {
   fallbacks: ["agent_oracle"],
 }
 
+const defaultOpenCodePackagePluginEntry = "runesmith@git+https://github.com/pasmud/runesmith.git"
+
 async function writeProjectConfig(host: CliHost): Promise<void> {
   await host.writeText(".runesmith/config.json", JSON.stringify({
     version: 1,
@@ -302,6 +308,42 @@ async function runesmithUp(args: string[], host: CliHost): Promise<CliResult> {
     "dashboard: bun run dev:dashboard",
     "",
   ].join("\n"))
+}
+
+async function runesmithStatus(host: CliHost): Promise<CliResult> {
+  const configFound = await host.exists(".runesmith/config.json")
+  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  if (!capsule.ok) {
+    return failure(`${capsule.error.message}\n`)
+  }
+
+  const snapshot = capsule.value?.runtime ?? emptySnapshot
+  const openCodeCli = await findOpenCodeCli(host)
+  const pulse = deriveLoopPulse(snapshot)
+  const mission = pulse.missionId ? snapshot.graphs[pulse.missionId]?.mission : undefined
+  const task = mission && pulse.taskId ? snapshot.graphs[mission.id]?.tasks[pulse.taskId] : undefined
+  const state = selectInstallState(Boolean(configFound), Boolean(capsule.value), Boolean(openCodeCli))
+
+  return success([
+    "Runesmith OS",
+    `state: ${state}`,
+    `runtime: ${defaultRuntimeCapsulePath}`,
+    `opencode: ${openCodeCli ? `found ${openCodeCli}` : "missing"}`,
+    `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
+    `mission: ${mission ? `${mission.id} ${mission.status} ${mission.goal}` : "none"}`,
+    `task: ${task ? `${task.id} ${task.status} ${task.title}` : "none"}`,
+    `missing evidence: ${formatList(pulse.missingEvidence)}`,
+    `diagnostics: ${formatList(pulse.diagnostics)}`,
+    `active runes: ${formatList(pulse.runes.map((rune) => rune.name))}`,
+    "dashboard: bun run dev:dashboard",
+    "launch: runesmith launch -- <opencode args>",
+    "",
+  ].join("\n"))
+}
+
+function selectInstallState(configFound: boolean, capsuleFound: boolean, openCodeFound: boolean): "ready" | "staged" | "uninitialized" {
+  if (!configFound && !capsuleFound) return "uninitialized"
+  return configFound && capsuleFound && openCodeFound ? "ready" : "staged"
 }
 
 async function launchOpenCode(args: string[], host: CliHost): Promise<CliResult> {
@@ -714,7 +756,7 @@ async function installRunesmith(args: string[], host: CliHost): Promise<CliResul
   if (mode === "npm") {
     return installNpmPlugin(host, {
       configPath: options.config ?? getDefaultOpenCodeConfigPath(),
-      pluginEntry: options.package ?? "@runesmith/opencode-adapter@latest",
+      pluginEntry: options.package ?? defaultOpenCodePackagePluginEntry,
     })
   }
 
@@ -777,7 +819,7 @@ async function installNpmPlugin(
   await host.writeText(input.configPath, nextConfig.endsWith("\n") ? nextConfig : `${nextConfig}\n`)
 
   return success([
-    "Installed Runesmith npm plugin",
+    "Installed Runesmith OpenCode package plugin",
     `config: ${input.configPath}`,
     `plugin: ${input.pluginEntry}`,
     `backup: ${existed ? backupPath : "none"}`,
