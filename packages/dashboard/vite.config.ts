@@ -83,8 +83,6 @@ function runtimeCapsuleApi(): Plugin {
   }
 }
 
-const defaultRuntimeCapsulePath = ".runesmith/runtime/capsule.json"
-
 const emptySnapshot: RuntimeSnapshot = {
   graphs: {},
   ledgers: {},
@@ -92,13 +90,22 @@ const emptySnapshot: RuntimeSnapshot = {
   contracts: {},
 }
 
+const defaultProjectConfigPath = ".runesmith/config.json"
+const defaultRuntimeCapsulePath = ".runesmith/runtime/capsule.json"
+
+type ProjectConfig = {
+  version: 1
+  runtimeDir: string
+  defaultStaleAfterMs: number
+}
+
 async function readFirstRuntimeCapsule(): Promise<string | undefined> {
-  for (const path of getRuntimeCapsuleCandidates()) {
-    try {
-      return await readFile(path, "utf8")
-    } catch {
-      // Try the next likely project root. Missing capsules should not break the dashboard.
-    }
+  const host = createNodeRuntimeStoreHost()
+  const path = await resolveRuntimeCapsulePath(host)
+  try {
+    return await host.readText(path)
+  } catch {
+    // Missing capsules should not break the dashboard.
   }
 
   return undefined
@@ -106,20 +113,59 @@ async function readFirstRuntimeCapsule(): Promise<string | undefined> {
 
 function getRuntimeCapsuleCandidates(): string[] {
   const candidates = [
-    process.env.RUNESMITH_RUNTIME_CAPSULE,
-    resolve(process.cwd(), ".runesmith/runtime/capsule.json"),
+    resolve(process.cwd(), defaultRuntimeCapsulePath),
     fileURLToPath(new URL("../../.runesmith/runtime/capsule.json", import.meta.url)),
   ].filter((path): path is string => Boolean(path))
 
   return [...new Set(candidates)]
 }
 
-async function resolveRuntimeCapsulePath(host: RuntimeStoreHost): Promise<string> {
+export async function resolveRuntimeCapsulePath(host: RuntimeStoreHost): Promise<string> {
+  if (process.env.RUNESMITH_RUNTIME_CAPSULE) {
+    return process.env.RUNESMITH_RUNTIME_CAPSULE
+  }
+
+  const config = await loadProjectConfig(host)
+  if (config) {
+    return runtimeCapsulePathFromConfig(config)
+  }
+
   for (const path of getRuntimeCapsuleCandidates()) {
     if (await host.exists(path)) return path
   }
 
   return getRuntimeCapsuleCandidates()[0] ?? defaultRuntimeCapsulePath
+}
+
+async function loadProjectConfig(host: RuntimeStoreHost): Promise<ProjectConfig | undefined> {
+  if (!(await host.exists(defaultProjectConfigPath))) return undefined
+
+  try {
+    const parsed = JSON.parse(await host.readText(defaultProjectConfigPath)) as unknown
+
+    return isProjectConfig(parsed) ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function runtimeCapsulePathFromConfig(config: ProjectConfig): string {
+  const runtimeDir = normalizeRuntimeDir(config.runtimeDir) || ".runesmith/runtime"
+
+  return `${runtimeDir}/capsule.json`
+}
+
+function normalizeRuntimeDir(path: string): string {
+  return path.trim().replaceAll("\\", "/").replace(/\/+$/, "")
+}
+
+function isProjectConfig(value: unknown): value is ProjectConfig {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false
+  const config = value as Partial<ProjectConfig>
+
+  return config.version === 1
+    && typeof config.runtimeDir === "string"
+    && typeof config.defaultStaleAfterMs === "number"
 }
 
 async function loadRuntimeCapsule(

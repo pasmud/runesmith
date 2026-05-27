@@ -18,6 +18,7 @@ import {
   deriveRunebook,
   deriveScopeSentinel,
   deriveSealAudit,
+  loadProjectConfig,
   loadRuntimeCapsule,
   prepareRunicMission,
   repairProjectConfig as repairProjectConfigStore,
@@ -26,6 +27,7 @@ import {
   runRuneweave,
   runRunebookNext,
   runProofPlan,
+  runtimeCapsulePathFromConfig,
   saveProjectConfig,
   saveRuntimeCapsule,
   type AgentContract,
@@ -385,13 +387,24 @@ async function ensureProjectConfig(host: CliHost): Promise<void> {
   await writeProjectConfig(host)
 }
 
-async function ensureRuntimeCapsule(host: CliHost): Promise<void> {
-  if (await host.exists(defaultRuntimeCapsulePath)) return
+async function resolveRuntimeCapsulePath(host: CliHost): Promise<string> {
+  const config = await loadProjectConfig(host, defaultProjectConfigPath)
+
+  return config.ok && config.value
+    ? runtimeCapsulePathFromConfig(config.value)
+    : defaultRuntimeCapsulePath
+}
+
+async function ensureRuntimeCapsule(host: CliHost): Promise<string> {
+  const capsulePath = await resolveRuntimeCapsulePath(host)
+  if (await host.exists(capsulePath)) return capsulePath
 
   await saveRuntimeCapsule(host, {
-    path: defaultRuntimeCapsulePath,
+    path: capsulePath,
     snapshot: emptySnapshot,
   })
+
+  return capsulePath
 }
 
 type RepairState = "ok" | "repaired"
@@ -437,8 +450,9 @@ async function repairProjectConfig(host: CliHost): Promise<RepairState> {
 }
 
 async function repairRuntimeCapsule(host: CliHost): Promise<RepairState> {
+  const capsulePath = await resolveRuntimeCapsulePath(host)
   const repaired = await repairRuntimeCapsuleStore(host, {
-    path: defaultRuntimeCapsulePath,
+    path: capsulePath,
     snapshot: emptySnapshot,
   })
   if (!repaired.ok) return "repaired"
@@ -449,8 +463,8 @@ async function repairRuntimeCapsule(host: CliHost): Promise<RepairState> {
 async function runesmithUp(args: string[], host: CliHost): Promise<CliResult> {
   const options = parseOptions(args)
   const installMode = options.mode === "npm" ? "package" : "local shim"
-  await writeProjectConfig(host)
-  await ensureRuntimeCapsule(host)
+  await repairProjectConfig(host)
+  const runtimeCapsulePath = await ensureRuntimeCapsule(host)
 
   const install = await installRunesmith(args, host)
   if (install.exitCode !== 0) return install
@@ -465,7 +479,7 @@ async function runesmithUp(args: string[], host: CliHost): Promise<CliResult> {
     `install: ${installMode}`,
     ...(openCodeConfig ? [`opencode config: ${openCodeConfig}`] : []),
     `plugin: ${pluginPath ?? "installed"}`,
-    `runtime: ${defaultRuntimeCapsulePath}`,
+    `runtime: ${runtimeCapsulePath}`,
     openCodeCli
       ? `opencode: found ${openCodeCli}`
       : "opencode: missing (install OpenCode CLI, then run `runesmith doctor`)",
@@ -477,7 +491,8 @@ async function runesmithUp(args: string[], host: CliHost): Promise<CliResult> {
 
 async function runesmithStatus(host: CliHost): Promise<CliResult> {
   const configFound = await host.exists(".runesmith/config.json")
-  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  const runtimeCapsulePath = await resolveRuntimeCapsulePath(host)
+  const capsule = await loadRuntimeCapsule(host, runtimeCapsulePath)
   if (!capsule.ok) {
     return failure(`${capsule.error.message}\n`)
   }
@@ -501,7 +516,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
   return success([
     "Runesmith OS",
     `state: ${state}`,
-    `runtime: ${defaultRuntimeCapsulePath}`,
+    `runtime: ${runtimeCapsulePath}`,
     `opencode: ${openCodeCli ? `found ${openCodeCli}` : "missing"}`,
     `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
     `plan: ${formatExecutionPlan(pulse.executionPlan)}`,
@@ -536,9 +551,10 @@ async function runesmithIgnite(args: string[], host: CliHost): Promise<CliResult
   const setup = await runesmithHeal(parsed.setupArgs, host)
   if (setup.exitCode !== 0) return setup
 
-  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  const runtimeCapsulePath = await resolveRuntimeCapsulePath(host)
+  const capsule = await loadRuntimeCapsule(host, runtimeCapsulePath)
   if (!capsule.ok) return failure(`${capsule.error.message}\n`)
-  if (!capsule.value) return failure(`Runtime capsule not found: ${defaultRuntimeCapsulePath}\n`)
+  if (!capsule.value) return failure(`Runtime capsule not found: ${runtimeCapsulePath}\n`)
 
   const idFactory = createCliIdFactory(capsule.value.runtime)
   const runtime = createRuntime({
@@ -582,7 +598,7 @@ async function runesmithIgnite(args: string[], host: CliHost): Promise<CliResult
 
   const snapshot = runtime.snapshot()
   await saveRuntimeCapsule(host, {
-    path: defaultRuntimeCapsulePath,
+    path: runtimeCapsulePath,
     snapshot,
   })
 
@@ -614,7 +630,7 @@ async function runesmithIgnite(args: string[], host: CliHost): Promise<CliResult
       ...formatProofRunLines(value.commands),
       `next: ${value.finalPulse.nextAction.label} [${value.finalPulse.health}/${value.finalPulse.nextAction.priority}]`,
       ...formatPulseDiagnostics(value.finalPulse),
-      `runtime: ${defaultRuntimeCapsulePath}`,
+      `runtime: ${runtimeCapsulePath}`,
       "dashboard: bun run dev:dashboard",
       "launch: runesmith launch -- <opencode args>",
       "",
@@ -734,7 +750,7 @@ async function readSnapshot(host: CliHost, args: string[]): Promise<SnapshotRead
   const snapshotFlagIndex = args.indexOf("--snapshot")
   const snapshotPath = snapshotFlagIndex >= 0 ? args[snapshotFlagIndex + 1] : undefined
   if (!snapshotPath) {
-    const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+    const capsule = await loadRuntimeCapsule(host, await resolveRuntimeCapsulePath(host))
     if (!capsule.ok) {
       return {
         ok: false,
@@ -761,7 +777,8 @@ async function startMissionFromCli(args: string[], host: CliHost): Promise<CliRe
     return failure("Usage: runesmith mission start <goal>\n")
   }
 
-  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  const runtimeCapsulePath = await resolveRuntimeCapsulePath(host)
+  const capsule = await loadRuntimeCapsule(host, runtimeCapsulePath)
   if (!capsule.ok) {
     return failure(`${capsule.error.message}\n`)
   }
@@ -793,7 +810,7 @@ async function startMissionFromCli(args: string[], host: CliHost): Promise<CliRe
 
   const snapshotAfterClaim = runtime.snapshot()
   await saveRuntimeCapsule(host, {
-    path: defaultRuntimeCapsulePath,
+    path: runtimeCapsulePath,
     snapshot: snapshotAfterClaim,
   })
   const pulse = deriveLoopPulse(snapshotAfterClaim)
@@ -805,7 +822,7 @@ async function startMissionFromCli(args: string[], host: CliHost): Promise<CliRe
     `lease: ${claimed.value.lease.id}`,
     `goal: ${goal}`,
     `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
-    `runtime: ${defaultRuntimeCapsulePath}`,
+    `runtime: ${runtimeCapsulePath}`,
     "",
   ].join("\n"))
 }
@@ -863,9 +880,10 @@ async function recordEvidenceFromCli(args: string[], host: CliHost): Promise<Cli
   const input = parseEvidenceArgs(args)
   if (!input.ok) return failure(`${input.error}\n`)
 
-  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  const runtimeCapsulePath = await resolveRuntimeCapsulePath(host)
+  const capsule = await loadRuntimeCapsule(host, runtimeCapsulePath)
   if (!capsule.ok) return failure(`${capsule.error.message}\n`)
-  if (!capsule.value) return failure(`Runtime capsule not found: ${defaultRuntimeCapsulePath}\n`)
+  if (!capsule.value) return failure(`Runtime capsule not found: ${runtimeCapsulePath}\n`)
 
   const idFactory = createCliIdFactory(capsule.value.runtime)
   const runtime = createRuntime({
@@ -890,7 +908,7 @@ async function recordEvidenceFromCli(args: string[], host: CliHost): Promise<Cli
 
   const snapshot = runtime.snapshot()
   await saveRuntimeCapsule(host, {
-    path: defaultRuntimeCapsulePath,
+    path: runtimeCapsulePath,
     snapshot,
   })
   const pulse = deriveLoopPulse(snapshot)
@@ -903,15 +921,16 @@ async function recordEvidenceFromCli(args: string[], host: CliHost): Promise<Cli
     `type: ${input.value.type}`,
     `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
     ...formatPulseDiagnostics(pulse),
-    `runtime: ${defaultRuntimeCapsulePath}`,
+    `runtime: ${runtimeCapsulePath}`,
     "",
   ].join("\n"))
 }
 
 async function tickMissionFromCli(host: CliHost): Promise<CliResult> {
-  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  const runtimeCapsulePath = await resolveRuntimeCapsulePath(host)
+  const capsule = await loadRuntimeCapsule(host, runtimeCapsulePath)
   if (!capsule.ok) return failure(`${capsule.error.message}\n`)
-  if (!capsule.value) return failure(`Runtime capsule not found: ${defaultRuntimeCapsulePath}\n`)
+  if (!capsule.value) return failure(`Runtime capsule not found: ${runtimeCapsulePath}\n`)
 
   const runtime = createRuntime({
     snapshot: capsule.value.runtime,
@@ -929,7 +948,7 @@ async function tickMissionFromCli(host: CliHost): Promise<CliResult> {
 
   const snapshot = runtime.snapshot()
   await saveRuntimeCapsule(host, {
-    path: defaultRuntimeCapsulePath,
+    path: runtimeCapsulePath,
     snapshot,
   })
   const pulse = deriveLoopPulse(snapshot)
@@ -942,7 +961,7 @@ async function tickMissionFromCli(host: CliHost): Promise<CliResult> {
     `mission status: ${advanced.value.missionStatus ?? "none"}`,
     `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
     ...formatPulseDiagnostics(pulse),
-    `runtime: ${defaultRuntimeCapsulePath}`,
+    `runtime: ${runtimeCapsulePath}`,
     "",
   ].join("\n"))
 }
@@ -952,9 +971,10 @@ async function runProofFromCli(host: CliHost): Promise<CliResult> {
     return failure("This host cannot run proof commands.\n")
   }
 
-  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  const runtimeCapsulePath = await resolveRuntimeCapsulePath(host)
+  const capsule = await loadRuntimeCapsule(host, runtimeCapsulePath)
   if (!capsule.ok) return failure(`${capsule.error.message}\n`)
-  if (!capsule.value) return failure(`Runtime capsule not found: ${defaultRuntimeCapsulePath}\n`)
+  if (!capsule.value) return failure(`Runtime capsule not found: ${runtimeCapsulePath}\n`)
 
   const idFactory = createCliIdFactory(capsule.value.runtime)
   const runtime = createRuntime({
@@ -986,7 +1006,7 @@ async function runProofFromCli(host: CliHost): Promise<CliResult> {
 
   const snapshot = runtime.snapshot()
   await saveRuntimeCapsule(host, {
-    path: defaultRuntimeCapsulePath,
+    path: runtimeCapsulePath,
     snapshot,
   })
   const pulse = deriveLoopPulse(snapshot)
@@ -1001,7 +1021,7 @@ async function runProofFromCli(host: CliHost): Promise<CliResult> {
       `status: ${status}`,
       `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
       ...formatPulseDiagnostics(pulse),
-      `runtime: ${defaultRuntimeCapsulePath}`,
+      `runtime: ${runtimeCapsulePath}`,
       "",
     ].join("\n"),
     stderr: "",
@@ -1010,9 +1030,10 @@ async function runProofFromCli(host: CliHost): Promise<CliResult> {
 
 async function runNextFromCli(args: string[], host: CliHost): Promise<CliResult> {
   const options = parseFlagOptions(args)
-  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  const runtimeCapsulePath = await resolveRuntimeCapsulePath(host)
+  const capsule = await loadRuntimeCapsule(host, runtimeCapsulePath)
   if (!capsule.ok) return failure(`${capsule.error.message}\n`)
-  if (!capsule.value) return failure(`Runtime capsule not found: ${defaultRuntimeCapsulePath}\n`)
+  if (!capsule.value) return failure(`Runtime capsule not found: ${runtimeCapsulePath}\n`)
 
   const idFactory = createCliIdFactory(capsule.value.runtime)
   const runtime = createRuntime({
@@ -1042,7 +1063,7 @@ async function runNextFromCli(args: string[], host: CliHost): Promise<CliResult>
 
   const snapshot = runtime.snapshot()
   await saveRuntimeCapsule(host, {
-    path: defaultRuntimeCapsulePath,
+    path: runtimeCapsulePath,
     snapshot,
   })
   const value = next.value
@@ -1060,7 +1081,7 @@ async function runNextFromCli(args: string[], host: CliHost): Promise<CliResult>
       `next status: ${value.nextStatus ?? "none"}`,
       `next: ${value.loopPulse.nextAction.label} [${value.loopPulse.health}/${value.loopPulse.nextAction.priority}]`,
       ...formatPulseDiagnostics(value.loopPulse),
-      `runtime: ${defaultRuntimeCapsulePath}`,
+      `runtime: ${runtimeCapsulePath}`,
       "",
     ].join("\n"),
     stderr: "",
@@ -1069,9 +1090,10 @@ async function runNextFromCli(args: string[], host: CliHost): Promise<CliResult>
 
 async function runOsFromCli(args: string[], host: CliHost): Promise<CliResult> {
   const options = parseFlagOptions(args)
-  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  const runtimeCapsulePath = await resolveRuntimeCapsulePath(host)
+  const capsule = await loadRuntimeCapsule(host, runtimeCapsulePath)
   if (!capsule.ok) return failure(`${capsule.error.message}\n`)
-  if (!capsule.value) return failure(`Runtime capsule not found: ${defaultRuntimeCapsulePath}\n`)
+  if (!capsule.value) return failure(`Runtime capsule not found: ${runtimeCapsulePath}\n`)
 
   const idFactory = createCliIdFactory(capsule.value.runtime)
   const runtime = createRuntime({
@@ -1102,7 +1124,7 @@ async function runOsFromCli(args: string[], host: CliHost): Promise<CliResult> {
 
   const snapshot = runtime.snapshot()
   await saveRuntimeCapsule(host, {
-    path: defaultRuntimeCapsulePath,
+    path: runtimeCapsulePath,
     snapshot,
   })
   const value = loop.value
@@ -1118,7 +1140,7 @@ async function runOsFromCli(args: string[], host: CliHost): Promise<CliResult> {
       ...formatProofRunLines(value.commands),
       `next: ${value.finalPulse.nextAction.label} [${value.finalPulse.health}/${value.finalPulse.nextAction.priority}]`,
       ...formatPulseDiagnostics(value.finalPulse),
-      `runtime: ${defaultRuntimeCapsulePath}`,
+      `runtime: ${runtimeCapsulePath}`,
       "",
     ].join("\n"),
     stderr: "",
@@ -1133,9 +1155,10 @@ async function resolveRiskFromCli(args: string[], host: CliHost): Promise<CliRes
     return failure("Usage: runesmith risk resolve --summary <summary> [--verdict accepted|cleared]\n")
   }
 
-  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  const runtimeCapsulePath = await resolveRuntimeCapsulePath(host)
+  const capsule = await loadRuntimeCapsule(host, runtimeCapsulePath)
   if (!capsule.ok) return failure(`${capsule.error.message}\n`)
-  if (!capsule.value) return failure(`Runtime capsule not found: ${defaultRuntimeCapsulePath}\n`)
+  if (!capsule.value) return failure(`Runtime capsule not found: ${runtimeCapsulePath}\n`)
 
   const idFactory = createCliIdFactory(capsule.value.runtime)
   const runtime = createRuntime({
@@ -1157,7 +1180,7 @@ async function resolveRiskFromCli(args: string[], host: CliHost): Promise<CliRes
 
   const snapshot = runtime.snapshot()
   await saveRuntimeCapsule(host, {
-    path: defaultRuntimeCapsulePath,
+    path: runtimeCapsulePath,
     snapshot,
   })
   const pulse = deriveLoopPulse(snapshot)
@@ -1171,7 +1194,7 @@ async function resolveRiskFromCli(args: string[], host: CliHost): Promise<CliRes
     `status: ${resolved.value.nextStatus}`,
     `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
     ...formatPulseDiagnostics(pulse),
-    `runtime: ${defaultRuntimeCapsulePath}`,
+    `runtime: ${runtimeCapsulePath}`,
     "",
   ].join("\n"))
 }

@@ -237,6 +237,39 @@ describe("runesmith cli", () => {
     })
   })
 
+  test("doctor checks the configured runtime capsule path", async () => {
+    const host = createMemoryHost(
+      {
+        ".runesmith/config.json": JSON.stringify({
+          version: 1,
+          runtimeDir: ".runesmith/custom-runtime",
+          defaultStaleAfterMs: 120000,
+        }),
+        ".runesmith/custom-runtime/capsule.json": JSON.stringify({
+          version: 1,
+          updatedAt: "2026-05-27T00:00:00.000Z",
+          runtime: {
+            graphs: {},
+            ledgers: {},
+            leases: { leases: {} },
+            contracts: {},
+          },
+        }),
+        ".opencode/plugins/runesmith.ts": "import { createRunesmithPlugin } from '@runesmith/opencode-adapter'",
+      },
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+      },
+    )
+
+    const result = await runCli(["doctor", "--plugin-dir", ".opencode/plugins"], host)
+
+    expect(result.stdout).toContain("runtime capsule: valid (.runesmith/custom-runtime/capsule.json)")
+    expect(result.stdout).toContain("status: ready")
+  })
+
   test("heal repairs missing setup and an invalid runtime capsule through the package install path", async () => {
     const host = createMemoryHost(
       {
@@ -462,6 +495,30 @@ describe("runesmith cli", () => {
     expect(typeof capsule.updatedAt).toBe("string")
   })
 
+  test("up preserves an existing project runtimeDir", async () => {
+    const host = createMemoryHost(
+      {
+        ".runesmith/config.json": JSON.stringify({
+          version: 1,
+          runtimeDir: ".runesmith/custom-runtime",
+          defaultStaleAfterMs: 120000,
+        }),
+      },
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+      },
+    )
+
+    const result = await runCli(["up", "--plugin-dir", ".opencode/plugins"], host)
+
+    expect(result.stdout).toContain("runtime: .runesmith/custom-runtime/capsule.json")
+    expect(JSON.parse(host.readText(".runesmith/config.json")).runtimeDir).toBe(".runesmith/custom-runtime")
+    expect(host.exists(".runesmith/custom-runtime/capsule.json")).toBe(true)
+    expect(host.exists(".runesmith/runtime/capsule.json")).toBe(false)
+  })
+
   test("up reports a staged install when the OpenCode CLI is missing", async () => {
     const host = createMemoryHost()
 
@@ -632,6 +689,34 @@ describe("runesmith cli", () => {
       ].join("\n"),
       stderr: "",
     })
+  })
+
+  test("status reads the runtime capsule from project config runtimeDir", async () => {
+    const host = createMemoryHost(
+      {
+        ".runesmith/config.json": JSON.stringify({
+          version: 1,
+          runtimeDir: ".runesmith/custom-runtime",
+          defaultStaleAfterMs: 120000,
+        }),
+        ".runesmith/custom-runtime/capsule.json": JSON.stringify({
+          version: 1,
+          updatedAt: "2026-05-27T00:00:00.000Z",
+          runtime: snapshot,
+        }),
+      },
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+      },
+    )
+
+    const result = await runCli(["status"], host)
+
+    expect(result.stdout).toContain("state: ready")
+    expect(result.stdout).toContain("runtime: .runesmith/custom-runtime/capsule.json")
+    expect(result.stdout).toContain("mission: mission_alpha running Build Runesmith")
   })
 
   test("status stays useful before bootstrap", async () => {

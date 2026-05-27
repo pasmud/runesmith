@@ -57,6 +57,12 @@ export const defaultProjectConfig: ProjectConfig = {
   defaultStaleAfterMs: 120_000,
 }
 
+export function runtimeCapsulePathFromConfig(config: ProjectConfig = defaultProjectConfig): string {
+  const runtimeDir = normalizeRuntimeDir(config.runtimeDir) || normalizeRuntimeDir(defaultProjectConfig.runtimeDir)
+
+  return `${runtimeDir}/capsule.json`
+}
+
 export async function loadProjectConfig(
   host: RuntimeStoreHost,
   path = defaultProjectConfigPath,
@@ -210,6 +216,10 @@ function isProjectConfig(value: unknown): value is ProjectConfig {
   return config.version === 1
     && typeof config.runtimeDir === "string"
     && typeof config.defaultStaleAfterMs === "number"
+}
+
+function normalizeRuntimeDir(path: string): string {
+  return path.trim().replaceAll("\\", "/").replace(/\/+$/, "")
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

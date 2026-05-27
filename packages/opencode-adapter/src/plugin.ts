@@ -14,7 +14,6 @@ import {
   createRuntime,
   createRunicCovenant,
   defaultProjectConfigPath,
-  defaultRuntimeCapsulePath,
   deriveCovenantControlBrief,
   deriveLoopPulse,
   deriveMissionMap,
@@ -32,6 +31,7 @@ import {
   runRuneweave,
   runRunebookNext,
   runProofPlan,
+  runtimeCapsulePathFromConfig,
   saveRuntimeCapsule,
   selectRunicLoopTask,
   type AgentContract,
@@ -652,10 +652,13 @@ export async function createRunesmithOpenCodePlugin(
   options: OpenCodePluginFactoryOptions = {},
 ): Promise<RunesmithPlugin> {
   const host = options.host ?? createNodeRuntimeStoreHost()
-  const capsulePath = options.capsulePath ?? defaultRuntimeCapsulePath
-  await repairProjectConfig(host, {
+  const projectConfig = await repairProjectConfig(host, {
     path: defaultProjectConfigPath,
   })
+  const capsulePath = options.capsulePath
+    ?? (projectConfig.ok
+      ? runtimeCapsulePathFromConfig(projectConfig.value.config)
+      : runtimeCapsulePathFromConfig())
   const fallbackSnapshot = options.snapshot ?? {
     graphs: {},
     ledgers: {},

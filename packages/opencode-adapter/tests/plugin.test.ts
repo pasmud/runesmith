@@ -270,6 +270,38 @@ describe("opencode adapter", () => {
     expect(saved.value.runtime.graphs.mission_alpha.tasks.task_alpha.assignedAgentId).toBe("agent_atlas")
   })
 
+  test("direct OpenCode plugin persists to the project runtimeDir capsule", async () => {
+    const customCapsulePath = ".runesmith/custom-runtime/capsule.json"
+    const host = createMemoryRuntimeHost({
+      [defaultProjectConfigPath]: `${JSON.stringify({
+        version: 1,
+        runtimeDir: ".runesmith/custom-runtime",
+        defaultStaleAfterMs: 120_000,
+      }, null, 2)}\n`,
+    })
+    const plugin = await createRunesmithOpenCodePlugin({
+      host,
+      idFactory: ids,
+      now: fixedNow,
+    })
+
+    const initial = await loadRuntimeCapsule(host, customCapsulePath)
+    expect(initial.ok).toBe(true)
+    if (!initial.ok || !initial.value) throw new Error("expected package plugin to create custom runtime capsule")
+    expect(initial.value.runtime.graphs).toEqual({})
+    expect(host.files.has(defaultRuntimeCapsulePath)).toBe(false)
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Persist to configured runtime dir",
+    })
+
+    const saved = await loadRuntimeCapsule(host, customCapsulePath)
+    expect(saved.ok).toBe(true)
+    if (!saved.ok || !saved.value) throw new Error("expected package plugin to persist custom runtime capsule")
+    expect(saved.value.runtime.graphs.mission_alpha.mission.goal).toBe("Persist to configured runtime dir")
+    expect(host.files.has(defaultRuntimeCapsulePath)).toBe(false)
+  })
+
   test("direct OpenCode plugin backs up and repairs an invalid runtime capsule on load", async () => {
     const host = createMemoryRuntimeHost({
       [defaultRuntimeCapsulePath]: "{not json",

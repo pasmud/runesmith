@@ -2,9 +2,12 @@ import {
   createCovenantDecisionDraft,
   createCovenantTaskPlan,
   createRuntime,
+  defaultProjectConfigPath,
   defaultRuntimeCapsulePath,
   deriveLoopPulse,
+  loadProjectConfig,
   loadRuntimeCapsule,
+  runtimeCapsulePathFromConfig,
   type AgentContract,
   type IdFactory,
   type MissionTask,
@@ -81,12 +84,13 @@ async function checkProjectConfig(host: CliHost): Promise<DoctorCheck> {
 }
 
 async function checkRuntimeCapsule(host: CliHost): Promise<DoctorCheck> {
-  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  const path = await resolveRuntimeCapsulePath(host)
+  const capsule = await loadRuntimeCapsule(host, path)
 
   if (!capsule.ok) {
     return {
       label: "runtime capsule",
-      path: defaultRuntimeCapsulePath,
+      path,
       status: "invalid",
       detail: capsule.error.message,
       ok: false,
@@ -96,7 +100,7 @@ async function checkRuntimeCapsule(host: CliHost): Promise<DoctorCheck> {
   if (!capsule.value) {
     return {
       label: "runtime capsule",
-      path: defaultRuntimeCapsulePath,
+      path,
       status: "missing",
       ok: false,
     }
@@ -104,10 +108,18 @@ async function checkRuntimeCapsule(host: CliHost): Promise<DoctorCheck> {
 
   return {
     label: "runtime capsule",
-    path: defaultRuntimeCapsulePath,
+    path,
     status: "valid",
     ok: true,
   }
+}
+
+async function resolveRuntimeCapsulePath(host: CliHost): Promise<string> {
+  const config = await loadProjectConfig(host, defaultProjectConfigPath)
+
+  return config.ok && config.value
+    ? runtimeCapsulePathFromConfig(config.value)
+    : defaultRuntimeCapsulePath
 }
 
 async function checkOpenCodePlugin(host: CliHost, options: ParsedOptions): Promise<DoctorCheck> {

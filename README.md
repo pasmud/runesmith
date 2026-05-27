@@ -88,7 +88,7 @@ Proof Runner executes that recipe when OpenCode, the CLI, or the dashboard asks 
 
 Runesmith Ignite sits above setup and mission commands for first use. `runesmith ignite "Ship the feature"` defaults to the direct package-plugin install path, writes or refreshes OpenCode config, creates the runtime capsule, starts or resumes the matching Covenant mission, claims the current task, and runs Runeweave once. The command is intentionally higher level than `up`, `mission start`, and `run`: new users get one useful entrypoint, while operators can still drop to lower-level controls when debugging.
 
-Runesmith Heal is the self-repair path. It preserves valid local state, backs up a corrupt `.runesmith/config.json` or `.runesmith/runtime/capsule.json` to `*.runesmith.bak`, writes fresh files, restores OpenCode plugin wiring, and reports whether doctor is ready or staged because the host OpenCode CLI is still missing.
+Runesmith Heal is the self-repair path. It preserves valid local state, backs up a corrupt `.runesmith/config.json` or configured runtime capsule to `*.runesmith.bak`, writes fresh files, restores OpenCode plugin wiring, and reports whether doctor is ready or staged because the host OpenCode CLI is still missing.
 
 The direct OpenCode package plugin uses the same config and runtime-capsule repair primitives on startup. If OpenCode loads Runesmith against missing or invalid local OS files, the plugin repairs them before exposing tools, so the normal chat path can still reach Autopilot instead of failing before the user sees a useful action.
 
@@ -131,7 +131,7 @@ The dashboard is intentionally not a static report. It models the working loop a
 
 When the local dev dashboard is running, it reads the same runtime capsule through `/api/runtime-capsule` and falls back to seeded data only when no capsule exists yet.
 
-The command forge and guarded autopilot controls call `/api/runtime-control`, mutate the same `.runesmith/runtime/capsule.json` used by OpenCode, and reload the dashboard from the saved capsule. If the control API is unavailable, the UI falls back to the local model so demos still work.
+The command forge and guarded autopilot controls call `/api/runtime-control`, mutate the same configured runtime capsule used by OpenCode, and reload the dashboard from the saved capsule. If the control API is unavailable, the UI falls back to the local model so demos still work.
 
 ## Direct OpenCode Install
 
@@ -143,7 +143,7 @@ For OpenCode users, the direct path is a single plugin entry:
 }
 ```
 
-Add it to your global or project `opencode.json`, restart OpenCode, and let OpenCode install the package at startup. The repo root exports the Runesmith OpenCode plugin, runs the package build during git-package preparation, creates `.runesmith/config.json` and `.runesmith/runtime/capsule.json` on first load when they are missing, backs up and repairs invalid local state when needed, resumes that capsule on later OpenCode starts, and loads the same Runic Covenant, Control Brief, Loop Pulse, Runebook, `runesmith_os_run`, `runesmith_next`, tool hooks, runtime capsule, and evidence-gated autopilot described above.
+Add it to your global or project `opencode.json`, restart OpenCode, and let OpenCode install the package at startup. The repo root exports the Runesmith OpenCode plugin, runs the package build during git-package preparation, creates `.runesmith/config.json` and the configured runtime capsule on first load when they are missing, backs up and repairs invalid local state when needed, resumes that capsule on later OpenCode starts, and loads the same Runic Covenant, Control Brief, Loop Pulse, Runebook, `runesmith_os_run`, `runesmith_next`, tool hooks, runtime capsule, and evidence-gated autopilot described above.
 
 The same root package also ships the `runesmith` CLI binary from `packages/cli/dist/index.js`, so package installs expose one command for bootstrap, status, proof, run, launch, doctor, and risk resolution. The source commands below are the local development equivalents of that packaged binary.
 
@@ -164,7 +164,7 @@ Bootstrap the local Runesmith OS in one command:
 bun packages/cli/src/index.ts up
 ```
 
-That creates `.runesmith/config.json`, installs the local OpenCode plugin shim, and creates `.runesmith/runtime/capsule.json` if it does not exist. It also checks whether the `opencode` command is available. When OpenCode is not on PATH, `up` reports the OS as staged instead of ready and tells you to install OpenCode before launch.
+That creates `.runesmith/config.json`, installs the local OpenCode plugin shim, and creates the runtime capsule declared by `runtimeDir` if it does not exist. The default path is `.runesmith/runtime/capsule.json`. It also checks whether the `opencode` command is available. When OpenCode is not on PATH, `up` reports the OS as staged instead of ready and tells you to install OpenCode before launch.
 
 For the direct package-plugin path that mirrors the one-line `opencode.json` install, use:
 
@@ -263,13 +263,13 @@ bun packages/cli/src/index.ts mission list
 bun packages/cli/src/index.ts mission inspect <mission-id>
 ```
 
-`mission start` creates the same default Forge -> Review -> Seal Covenant graph used by OpenCode and the dashboard, registers the Atlas contract, claims the first task with a lease, and saves `.runesmith/runtime/capsule.json`.
+`mission start` creates the same default Forge -> Review -> Seal Covenant graph used by OpenCode and the dashboard, registers the Atlas contract, claims the first task with a lease, and saves the configured runtime capsule.
 
 `mission evidence` records proof on a task, and `mission tick` advances the persisted capsule through the same evidence gate used by OpenCode. When diagnostics are attached, both commands print the active repair summary so the next action is visible at the terminal. When Forge proof is satisfied, the tick can complete Forge, synthesize safe Review and Seal decisions, and finish the mission.
 
 `mission inspect` prints the mission status, Loop Pulse next action, Proof Plan commands, Mission Map tasks, Scope Sentinel changes, Review Lens findings, Seal Audit checks, active Runebook card, required and missing evidence, active diagnostics, active runes, task list, evidence ledger entries, and active leases for that mission.
 
-Runesmith stores the default runtime capsule at `.runesmith/runtime/capsule.json`. The CLI still accepts `--snapshot <path>` for explicit exports, but normal usage does not require it.
+Runesmith stores the default runtime capsule at `.runesmith/runtime/capsule.json`. Change `.runesmith/config.json` `runtimeDir` to move the capsule; OpenCode startup, `runesmith status`, `doctor`, mission commands, and the dashboard dev API all follow that config. The CLI still accepts `--snapshot <path>` for explicit exports, but normal usage does not require it.
 
 ## OpenCode
 

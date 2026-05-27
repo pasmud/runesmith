@@ -2,11 +2,14 @@ import { describe, expect, test } from "bun:test"
 
 import { createRuntime } from "../src/runtime"
 import {
+  defaultProjectConfig,
   defaultProjectConfigPath,
+  defaultRuntimeCapsulePath,
   loadProjectConfig,
   loadRuntimeCapsule,
   repairProjectConfig,
   repairRuntimeCapsule,
+  runtimeCapsulePathFromConfig,
   saveRuntimeCapsule,
   type RuntimeStoreHost,
 } from "../src/runtime-store"
@@ -35,6 +38,22 @@ function createMemoryHost(initialFiles: Record<string, string> = {}): RuntimeSto
 }
 
 describe("runtime capsule store", () => {
+  test("derives the runtime capsule path from project config", () => {
+    expect(runtimeCapsulePathFromConfig(defaultProjectConfig)).toBe(defaultRuntimeCapsulePath)
+    expect(runtimeCapsulePathFromConfig({
+      ...defaultProjectConfig,
+      runtimeDir: ".runesmith/custom-runtime",
+    })).toBe(".runesmith/custom-runtime/capsule.json")
+    expect(runtimeCapsulePathFromConfig({
+      ...defaultProjectConfig,
+      runtimeDir: ".runesmith/custom-runtime/",
+    })).toBe(".runesmith/custom-runtime/capsule.json")
+    expect(runtimeCapsulePathFromConfig({
+      ...defaultProjectConfig,
+      runtimeDir: ".runesmith\\custom-runtime\\",
+    })).toBe(".runesmith/custom-runtime/capsule.json")
+  })
+
   test("saves and loads versioned runtime snapshots", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.startMission({ goal: "Durable mission" })
