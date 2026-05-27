@@ -4,16 +4,22 @@ import { dirname } from "node:path"
 import { pathToFileURL } from "node:url"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import {
+  createCovenantDecisionDraft,
   createCovenantTaskPlan,
   createRuntime,
   defaultRuntimeCapsulePath,
   deriveLoopPulse,
+  getRequiredEvidenceForTask,
   loadRuntimeCapsule,
+  missingRequiredEvidence,
   saveRuntimeCapsule,
+  taskDependenciesComplete,
   type AgentContract,
   type Evidence,
+  type EvidenceType,
   type IdFactory,
   type Lease,
+  type MissionTask,
   type RuntimeSnapshot,
 } from "@runesmith/core"
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
@@ -114,6 +120,14 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     return startMissionFromCli([maybeId, ...rest].filter((value): value is string => Boolean(value)), host)
   }
 
+  if (command === "mission" && subcommand === "evidence") {
+    return recordEvidenceFromCli([maybeId, ...rest].filter((value): value is string => Boolean(value)), host)
+  }
+
+  if (command === "mission" && subcommand === "tick") {
+    return tickMissionFromCli(host)
+  }
+
   if (command === "mission" && subcommand === "inspect" && maybeId) {
     const snapshot = await readSnapshot(host, rest)
     if (!snapshot.ok) return snapshot.result
@@ -149,7 +163,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     ].join("\n"))
   }
 
-  return failure("Usage: runesmith <up|install|init|doctor|mission start|mission list|mission inspect>\n")
+  return failure("Usage: runesmith <up|install|init|doctor|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
 }
 
 function success(stdout: string): CliResult {
@@ -340,7 +354,7 @@ function parseMissionStartGoal(args: string[]): string {
 
 function createCliIdFactory(snapshot: RuntimeSnapshot): IdFactory {
   const counts = new Map<string, number>()
-  for (const prefix of ["mission", "task", "lease", "event"] as const) {
+  for (const prefix of ["mission", "task", "lease", "event", "evidence"] as const) {
     counts.set(prefix, maxExistingCliId(snapshot, prefix))
   }
 
@@ -359,6 +373,7 @@ function maxExistingCliId(snapshot: RuntimeSnapshot, prefix: Parameters<IdFactor
       ...Object.keys(graph.tasks),
       ...graph.events.map((event) => event.id),
     ]),
+    ...Object.values(snapshot.ledgers).flatMap((ledger) => Object.keys(ledger.evidence)),
     ...Object.keys(snapshot.leases.leases),
   ]
   const marker = `${prefix}_cli_`
@@ -378,6 +393,335 @@ function fingerprint(value: string): string {
   }
 
   return (hash >>> 0).toString(36)
+}
+
+async function recordEvidenceFromCli(args: string[], host: CliHost): Promise<CliResult> {
+  const input = parseEvidenceArgs(args)
+  if (!input.ok) return failure(`${input.error}\n`)
+
+  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  if (!capsule.ok) return failure(`${capsule.error.message}\n`)
+  if (!capsule.value) return failure(`Runtime capsule not found: ${defaultRuntimeCapsulePath}\n`)
+
+  const idFactory = createCliIdFactory(capsule.value.runtime)
+  const runtime = createRuntime({
+    snapshot: capsule.value.runtime,
+    idFactory,
+  })
+  runtime.registerContract(cliAtlasContract)
+
+  const evidenceId = input.value.evidenceId ?? idFactory("evidence")
+  const recorded = runtime.addTaskEvidence({
+    missionId: input.value.missionId,
+    evidence: {
+      id: evidenceId,
+      taskId: input.value.taskId,
+      type: input.value.type,
+      summary: input.value.summary,
+      payload: input.value.payload,
+      createdAt: new Date().toISOString(),
+    },
+  })
+  if (!recorded.ok) return failure(`${recorded.error.message}\n`)
+
+  const snapshot = runtime.snapshot()
+  await saveRuntimeCapsule(host, {
+    path: defaultRuntimeCapsulePath,
+    snapshot,
+  })
+  const pulse = deriveLoopPulse(snapshot)
+
+  return success([
+    "Evidence recorded",
+    `mission: ${input.value.missionId}`,
+    `task: ${input.value.taskId}`,
+    `evidence: ${evidenceId}`,
+    `type: ${input.value.type}`,
+    `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
+    `runtime: ${defaultRuntimeCapsulePath}`,
+    "",
+  ].join("\n"))
+}
+
+async function tickMissionFromCli(host: CliHost): Promise<CliResult> {
+  const capsule = await loadRuntimeCapsule(host, defaultRuntimeCapsulePath)
+  if (!capsule.ok) return failure(`${capsule.error.message}\n`)
+  if (!capsule.value) return failure(`Runtime capsule not found: ${defaultRuntimeCapsulePath}\n`)
+
+  const runtime = createRuntime({
+    snapshot: capsule.value.runtime,
+    idFactory: createCliIdFactory(capsule.value.runtime),
+  })
+  runtime.registerContract(cliAtlasContract)
+
+  const advanced = advanceCliLoop(runtime)
+  if (!advanced.ok) return failure(`${advanced.error}\n`)
+
+  const snapshot = runtime.snapshot()
+  await saveRuntimeCapsule(host, {
+    path: defaultRuntimeCapsulePath,
+    snapshot,
+  })
+  const pulse = deriveLoopPulse(snapshot)
+
+  return success([
+    "Mission advanced",
+    `status: ${advanced.value.status}`,
+    `mission: ${advanced.value.missionId ?? "none"}`,
+    `task: ${advanced.value.taskId ?? "none"}`,
+    `mission status: ${advanced.value.missionStatus ?? "none"}`,
+    `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
+    `runtime: ${defaultRuntimeCapsulePath}`,
+    "",
+  ].join("\n"))
+}
+
+type EvidenceArgsResult =
+  | {
+      ok: true
+      value: {
+        missionId: string
+        taskId: string
+        type: EvidenceType
+        summary: string
+        payload: Record<string, unknown>
+        evidenceId?: string
+      }
+    }
+  | {
+      ok: false
+      error: string
+    }
+
+function parseEvidenceArgs(args: string[]): EvidenceArgsResult {
+  const [missionId, taskId, ...flags] = args
+  if (!missionId || !taskId) {
+    return { ok: false, error: "Usage: runesmith mission evidence <mission-id> <task-id> --type <type> --summary <summary> [--payload-json <json>]" }
+  }
+
+  const options = parseFlagOptions(flags)
+  const type = options.type
+  if (!isEvidenceType(type)) {
+    return { ok: false, error: "Evidence type must be one of: file-change, command-output, test-result, diagnostic, decision, risk" }
+  }
+
+  const summary = options.summary?.trim()
+  if (!summary) {
+    return { ok: false, error: "Evidence summary is required" }
+  }
+
+  const payload = options["payload-json"]
+    ? parsePayloadJson(options["payload-json"])
+    : { ok: true as const, value: { mode: "runesmith-cli" } }
+  if (!payload.ok) return { ok: false, error: payload.error }
+
+  return {
+    ok: true,
+    value: {
+      missionId,
+      taskId,
+      type,
+      summary,
+      payload: payload.value,
+      evidenceId: options.id,
+    },
+  }
+}
+
+function parseFlagOptions(flags: string[]): Record<string, string | undefined> {
+  const options: Record<string, string | undefined> = {}
+  for (let index = 0; index < flags.length; index += 1) {
+    const flag = flags[index]
+    const value = flags[index + 1]
+    if (flag?.startsWith("--") && value) {
+      options[flag.slice(2)] = value
+      index += 1
+    }
+  }
+
+  return options
+}
+
+function parsePayloadJson(raw: string): { ok: true; value: Record<string, unknown> } | { ok: false; error: string } {
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { ok: false, error: "Evidence payload JSON must be an object" }
+    }
+
+    return { ok: true, value: parsed as Record<string, unknown> }
+  } catch {
+    return { ok: false, error: "Evidence payload JSON is invalid" }
+  }
+}
+
+function isEvidenceType(value: string | undefined): value is EvidenceType {
+  if (!value) return false
+
+  return ["file-change", "command-output", "test-result", "diagnostic", "decision", "risk"].includes(value)
+}
+
+type CliAdvanceResult =
+  | {
+      ok: true
+      value: {
+        status: "idle" | "waiting-for-evidence" | "claimed" | "completed"
+        missionId?: string
+        taskId?: string
+        missionStatus?: string
+      }
+    }
+  | {
+      ok: false
+      error: string
+    }
+
+function advanceCliLoop(runtime: ReturnType<typeof createRuntime>, depth = 0): CliAdvanceResult {
+  if (depth > 12) return { ok: false, error: "Autopilot tick exceeded the maximum advance depth" }
+
+  const snapshot = runtime.snapshot()
+  const target = selectActiveTask(snapshot)
+  if (!target) return { ok: true, value: { status: "idle" } }
+
+  const graph = snapshot.graphs[target.missionId]
+  const task = graph?.tasks[target.taskId]
+  if (!graph || !task) return { ok: true, value: { status: "idle" } }
+
+  const contractId = task.assignedAgentId ?? cliAtlasContract.id
+  const contract = snapshot.contracts[contractId] ?? cliAtlasContract
+
+  if (task.status === "queued") {
+    const claimed = claimCliTask(runtime, {
+      missionId: target.missionId,
+      task,
+      contractId,
+    })
+    if (!claimed.ok) return { ok: false, error: claimed.error.message }
+
+    return { ok: true, value: { status: "claimed", missionId: target.missionId, taskId: target.taskId } }
+  }
+
+  const missingEvidence = getMissingEvidence(snapshot, {
+    missionId: target.missionId,
+    taskId: target.taskId,
+    requiredEvidence: getRequiredEvidenceForTask(task, contract),
+  })
+  const decisionDraft = createCovenantDecisionDraft(task)
+  if (decisionDraft && missingEvidence.length === 1 && missingEvidence[0] === "decision") {
+    const recorded = runtime.addTaskEvidence({
+      missionId: target.missionId,
+      evidence: {
+        id: `evidence_auto_decision_${fingerprint(`${target.missionId}:${target.taskId}:${decisionDraft.stage}`)}`,
+        taskId: target.taskId,
+        type: "decision",
+        summary: decisionDraft.summary,
+        payload: decisionDraft.payload,
+        createdAt: new Date().toISOString(),
+      },
+    })
+    if (!recorded.ok) return { ok: false, error: recorded.error.message }
+
+    return advanceCliLoop(runtime, depth + 1)
+  }
+
+  if (missingEvidence.length > 0) {
+    return {
+      ok: true,
+      value: {
+        status: "waiting-for-evidence",
+        missionId: target.missionId,
+        taskId: target.taskId,
+        missionStatus: graph.mission.status,
+      },
+    }
+  }
+
+  const completed = runtime.completeTask({
+    missionId: target.missionId,
+    taskId: target.taskId,
+    contractId,
+  })
+  if (!completed.ok) return { ok: false, error: completed.error.message }
+
+  const nextTarget = selectActiveTask(runtime.snapshot(), target.missionId)
+  const nextTask = nextTarget ? runtime.snapshot().graphs[nextTarget.missionId]?.tasks[nextTarget.taskId] : undefined
+  const nextClaimed = nextTask?.status === "queued"
+    ? claimCliTask(runtime, {
+        missionId: target.missionId,
+        task: nextTask,
+        contractId: cliAtlasContract.id,
+      })
+    : undefined
+  if (nextClaimed && !nextClaimed.ok) return { ok: false, error: nextClaimed.error.message }
+
+  if (nextClaimed?.ok) return advanceCliLoop(runtime, depth + 1)
+
+  const finalGraph = runtime.snapshot().graphs[target.missionId]
+  return {
+    ok: true,
+    value: {
+      status: "completed",
+      missionId: target.missionId,
+      taskId: target.taskId,
+      missionStatus: finalGraph?.mission.status ?? completed.value.graph.mission.status,
+    },
+  }
+}
+
+function claimCliTask(
+  runtime: ReturnType<typeof createRuntime>,
+  input: { missionId: string; task: MissionTask; contractId: string },
+) {
+  return runtime.claimTask({
+    missionId: input.missionId,
+    taskId: input.task.id,
+    contractId: input.contractId,
+    holder: "runesmith-cli",
+    idempotencyKey: `cli:${input.missionId}:${input.task.id}`,
+    ttlMs: 30_000,
+  })
+}
+
+function selectActiveTask(snapshot: RuntimeSnapshot, missionId?: string): { missionId: string; taskId: string } | undefined {
+  const rank: Record<string, number> = {
+    running: 0,
+    verifying: 1,
+    queued: 2,
+    blocked: 3,
+    stale: 4,
+  }
+
+  return Object.values(snapshot.graphs)
+    .filter((graph) => !missionId || graph.mission.id === missionId)
+    .filter((graph) => !["complete", "failed", "cancelled"].includes(graph.mission.status))
+    .flatMap((graph) => {
+      return Object.values(graph.tasks)
+        .filter((task) => {
+          return !["complete", "failed", "cancelled"].includes(task.status)
+            && (task.status !== "queued" || taskDependenciesComplete(graph, task))
+        })
+        .map((task) => ({
+          missionId: graph.mission.id,
+          taskId: task.id,
+          status: task.status,
+          updatedAt: task.updatedAt,
+        }))
+    })
+    .sort((left, right) => {
+      const rankDelta = (rank[left.status] ?? 99) - (rank[right.status] ?? 99)
+      if (rankDelta !== 0) return rankDelta
+      return right.updatedAt.localeCompare(left.updatedAt)
+    })[0]
+}
+
+function getMissingEvidence(
+  snapshot: RuntimeSnapshot,
+  input: { missionId: string; taskId: string; requiredEvidence: EvidenceType[] },
+): EvidenceType[] {
+  const ledger = snapshot.ledgers[input.missionId]
+  if (!ledger) return input.requiredEvidence
+
+  return missingRequiredEvidence(ledger, input)
 }
 
 function formatMissionEvidence(snapshot: RuntimeSnapshot, missionId: string): string[] {

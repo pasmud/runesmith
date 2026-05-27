@@ -392,6 +392,93 @@ describe("runesmith cli", () => {
     })
   })
 
+  test("mission evidence and tick complete the persisted covenant loop", async () => {
+    const host = createMemoryHost()
+
+    await runCli(["mission", "start", "Ship CLI autopilot loop"], host)
+    const fileEvidence = await runCli([
+      "mission",
+      "evidence",
+      "mission_cli_1",
+      "task_cli_1",
+      "--type",
+      "file-change",
+      "--summary",
+      "Updated CLI loop",
+      "--payload-json",
+      "{\"files\":[\"packages/cli/src/index.ts\"]}",
+    ], host)
+    const testEvidence = await runCli([
+      "mission",
+      "evidence",
+      "mission_cli_1",
+      "task_cli_1",
+      "--type",
+      "test-result",
+      "--summary",
+      "CLI tests passed",
+      "--payload-json",
+      "{\"command\":\"bun test packages/cli/tests\",\"exitCode\":0}",
+    ], host)
+    const tick = await runCli(["mission", "tick"], host)
+
+    expect(fileEvidence).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Evidence recorded",
+        "mission: mission_cli_1",
+        "task: task_cli_1",
+        "evidence: evidence_cli_1",
+        "type: file-change",
+        "next: Capture proof [attention/high]",
+        "runtime: .runesmith/runtime/capsule.json",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+    expect(testEvidence).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Evidence recorded",
+        "mission: mission_cli_1",
+        "task: task_cli_1",
+        "evidence: evidence_cli_2",
+        "type: test-result",
+        "next: Review change [clear/medium]",
+        "runtime: .runesmith/runtime/capsule.json",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+    expect(tick).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Mission advanced",
+        "status: completed",
+        "mission: mission_cli_1",
+        "task: task_cli_1_seal",
+        "mission status: complete",
+        "next: Wait for goal [clear/low]",
+        "runtime: .runesmith/runtime/capsule.json",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+
+    const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
+    const graph = capsule.runtime.graphs.mission_cli_1
+    expect(graph.mission.status).toBe("complete")
+    expect(graph.tasks.task_cli_1.status).toBe("complete")
+    expect(graph.tasks.task_cli_1_review.status).toBe("complete")
+    expect(graph.tasks.task_cli_1_seal.status).toBe("complete")
+    expect(Object.values(capsule.runtime.ledgers.mission_cli_1.evidence).map((entry: any) => entry.type)).toEqual([
+      "file-change",
+      "test-result",
+      "decision",
+      "decision",
+    ])
+  })
+
   test("mission inspect prints graph details from a snapshot", async () => {
     const host = createMemoryHost({
       "snapshot.json": JSON.stringify(snapshot),

@@ -111,11 +111,16 @@ Inspect persisted missions:
 
 ```bash
 bun packages/cli/src/index.ts mission start "Build direct CLI orchestration"
+bun packages/cli/src/index.ts mission evidence mission_cli_1 task_cli_1 --type file-change --summary "Changed files"
+bun packages/cli/src/index.ts mission evidence mission_cli_1 task_cli_1 --type test-result --summary "Tests passed" --payload-json "{\"exitCode\":0}"
+bun packages/cli/src/index.ts mission tick
 bun packages/cli/src/index.ts mission list
 bun packages/cli/src/index.ts mission inspect <mission-id>
 ```
 
 `mission start` creates the same default Forge -> Review -> Seal Covenant graph used by OpenCode and the dashboard, registers the Atlas contract, claims the first task with a lease, and saves `.runesmith/runtime/capsule.json`.
+
+`mission evidence` records proof on a task, and `mission tick` advances the persisted capsule through the same evidence gate used by OpenCode. When Forge proof is satisfied, the tick can complete Forge, synthesize safe Review and Seal decisions, and finish the mission.
 
 `mission inspect` prints the mission status, Loop Pulse next action, required and missing evidence, active runes, task list, evidence ledger entries, and active leases for that mission.
 
