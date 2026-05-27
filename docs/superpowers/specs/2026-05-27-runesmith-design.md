@@ -78,9 +78,9 @@ Owns local user commands.
 
 Responsibilities:
 
-- `runesmith up`: one-command bootstrap that writes project config, installs OpenCode, and creates the runtime capsule if needed.
+- `runesmith up`: one-command bootstrap that writes project config, installs the Runesmith OpenCode plugin wiring, creates the runtime capsule if needed, and reports whether the host `opencode` CLI is available.
 - `runesmith init`: create project config.
-- `runesmith doctor`: validate config, runtime capsule, OpenCode plugin wiring, and an internal Forge -> Review -> Seal loop smoke test; exit nonzero with an actionable repair hint when setup is incomplete.
+- `runesmith doctor`: validate config, runtime capsule, host OpenCode CLI availability, OpenCode plugin wiring, and an internal Forge -> Review -> Seal loop smoke test; exit nonzero with an actionable repair hint when setup is incomplete.
 - Published packages expose built `dist` entrypoints, keep Bun source imports for local agent execution, and use publishable internal dependency ranges instead of workspace-only dependency specifiers.
 - `runesmith mission start <goal>`: bootstrap local config if needed, create the default Forge -> Review -> Seal Covenant mission, register Atlas, claim the first task, and persist the runtime capsule for OpenCode/dashboard resumption.
 - `runesmith mission evidence <mission-id> <task-id>` and `runesmith mission tick`: record task proof and advance the persisted capsule through the same evidence gate used by OpenCode, including safe autonomous Review and Seal decisions.

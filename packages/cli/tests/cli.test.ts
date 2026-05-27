@@ -96,9 +96,16 @@ describe("runesmith cli", () => {
   })
 
   test("doctor fails with actionable readiness checks when install files are missing", async () => {
-    const host = createMemoryHost({
-      ".runesmith/config.json": "{}",
-    })
+    const host = createMemoryHost(
+      {
+        ".runesmith/config.json": "{}",
+      },
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+      },
+    )
 
     const result = await runCli(["doctor", "--plugin-dir", ".opencode/plugins"], host)
 
@@ -108,6 +115,7 @@ describe("runesmith cli", () => {
         "Runesmith doctor",
         "config: found (.runesmith/config.json)",
         "runtime capsule: missing (.runesmith/runtime/capsule.json)",
+        "opencode cli: found (opencode) - E:/tools/opencode.exe",
         "opencode plugin: missing (.opencode/plugins/runesmith.ts)",
         "loop smoke: passed (mission completed)",
         "status: incomplete",
@@ -118,8 +126,50 @@ describe("runesmith cli", () => {
     })
   })
 
+  test("doctor fails with an OpenCode install hint when the opencode command is missing", async () => {
+    const host = createMemoryHost({
+      ".runesmith/config.json": "{}",
+      ".runesmith/runtime/capsule.json": JSON.stringify({
+        version: 1,
+        updatedAt: "2026-05-27T00:00:00.000Z",
+        runtime: {
+          graphs: {},
+          ledgers: {},
+          leases: { leases: {} },
+          contracts: {},
+        },
+      }),
+      ".opencode/plugins/runesmith.ts": "export { default } from \"@runesmith/opencode-adapter\"",
+    })
+
+    const result = await runCli(["doctor", "--plugin-dir", ".opencode/plugins"], host)
+
+    expect(result).toEqual({
+      exitCode: 1,
+      stdout: [
+        "Runesmith doctor",
+        "config: found (.runesmith/config.json)",
+        "runtime capsule: valid (.runesmith/runtime/capsule.json)",
+        "opencode cli: missing (opencode) - command not found; install OpenCode CLI before launch",
+        "opencode plugin: found (.opencode/plugins/runesmith.ts)",
+        "loop smoke: passed (mission completed)",
+        "status: incomplete",
+        "next: install OpenCode CLI, then run `runesmith up` and `runesmith doctor`.",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+  })
+
   test("doctor reports ready after up installs the runtime and OpenCode shim", async () => {
-    const host = createMemoryHost()
+    const host = createMemoryHost(
+      {},
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+      },
+    )
 
     const up = await runCli([
       "up",
@@ -138,6 +188,7 @@ describe("runesmith cli", () => {
         "Runesmith doctor",
         "config: found (.runesmith/config.json)",
         "runtime capsule: valid (.runesmith/runtime/capsule.json)",
+        "opencode cli: found (opencode) - E:/tools/opencode.exe",
         "opencode plugin: found (.opencode/plugins/runesmith.ts)",
         "loop smoke: passed (mission completed)",
         "status: ready",
@@ -148,7 +199,14 @@ describe("runesmith cli", () => {
   })
 
   test("doctor validates npm-mode OpenCode plugin config", async () => {
-    const host = createMemoryHost()
+    const host = createMemoryHost(
+      {},
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+      },
+    )
 
     const up = await runCli([
       "up",
@@ -169,6 +227,7 @@ describe("runesmith cli", () => {
         "Runesmith doctor",
         "config: found (.runesmith/config.json)",
         "runtime capsule: valid (.runesmith/runtime/capsule.json)",
+        "opencode cli: found (opencode) - E:/tools/opencode.exe",
         "opencode plugin: found (opencode.jsonc)",
         "loop smoke: passed (mission completed)",
         "status: ready",
@@ -266,8 +325,15 @@ describe("runesmith cli", () => {
     expect(host.readText("opencode.jsonc")).toContain("\"@runesmith/opencode-adapter@latest\"")
   })
 
-  test("up initializes the workspace, installs OpenCode, and creates the runtime capsule", async () => {
-    const host = createMemoryHost()
+  test("up initializes the workspace, wires OpenCode, and creates the runtime capsule", async () => {
+    const host = createMemoryHost(
+      {},
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+      },
+    )
 
     const result = await runCli([
       "up",
@@ -284,6 +350,7 @@ describe("runesmith cli", () => {
         "config: .runesmith/config.json",
         "plugin: .opencode/plugins/runesmith.ts",
         "runtime: .runesmith/runtime/capsule.json",
+        "opencode: found E:/tools/opencode.exe",
         "covenant: automatic",
         "dashboard: bun run dev:dashboard",
         "",
@@ -304,6 +371,33 @@ describe("runesmith cli", () => {
       },
     })
     expect(typeof capsule.updatedAt).toBe("string")
+  })
+
+  test("up reports a staged install when the OpenCode CLI is missing", async () => {
+    const host = createMemoryHost()
+
+    const result = await runCli([
+      "up",
+      "--plugin-dir",
+      ".opencode/plugins",
+      "--source",
+      "E:/dev/Oh-my/runesmith/packages/opencode-adapter/src/plugin.ts",
+    ], host)
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Runesmith OS is staged",
+        "config: .runesmith/config.json",
+        "plugin: .opencode/plugins/runesmith.ts",
+        "runtime: .runesmith/runtime/capsule.json",
+        "opencode: missing (install OpenCode CLI, then run `runesmith doctor`)",
+        "covenant: automatic",
+        "dashboard: bun run dev:dashboard",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
   })
 
   test("mission list prints mission summaries from a snapshot", async () => {

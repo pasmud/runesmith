@@ -95,7 +95,7 @@ Bootstrap the local Runesmith OS in one command:
 bun packages/cli/src/index.ts up
 ```
 
-That creates `.runesmith/config.json`, installs the local OpenCode plugin shim, and creates `.runesmith/runtime/capsule.json` if it does not exist.
+That creates `.runesmith/config.json`, installs the local OpenCode plugin shim, and creates `.runesmith/runtime/capsule.json` if it does not exist. It also checks whether the `opencode` command is available. When OpenCode is not on PATH, `up` reports the OS as staged instead of ready and tells you to install OpenCode before launch.
 
 Verify the installation:
 
@@ -103,7 +103,7 @@ Verify the installation:
 bun packages/cli/src/index.ts doctor
 ```
 
-`doctor` validates the project config, runtime capsule, OpenCode plugin shim, and an internal Forge -> Review -> Seal orchestration smoke test. It exits nonzero when install files are missing or invalid and prints the next command to repair the setup.
+`doctor` validates the project config, runtime capsule, OpenCode CLI command, OpenCode plugin shim, and an internal Forge -> Review -> Seal orchestration smoke test. It exits nonzero when install files are missing or invalid, or when `opencode` is not discoverable, and prints the next command to repair the setup.
 
 Run the dashboard:
 
@@ -136,7 +136,8 @@ Runesmith supports two install paths:
 
 ```bash
 # Recommended local development bootstrap. This initializes config, installs
-# OpenCode, and creates the runtime capsule used by the plugin and dashboard.
+# the Runesmith OpenCode plugin shim, and creates the runtime capsule used by
+# the plugin and dashboard. It verifies that the opencode command exists.
 bun packages/cli/src/index.ts up
 
 # Local development install. This writes a generated plugin shim to the
@@ -156,7 +157,7 @@ bun packages/cli/src/index.ts install --plugin-dir .opencode/plugins
 bun packages/cli/src/index.ts doctor --plugin-dir .opencode/plugins
 ```
 
-OpenCode loads local plugins from `.opencode/plugins/` and `~/.config/opencode/plugins/` automatically. Npm plugins are added to the `plugin` array in `opencode.json`. See `examples/opencode/runesmith-plugin.json` for the npm-style config shape.
+OpenCode itself must be installed separately so `opencode` resolves on PATH. Runesmith handles its own project config, runtime capsule, and plugin wiring; `doctor` confirms that the host OpenCode CLI is present before reporting ready. OpenCode loads local plugins from `.opencode/plugins/` and `~/.config/opencode/plugins/` automatically. Npm plugins are added to the `plugin` array in `opencode.json`. See `examples/opencode/runesmith-plugin.json` for the npm-style config shape.
 
 Once installed and OpenCode is restarted, users do not need to invoke a workflow manually. The plugin registers:
 

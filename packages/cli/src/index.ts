@@ -20,6 +20,7 @@ import {
 } from "@runesmith/core"
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
 import { runDoctor } from "./doctor"
+import { findOpenCodeCli } from "./opencode-cli"
 import {
   getDefaultOpenCodeConfigPath,
   getDefaultOpenCodePluginDir,
@@ -35,16 +36,24 @@ export type CliResult = {
 
 export type CliHost = {
   exists(path: string): boolean | Promise<boolean>
+  findCommand?(command: string): string | undefined | Promise<string | undefined>
   readText(path: string): string | Promise<string>
   writeText(path: string, text: string): void | Promise<void>
 }
 
-export function createMemoryHost(initialFiles: Record<string, string> = {}) {
+export type MemoryHostOptions = {
+  commands?: Record<string, string | undefined>
+}
+
+export function createMemoryHost(initialFiles: Record<string, string> = {}, options: MemoryHostOptions = {}) {
   const files = new Map(Object.entries(initialFiles))
 
   return {
     exists(path: string): boolean {
       return files.has(path)
+    },
+    findCommand(command: string): string | undefined {
+      return options.commands?.[command]
     },
     readText(path: string): string {
       const value = files.get(path)
@@ -68,6 +77,13 @@ export function createNodeHost(): CliHost {
         return true
       } catch {
         return false
+      }
+    },
+    findCommand(command: string): string | undefined {
+      try {
+        return Bun.which(command) ?? undefined
+      } catch {
+        return undefined
       }
     },
     readText(path: string): Promise<string> {
@@ -242,12 +258,16 @@ async function runesmithUp(args: string[], host: CliHost): Promise<CliResult> {
   if (install.exitCode !== 0) return install
 
   const pluginPath = extractOutputValue(install.stdout, "plugin")
+  const openCodeCli = await findOpenCodeCli(host)
 
   return success([
-    "Runesmith OS is ready",
+    openCodeCli ? "Runesmith OS is ready" : "Runesmith OS is staged",
     "config: .runesmith/config.json",
     `plugin: ${pluginPath ?? "installed"}`,
     `runtime: ${defaultRuntimeCapsulePath}`,
+    openCodeCli
+      ? `opencode: found ${openCodeCli}`
+      : "opencode: missing (install OpenCode CLI, then run `runesmith doctor`)",
     "covenant: automatic",
     "dashboard: bun run dev:dashboard",
     "",

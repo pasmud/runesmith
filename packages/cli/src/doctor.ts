@@ -12,6 +12,7 @@ import {
 import { parse, type ParseError } from "jsonc-parser"
 
 import type { CliHost, CliResult } from "./index"
+import { findOpenCodeCli, openCodeCommand } from "./opencode-cli"
 import {
   getDefaultOpenCodeConfigPath,
   getDefaultOpenCodePluginDir,
@@ -33,6 +34,7 @@ export async function runDoctor(args: string[], host: CliHost): Promise<CliResul
   const checks: DoctorCheck[] = [
     await checkProjectConfig(host),
     await checkRuntimeCapsule(host),
+    await checkOpenCodeCli(host),
     await checkOpenCodePlugin(host, options),
     runLoopSmokeCheck(),
   ]
@@ -44,13 +46,25 @@ export async function runDoctor(args: string[], host: CliHost): Promise<CliResul
   ]
 
   if (!ready) {
-    lines.push("next: run `runesmith up` to initialize config, runtime, and OpenCode plugin wiring.")
+    lines.push(formatDoctorNextStep(checks))
   }
 
   return {
     exitCode: ready ? 0 : 1,
     stdout: `${lines.join("\n")}\n`,
     stderr: "",
+  }
+}
+
+async function checkOpenCodeCli(host: CliHost): Promise<DoctorCheck> {
+  const found = await findOpenCodeCli(host)
+
+  return {
+    label: "opencode cli",
+    path: openCodeCommand,
+    status: found ? "found" : "missing",
+    detail: found ?? "command not found; install OpenCode CLI before launch",
+    ok: Boolean(found),
   }
 }
 
@@ -192,6 +206,15 @@ function formatDoctorCheck(check: DoctorCheck): string {
   const detail = check.detail ? check.path ? ` - ${check.detail}` : ` (${check.detail})` : ""
 
   return `${check.label}: ${check.status}${path}${detail}`
+}
+
+function formatDoctorNextStep(checks: DoctorCheck[]): string {
+  const openCodeMissing = checks.some((check) => check.label === "opencode cli" && !check.ok)
+  if (openCodeMissing) {
+    return "next: install OpenCode CLI, then run `runesmith up` and `runesmith doctor`."
+  }
+
+  return "next: run `runesmith up` to initialize config, runtime, and OpenCode plugin wiring."
 }
 
 function runLoopSmokeTest(): { ok: true; message: string } | { ok: false; message: string } {
