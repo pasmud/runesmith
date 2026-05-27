@@ -172,6 +172,8 @@ describe("opencode adapter", () => {
     expect(prompt).toContain("Active runes:")
     expect(prompt).toContain("Forge Trace")
     expect(prompt).toContain("Proofwright")
+    expect(prompt).toContain("Runesmith Loop Pulse")
+    expect(prompt).toContain("Next action: Continue forge")
   })
 
   test("autopilot prepares and claims a mission from the latest user message once", async () => {

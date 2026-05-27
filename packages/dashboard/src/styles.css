@@ -392,10 +392,11 @@ svg {
 .view-hero,
 .agent-card,
 .covenant-card,
-.covenant-command,
-.policy-card,
-.snapshot-row,
-.task-panel {
+  .covenant-command,
+  .policy-card,
+  .snapshot-row,
+  .loop-pulse-panel,
+  .task-panel {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--panel);
@@ -938,6 +939,65 @@ svg {
   min-height: 0;
   flex: 1;
   overflow: hidden;
+}
+
+.loop-pulse-panel {
+  flex: 0 0 auto;
+  margin: 18px 18px 0;
+  padding: 16px;
+  box-shadow: none;
+}
+
+.pulse-action {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.pulse-action div {
+  min-width: 0;
+}
+
+.pulse-action h2 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.pulse-action p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pulse-facts,
+.rune-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.pulse-facts span,
+.rune-strip span {
+  max-width: 100%;
+  min-height: 22px;
+  padding: 4px 7px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: #f4f7fb;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rune-strip span {
+  background: #eef5ff;
+  color: #3267ff;
 }
 
 .rail-header {

@@ -43,6 +43,10 @@ export async function runDashboardRuntimeAction(
   return body.value.capsule
 }
 
+export function runtimeCapsuleHasMissions(capsule: RuntimeCapsule): boolean {
+  return Object.keys(capsule.runtime.graphs).length > 0
+}
+
 type RuntimeControlResponse =
   | {
       ok: true

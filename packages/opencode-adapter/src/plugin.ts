@@ -1,6 +1,7 @@
 import {
   buildCovenantControlBrief,
   buildCovenantPrompt,
+  buildLoopPulsePrompt,
   createCovenantDecisionDraft,
   createCovenantTaskPlan,
   createRuntime,
@@ -377,8 +378,11 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
         system: {
           transform(_input, systemPrompt) {
             return upsertPromptSection(
-              appendPromptSections(systemPrompt, [covenantPrompt, autopilotPrompt]),
-              buildCovenantControlBrief(runtime.snapshot(), covenant),
+              upsertPromptSection(
+                appendPromptSections(systemPrompt, [covenantPrompt, autopilotPrompt]),
+                buildCovenantControlBrief(runtime.snapshot(), covenant),
+              ),
+              buildLoopPulsePrompt(runtime.snapshot(), covenant),
             )
           },
         },
@@ -387,6 +391,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
     "experimental.chat.system.transform"(_input, output) {
       appendSystemSections(output, [covenantPrompt, autopilotPrompt])
       upsertSystemSection(output, buildCovenantControlBrief(runtime.snapshot(), covenant))
+      upsertSystemSection(output, buildLoopPulsePrompt(runtime.snapshot(), covenant))
     },
     "experimental.session.compacting"(_input, output) {
       appendCompactionContext(output, runtime.snapshot())
@@ -1088,6 +1093,7 @@ function appendCompactionContext(output: OpenCodeCompactionOutput, snapshot: Run
     context.push(summary)
   }
   upsertTextListSection(context, buildCovenantControlBrief(snapshot))
+  upsertTextListSection(context, buildLoopPulsePrompt(snapshot))
   output.context = context
 }
 

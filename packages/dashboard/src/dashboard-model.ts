@@ -1,10 +1,13 @@
 import {
   createRunicCovenant,
+  deriveLoopPulse,
   getNextCovenantStage,
   type AgentContract,
   type CovenantStage,
   type CovenantStageId,
   type Evidence,
+  type EvidenceType,
+  type LoopPulse,
   type MissionGraph,
   type RuntimeCapsule,
   type RuntimeSnapshot,
@@ -85,6 +88,7 @@ export type DashboardModel = {
   agents: AgentNode[]
   commandLog: CommandLogItem[]
   covenantStages: CovenantStage[]
+  loopPulse: LoopPulse
   metrics: Record<MissionStatus, number>
   mode: OsMode
   notice: string
@@ -472,6 +476,7 @@ export function buildDashboardModelFromRuntimeSnapshot(
       tone: "verified",
     }),
     covenantStages,
+    loopPulse: deriveLoopPulse(snapshot),
     mode: "guarded",
     notice: `Loaded runtime capsule from ${options.updatedAt ?? "local disk"}.`,
     policies: buildPoliciesFromSnapshot(snapshot, evidenceCount),
@@ -605,6 +610,7 @@ function deriveDashboardModel(input: {
   agents: AgentNode[]
   commandLog: CommandLogItem[]
   covenantStages: CovenantStage[]
+  loopPulse?: LoopPulse
   mode: OsMode
   notice: string
   policies: PolicyGate[]
@@ -619,17 +625,88 @@ function deriveDashboardModel(input: {
   const activeCovenantStage =
     input.covenantStages.find((stage) => stage.id === input.activeCovenantStageId) ?? input.covenantStages[0]!
   const metrics = buildMetrics(input.tasks)
+  const loopPulse = input.loopPulse ?? buildSeededLoopPulse(input.tasks, activeCovenantStage)
 
   return {
     ...input,
     activeCovenantStage,
     activeCovenantStageId: activeCovenantStage.id,
+    loopPulse,
     metrics,
     operationalScore: buildOperationalScore(input.tasks, metrics, input.policies),
     selectedAgent,
     selectedAgentId: selectedAgent.id,
     selectedTask,
     selectedTaskId: selectedTask.id,
+  }
+}
+
+function buildSeededLoopPulse(tasks: TaskCard[], activeStage: CovenantStage): LoopPulse {
+  if (tasks.length === 0) {
+    return deriveLoopPulse(emptyRuntimeSnapshot())
+  }
+
+  const missionId = "mission_dashboard_seed"
+  const now = "2026-05-27T00:00:00.000Z"
+  const evidenceEntries = tasks.flatMap((task) => {
+    return task.evidence
+      .filter(isEvidenceType)
+      .map((type, index) => {
+        const id = `evidence_${task.id}_${type}_${index}`
+        return [id, {
+          id,
+          taskId: task.id,
+          type,
+          summary: `${task.title} has ${type} evidence`,
+          payload: {},
+          createdAt: now,
+        }] as const
+      })
+  })
+  const snapshot: RuntimeSnapshot = {
+    graphs: {
+      [missionId]: {
+        mission: {
+          id: missionId,
+          goal: "Seeded dashboard mission control",
+          status: "running",
+          rootTaskId: tasks[0]!.id,
+          createdAt: now,
+          updatedAt: now,
+        },
+        tasks: Object.fromEntries(
+          tasks.map((task) => {
+            const requiredEvidence = task.evidence.filter(isEvidenceType)
+            return [task.id, {
+              id: task.id,
+              missionId,
+              title: task.title,
+              description: task.summary,
+              status: mapMissionStatusToTaskStatus(task.status),
+              requiredCapabilities: ["typescript"],
+              requiredEvidence,
+              assignedAgentId: task.agent === "Unassigned" ? undefined : `agent_${task.agent.toLowerCase()}`,
+              createdAt: now,
+              updatedAt: now,
+            }]
+          }),
+        ),
+        events: [],
+      },
+    },
+    ledgers: {
+      [missionId]: {
+        evidence: Object.fromEntries(evidenceEntries),
+      },
+    },
+    leases: { leases: {} },
+    contracts: {},
+  }
+  const pulse = deriveLoopPulse(snapshot)
+
+  return {
+    ...pulse,
+    stage: pulse.status === "idle" ? activeStage : pulse.stage,
   }
 }
 
@@ -788,14 +865,42 @@ function evidenceForTask(snapshot: RuntimeSnapshot, missionId: string, taskId: s
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id))
 }
 
+function emptyRuntimeSnapshot(): RuntimeSnapshot {
+  return {
+    graphs: {},
+    ledgers: {},
+    leases: { leases: {} },
+    contracts: {},
+  }
+}
+
 function uniqueEvidenceTypes(evidence: Evidence[]): string[] {
   return [...new Set(evidence.map((item) => item.type))]
+}
+
+function isEvidenceType(value: string): value is EvidenceType {
+  return [
+    "file-change",
+    "command-output",
+    "test-result",
+    "diagnostic",
+    "decision",
+    "risk",
+  ].includes(value)
 }
 
 function mapTaskStatus(status: TaskStatus): MissionStatus {
   if (status === "complete" || status === "verifying") return "verified"
   if (status === "stale") return "stale"
   if (status === "blocked" || status === "failed" || status === "cancelled") return "blocked"
+
+  return "running"
+}
+
+function mapMissionStatusToTaskStatus(status: MissionStatus): TaskStatus {
+  if (status === "verified") return "complete"
+  if (status === "stale") return "stale"
+  if (status === "blocked") return "blocked"
 
   return "running"
 }

@@ -299,6 +299,8 @@ describe("dashboard model", () => {
     expect(model.agents.map((agent) => agent.name)).toEqual(["Atlas", "Oracle"])
     expect(model.agents[0]?.activeLease).toBe("task_live")
     expect(model.snapshots[0]?.label).toBe("Live capsule")
+    expect(model.loopPulse.nextAction.label).toBe("Capture proof")
+    expect(model.loopPulse.runes.map((rune) => rune.name)).toContain("Proofwright")
     expect(model.notice).toBe("Loaded runtime capsule from 2026-05-27T00:00:00.000Z.")
   })
 

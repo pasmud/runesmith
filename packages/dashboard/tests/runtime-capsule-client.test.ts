@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import type { RuntimeCapsule } from "@runesmith/core"
-import { loadDashboardRuntimeCapsule, runDashboardRuntimeAction } from "../src/runtime-capsule-client"
+import { loadDashboardRuntimeCapsule, runDashboardRuntimeAction, runtimeCapsuleHasMissions } from "../src/runtime-capsule-client"
 
 const capsule: RuntimeCapsule = {
   version: 1,
@@ -61,5 +61,29 @@ describe("runtime capsule client", () => {
     })
 
     expect(updated).toEqual(capsule)
+  })
+
+  test("detects whether a runtime capsule can drive visible dashboard state", () => {
+    expect(runtimeCapsuleHasMissions(capsule)).toBe(false)
+    expect(runtimeCapsuleHasMissions({
+      ...capsule,
+      runtime: {
+        ...capsule.runtime,
+        graphs: {
+          mission_alpha: {
+            mission: {
+              id: "mission_alpha",
+              goal: "Visible runtime mission",
+              status: "running",
+              rootTaskId: "task_alpha",
+              createdAt: "2026-05-27T00:00:00.000Z",
+              updatedAt: "2026-05-27T00:00:00.000Z",
+            },
+            tasks: {},
+            events: [],
+          },
+        },
+      },
+    })).toBe(true)
   })
 })

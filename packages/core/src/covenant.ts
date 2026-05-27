@@ -421,8 +421,8 @@ function selectCovenantTask(snapshot: RuntimeSnapshot): { graph: MissionGraph; t
   const terminalMissionStatuses = new Set(["complete", "failed", "cancelled"])
   const terminalTaskStatuses = new Set(["complete", "failed", "cancelled"])
   const statusRank: Record<string, number> = {
-    blocked: 0,
-    stale: 1,
+    stale: 0,
+    blocked: 1,
     running: 2,
     verifying: 3,
     queued: 4,

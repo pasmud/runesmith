@@ -27,6 +27,7 @@ The first production slice includes:
 - Automatic evidence capture from OpenCode tool execution events for shell commands, test runs, and file edits, followed by an immediate evidence-gated advance attempt.
 - Evidence-gated autopilot ticks that can complete the active task on OpenCode idle events once proof requirements are satisfied.
 - A state-aware Runesmith Control Brief that tells OpenCode the active mission, active task, next Runic Covenant stage, required evidence, and missing proof directly from runtime state.
+- A Runesmith Loop Pulse that derives one authoritative next action, health signal, priority, blockers, and active runes from the runtime capsule.
 - A default Covenant task plan that expands coding goals into Forge, Review, and Seal tasks with dependency-aware claiming and task-level evidence requirements.
 
 Out of scope for the first slice:
@@ -223,6 +224,8 @@ The runtime also derives a live Runesmith Control Brief from the current snapsho
 
 The Control Brief also includes Runesmith-native Runebook runes. A rune is a small procedure card selected from runtime state, such as `Forge Trace` during scoped edits, `Proofwright` when evidence is missing, or `Recovery Loom` when work is stale. This borrows the useful discipline of explicit workflows while keeping the user experience install-once and automatic; users should not need to invoke external skills or remember process names.
 
+The Loop Pulse sits beside the Control Brief. It converts the live runtime state into one next action such as `Wait for goal`, `Continue forge`, `Capture proof`, `Recover stale work`, `Review change`, or `Seal mission`. OpenCode prompt injection, compaction context, and the dashboard should all show this same pulse so the OS has one source of truth for what the agentic loop should do next.
+
 The default Covenant task plan is:
 
 - Forge: implementation work requiring `file-change` and passing `test-result` evidence.
@@ -304,6 +307,7 @@ Runtime-backed controls:
 - `/api/runtime-control` accepts dashboard actions and persists the resulting capsule.
 - Command Forge starts a planned Covenant mission from the dashboard directive, registers the default Atlas contract, claims the first task, and saves the capsule.
 - Guarded Autopilot runs an evidence-gated cycle over the persisted mission. It recovers stale work first, holds if proof is missing, completes through the runtime gate once required evidence exists, synthesizes Review and Seal decisions, and claims the next dependency-ready task.
+- The right rail shows the Loop Pulse with health, priority, next action, missing evidence, and active runes from the same runtime capsule used by OpenCode.
 
 Visual rules:
 

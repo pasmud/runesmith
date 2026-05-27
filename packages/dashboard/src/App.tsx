@@ -39,7 +39,7 @@ import {
   type SnapshotRecord,
   type TaskCard,
 } from "./dashboard-model"
-import { loadDashboardRuntimeCapsule, runDashboardRuntimeAction } from "./runtime-capsule-client"
+import { loadDashboardRuntimeCapsule, runDashboardRuntimeAction, runtimeCapsuleHasMissions } from "./runtime-capsule-client"
 
 const lanes = ["Plan", "Build", "Verify", "Recover"] as const
 
@@ -125,7 +125,7 @@ export function App() {
     try {
       if (action.type === "forge-directive" || action.type === "run-autopilot-cycle") {
         const capsule = await runDashboardRuntimeAction(action)
-        dispatch({ type: "load-runtime-capsule", capsule })
+        dispatch(runtimeCapsuleHasMissions(capsule) ? { type: "load-runtime-capsule", capsule } : action)
         return
       }
 
@@ -630,6 +630,8 @@ function RightRail({ dispatch, model }: { dispatch: DashboardDispatch; model: Da
 
   return (
     <aside className="right-rail">
+      <LoopPulsePanel model={model} />
+
       <section className="notifications">
         <header className="rail-header">
           <div>
@@ -684,6 +686,37 @@ function RightRail({ dispatch, model }: { dispatch: DashboardDispatch; model: Da
         </div>
       </section>
     </aside>
+  )
+}
+
+function LoopPulsePanel({ model }: { model: DashboardModel }) {
+  const pulse = model.loopPulse
+  const tone: MissionStatus = pulse.health === "critical" ? "blocked" : pulse.health === "attention" ? "stale" : "verified"
+
+  return (
+    <section className="loop-pulse-panel" aria-label="Runesmith loop pulse">
+      <div className="inspector-header">
+        <p className="eyebrow">Loop Pulse</p>
+        <Badge tone={tone}>{pulse.health}</Badge>
+      </div>
+      <div className="pulse-action">
+        <span className={`tile-icon tile-icon-${tone}`}><Activity aria-hidden="true" /></span>
+        <div>
+          <h2>{pulse.nextAction.label}</h2>
+          <p>{pulse.nextAction.reason}</p>
+        </div>
+      </div>
+      <div className="pulse-facts">
+        <span>{pulse.stage.name}</span>
+        <span>{pulse.nextAction.priority}</span>
+        <span>{pulse.missingEvidence.length > 0 ? pulse.missingEvidence.join(", ") : "proof clear"}</span>
+      </div>
+      <div className="rune-strip" aria-label="Active runes">
+        {pulse.runes.slice(0, 3).map((rune) => (
+          <span key={rune.id}>{rune.name}</span>
+        ))}
+      </div>
+    </section>
   )
 }
 
