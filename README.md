@@ -35,4 +35,21 @@ bun run dev:dashboard
 
 ## OpenCode
 
-See `examples/opencode/runesmith-plugin.json` for an example plugin configuration.
+Runesmith supports two install paths:
+
+```bash
+# Local development install. This writes a generated plugin shim to the
+# OpenCode global plugin directory and points it at this checkout.
+bun packages/cli/src/index.ts install
+
+# Future npm-style install, matching the OpenCode `plugin` array flow.
+bun packages/cli/src/index.ts install --mode npm --package runesmith@latest
+```
+
+For a project-local install:
+
+```bash
+bun packages/cli/src/index.ts install --plugin-dir .opencode/plugins
+```
+
+OpenCode loads local plugins from `.opencode/plugins/` and `~/.config/opencode/plugins/` automatically. Npm plugins are added to the `plugin` array in `opencode.json`. See `examples/opencode/runesmith-plugin.json` for the npm-style config shape.

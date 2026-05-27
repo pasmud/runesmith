@@ -1,21 +1,21 @@
 :root {
-  color: #e6e2d8;
-  background: #11110f;
+  color: #111827;
+  background: #f6f8fb;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --bg: #11110f;
-  --panel: #191917;
-  --panel-2: #20201d;
-  --line: #32322d;
-  --text: #e6e2d8;
-  --muted: #a9a398;
-  --soft: #777165;
-  --running: #5daeff;
-  --verified: #5dd69c;
-  --stale: #e0b44f;
-  --blocked: #ee746d;
-  --focus: #d7c783;
+  --bg: #f6f8fb;
+  --panel: #ffffff;
+  --panel-2: #eef3f8;
+  --line: #d8dee7;
+  --text: #111827;
+  --muted: #5f6b7a;
+  --soft: #7c8795;
+  --running: #1f6feb;
+  --verified: #15803d;
+  --stale: #b7791f;
+  --blocked: #dc2626;
+  --focus: #2457c5;
 }
 
 * {
@@ -52,7 +52,7 @@ svg {
 
 .sidebar,
 .inspector {
-  background: #151512;
+  background: #ffffff;
   border-color: var(--line);
   min-width: 0;
 }
@@ -94,9 +94,9 @@ svg {
   place-items: center;
   width: 36px;
   height: 36px;
-  border: 1px solid #4b493e;
+  border: 1px solid #c7d2e1;
   border-radius: 8px;
-  background: #232219;
+  background: #eef3ff;
   color: var(--focus);
 }
 
@@ -171,7 +171,7 @@ svg {
   gap: 18px;
   min-width: 0;
   padding: 20px;
-  background: #11110f;
+  background: var(--bg);
 }
 
 .topbar {
@@ -264,7 +264,7 @@ svg {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #161613;
+  background: #f9fbfd;
 }
 
 .lane-header {
@@ -284,8 +284,8 @@ svg {
 }
 
 .task-card-selected {
-  border-color: #6e684d;
-  background: #211f19;
+  border-color: #8da2c8;
+  background: #f0f5ff;
 }
 
 .rs-card-header {
@@ -354,7 +354,7 @@ svg {
   min-width: 0;
   padding: 8px;
   border-radius: 7px;
-  background: #20201c;
+  background: #f6f8fb;
 }
 
 .timeline-item strong,
@@ -421,9 +421,8 @@ svg {
   border: 1px solid transparent;
   border-radius: 7px;
   padding: 0 12px;
-  color: var(--text);
-  background: #d7c783;
-  color: #17150f;
+  background: #111827;
+  color: #ffffff;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
@@ -446,7 +445,7 @@ svg {
 
 .rs-button-destructive {
   background: var(--blocked);
-  color: #160c0c;
+  color: #ffffff;
 }
 
 .rs-button-sm {
@@ -467,7 +466,7 @@ svg {
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 0 8px;
-  background: #20201c;
+  background: #f3f6fa;
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
