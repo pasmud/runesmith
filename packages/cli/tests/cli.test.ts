@@ -5,6 +5,14 @@ import { createMemoryHost, createNodeHost, runCli } from "../src/index"
 
 const dashboardDistIndexPath = fileURLToPath(new URL("../../dashboard/dist/index.html", import.meta.url))
 
+function extractOutputValue(stdout: string, key: string): string | undefined {
+  const prefix = `${key}: `
+  return stdout
+    .split("\n")
+    .find((line) => line.startsWith(prefix))
+    ?.slice(prefix.length)
+}
+
 const snapshot = {
   graphs: {
     mission_alpha: {
@@ -1121,6 +1129,63 @@ describe("runesmith cli", () => {
       exitCode: 0,
       stdout: "mission_alpha running Build Runesmith\n",
       stderr: "",
+    })
+  })
+
+  test("worker claim leases the next Worker Dispatch packet without task ids", async () => {
+    const workerSnapshot = {
+      ...snapshot,
+      graphs: {
+        mission_alpha: {
+          ...snapshot.graphs.mission_alpha,
+          tasks: {
+            task_alpha: {
+              ...snapshot.graphs.mission_alpha.tasks.task_alpha,
+              status: "queued",
+              assignedAgentId: undefined,
+            },
+          },
+        },
+      },
+      leases: { leases: {} },
+    }
+    const host = createMemoryHost({
+      ".runesmith/runtime/capsule.json": JSON.stringify({
+        version: 1,
+        updatedAt: "2026-05-27T00:00:00.000Z",
+        runtime: workerSnapshot,
+      }),
+    })
+
+    const result = await runCli(["worker", "claim"], host)
+    const packet = extractOutputValue(result.stdout, "packet")
+    const agent = extractOutputValue(result.stdout, "agent")
+    const replayed = await runCli(["worker", "claim", packet ?? ""], host)
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: [
+        "Worker packet claimed",
+        `packet: ${packet}`,
+        "mission: mission_alpha",
+        "task: task_alpha",
+        `agent: ${agent}`,
+        "lease: lease_cli_1",
+        "replayed: no",
+        "",
+      ].join("\n"),
+      stderr: "",
+    })
+    expect(replayed.stdout).toContain("replayed: yes")
+    const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
+    expect(capsule.runtime.graphs.mission_alpha.tasks.task_alpha).toMatchObject({
+      status: "running",
+      assignedAgentId: agent,
+    })
+    expect(capsule.runtime.leases.leases.lease_cli_1).toMatchObject({
+      targetId: "task_alpha",
+      holder: `runesmith-worker:${agent}`,
+      idempotencyKey: `worker-dispatch:mission_alpha:task_alpha:${agent}`,
     })
   })
 

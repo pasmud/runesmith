@@ -16,6 +16,7 @@ import {
   type RunicDecisionGuard,
   type RunicMissionLoopStatus,
 } from "./runic-loop.js"
+import { claimWorkerDispatchPacket } from "./worker-dispatch.js"
 import type { AgentContract, EvidenceType } from "./types.js"
 
 export type RuntimeControlAction =
@@ -41,6 +42,10 @@ export type RuntimeControlAction =
     }
   | {
       type: "run-proof-plan"
+    }
+  | {
+      type: "claim-worker-packet"
+      packetId?: string
     }
   | {
       type: "refine-plan"
@@ -85,6 +90,12 @@ export type RuntimeControlActionValue = {
     taskCount: number
     implementationTaskCount: number
     activeSlotCount: number
+  }
+  workerClaim?: {
+    packetId: string
+    agentId: string
+    leaseId: string
+    replayed: boolean
   }
   snapshot: RuntimeSnapshot
 }
@@ -132,6 +143,10 @@ export async function applyRuntimeControlAction(
     return runRuntimeProofPlan(runtime, options)
   }
 
+  if (action.type === "claim-worker-packet") {
+    return claimRuntimeWorkerPacket(runtime, action)
+  }
+
   if (action.type === "refine-plan") {
     return refineRuntimePlan(runtime, action, options)
   }
@@ -153,6 +168,33 @@ export async function applyRuntimeControlAction(
   }
 
   return runRuntimeAutopilotCycle(runtime, options)
+}
+
+function claimRuntimeWorkerPacket(
+  runtime: ReturnType<typeof createRuntime>,
+  action: Extract<RuntimeControlAction, { type: "claim-worker-packet" }>,
+): RuntimeControlActionResult {
+  const claimed = claimWorkerDispatchPacket(runtime, {
+    packetId: action.packetId,
+  })
+  if (!claimed.ok) return { ok: false, error: claimed.error }
+
+  return {
+    ok: true,
+    value: {
+      action: "claim-worker-packet",
+      missionId: claimed.value.missionId,
+      taskId: claimed.value.taskId,
+      status: "running",
+      workerClaim: {
+        packetId: claimed.value.packetId,
+        agentId: claimed.value.agentId,
+        leaseId: claimed.value.leaseId,
+        replayed: claimed.value.replayed,
+      },
+      snapshot: runtime.snapshot(),
+    },
+  }
 }
 
 function registerRunesmithAgentMesh(runtime: ReturnType<typeof createRuntime>): void {

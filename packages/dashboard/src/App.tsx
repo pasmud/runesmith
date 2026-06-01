@@ -726,7 +726,7 @@ function RightRail({
       <MissionMapPanel model={model} />
       <PlanContractPanel controlLoading={controlLoading} model={model} runRuntimeControl={runRuntimeControl} />
       <DispatchMatrixPanel model={model} />
-      <WorkerDispatchPanel model={model} />
+      <WorkerDispatchPanel controlLoading={controlLoading} model={model} runRuntimeControl={runRuntimeControl} />
       <ScopeSentinelPanel model={model} />
       <RedlineProofPanel model={model} />
       <RepairContractPanel model={model} />
@@ -954,7 +954,15 @@ function DispatchMatrixPanel({ model }: { model: DashboardModel }) {
   )
 }
 
-function WorkerDispatchPanel({ model }: { model: DashboardModel }) {
+function WorkerDispatchPanel({
+  controlLoading,
+  model,
+  runRuntimeControl,
+}: {
+  controlLoading: boolean
+  model: DashboardModel
+  runRuntimeControl: (action: DashboardAction) => Promise<void>
+}) {
   const dispatch = model.workerDispatch
   const tone: MissionStatus =
     dispatch.status === "blocked"
@@ -965,6 +973,7 @@ function WorkerDispatchPanel({ model }: { model: DashboardModel }) {
           ? "stale"
           : "verified"
   const packets = dispatch.packets.slice(0, 3)
+  const claimable = dispatch.packets.find((packet) => packet.state === "claimable")
 
   return (
     <section className="dispatch-matrix-panel" aria-label="Runesmith worker dispatch">
@@ -983,6 +992,15 @@ function WorkerDispatchPanel({ model }: { model: DashboardModel }) {
         <span>{dispatch.packetCount} packets</span>
         <span>{dispatch.blockers.length} blockers</span>
       </div>
+      <Button
+        className="dispatch-action"
+        disabled={controlLoading || !claimable}
+        onClick={() => void runRuntimeControl({ type: "claim-worker-packet", packetId: claimable?.id })}
+        size="sm"
+        variant={claimable ? "default" : "outline"}
+      >
+        <Command data-icon="inline-start" />{controlLoading ? "Claiming" : "Claim packet"}
+      </Button>
       <div className="dispatch-slots" aria-label="Worker dispatch packets">
         {packets.length > 0 ? packets.map((packet) => (
           <span data-lane={packet.state === "claimable" ? "ready" : "active"} key={packet.id}>

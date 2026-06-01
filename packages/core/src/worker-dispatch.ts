@@ -1,6 +1,7 @@
 import { deriveDispatchMatrix, type DispatchSlot } from "./dispatch-matrix.js"
-import type { RuntimeSnapshot } from "./runtime.js"
-import type { AgentContract, EvidenceType } from "./types.js"
+import { runtimeError } from "./errors.js"
+import type { ClaimTaskValue, RunesmithRuntime, RuntimeSnapshot } from "./runtime.js"
+import { err, ok, type AgentContract, type EvidenceType, type Lease, type Result } from "./types.js"
 
 export type WorkerDispatchStatus = "idle" | "blocked" | "ready" | "parallel-ready" | "active"
 
@@ -44,6 +45,26 @@ export type WorkerDispatch = {
   blockers: string[]
   missionId?: string
   goal?: string
+}
+
+export type ClaimWorkerDispatchPacketInput = {
+  packetId?: string
+  holder?: string
+  ttlMs?: number
+}
+
+export type ClaimWorkerDispatchPacketValue = {
+  packetId: string
+  missionId: string
+  taskId: string
+  agentId: string
+  holder: string
+  leaseId: string
+  lease: Lease
+  replayed: boolean
+  packet: WorkerDispatchPacket
+  workerDispatch: WorkerDispatch
+  claim?: ClaimTaskValue
 }
 
 const defaultWorkerLeaseTtlMs = 120_000
@@ -97,6 +118,84 @@ export function buildWorkerDispatchPrompt(snapshot: RuntimeSnapshot): string {
     ...packetLines,
     "Directive: Execute worker packets independently only when their file scopes do not overlap and their dependencies are complete.",
   ].join("\n")
+}
+
+export function claimWorkerDispatchPacket(
+  runtime: RunesmithRuntime,
+  input: ClaimWorkerDispatchPacketInput = {},
+): Result<ClaimWorkerDispatchPacketValue> {
+  const dispatch = deriveWorkerDispatch(runtime.snapshot())
+  const packet = input.packetId
+    ? dispatch.packets.find((candidate) => candidate.id === input.packetId)
+    : dispatch.packets.find((candidate) => candidate.state === "claimable")
+
+  if (!packet) {
+    return err(
+      runtimeError("INVALID_TRANSITION", "No claimable Worker Dispatch packet is available", {
+        packetId: input.packetId,
+        status: dispatch.status,
+        blockers: dispatch.blockers,
+      }),
+    )
+  }
+
+  if (packet.state === "leased") {
+    const lease = runtime.snapshot().leases.leases[packet.leaseId ?? ""]
+    if (!lease) {
+      return err(
+        runtimeError("INVALID_TRANSITION", "Worker Dispatch packet lease is missing", {
+          packetId: packet.id,
+          leaseId: packet.leaseId,
+        }),
+      )
+    }
+
+    return ok({
+      packetId: packet.id,
+      missionId: packet.missionId,
+      taskId: packet.taskId,
+      agentId: packet.agentId,
+      holder: lease.holder,
+      leaseId: lease.id,
+      lease,
+      replayed: true,
+      packet,
+      workerDispatch: dispatch,
+    })
+  }
+
+  if (!packet.claim) {
+    return err(
+      runtimeError("INVALID_TRANSITION", "Worker Dispatch packet is not claimable", {
+        packetId: packet.id,
+        state: packet.state,
+      }),
+    )
+  }
+
+  const claimed = runtime.claimTask({
+    missionId: packet.claim.missionId,
+    taskId: packet.claim.taskId,
+    contractId: packet.claim.contractId,
+    holder: input.holder ?? packet.claim.holder,
+    idempotencyKey: packet.claim.idempotencyKey,
+    ttlMs: input.ttlMs ?? packet.claim.ttlMs,
+  })
+  if (!claimed.ok) return claimed
+
+  return ok({
+    packetId: packet.id,
+    missionId: packet.missionId,
+    taskId: packet.taskId,
+    agentId: packet.agentId,
+    holder: claimed.value.lease.holder,
+    leaseId: claimed.value.lease.id,
+    lease: claimed.value.lease,
+    replayed: claimed.value.replayed,
+    packet,
+    workerDispatch: deriveWorkerDispatch(runtime.snapshot()),
+    claim: claimed.value,
+  })
 }
 
 function buildWorkerDispatchPacket(

@@ -844,6 +844,62 @@ describe("opencode adapter", () => {
     expect(writes.at(-1)).toContain("adapter-forge")
   })
 
+  test("claims the next Worker Dispatch packet without raw task ids", async () => {
+    const runtime = createRuntime({ idFactory: countingIds(), now: fixedNow })
+    const writes: string[] = []
+    const plugin = createRunesmithPlugin({
+      runtime,
+      runtimeStore: {
+        save(snapshot) {
+          writes.push(JSON.stringify(snapshot))
+        },
+      },
+    })
+
+    runtime.startMission({
+      goal: "Ship direct packet claiming",
+      taskPlan: [
+        {
+          key: "forge",
+          title: "Forge: packet claim",
+          description: "Expose Worker Dispatch packet claiming to OpenCode.",
+          requiredCapabilities: ["typescript", "testing"],
+          requiredEvidence: ["file-change", "test-result"],
+        },
+      ],
+    })
+
+    const response = await (plugin.tool as any).runesmith_worker_claim.execute({})
+    const replayed = await (plugin.tool as any).runesmith_worker_claim.execute({
+      packetId: "worker_mission_1_task_1_agent_atlas",
+    })
+
+    expect(JSON.parse(response.output)).toMatchObject({
+      ok: true,
+      value: {
+        packetId: "worker_mission_1_task_1_agent_atlas",
+        missionId: "mission_1",
+        taskId: "task_1",
+        agentId: "agent_atlas",
+        leaseId: "lease_1",
+        replayed: false,
+      },
+    })
+    expect(JSON.parse(replayed.output)).toMatchObject({
+      ok: true,
+      value: {
+        packetId: "worker_mission_1_task_1_agent_atlas",
+        leaseId: "lease_1",
+        replayed: true,
+      },
+    })
+    expect(runtime.snapshot().graphs.mission_1.tasks.task_1).toMatchObject({
+      status: "running",
+      assignedAgentId: "agent_atlas",
+    })
+    expect(writes.at(-1)).toContain("worker-dispatch:mission_1:task_1:agent_atlas")
+  })
+
   test("auto-prepares a mission before the first mutating OpenCode tool executes", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const writes: string[] = []

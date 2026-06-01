@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url"
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises"
 import {
   advanceRunicMissionLoop,
+  claimWorkerDispatchPacket,
   createCovenantTaskPlan,
   createRunesmithAgentContracts,
   createRuntime,
@@ -287,6 +288,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     return runProofFromCli(host)
   }
 
+  if (command === "worker" && subcommand === "claim") {
+    return claimWorkerFromCli([maybeId, ...rest].filter((value): value is string => Boolean(value)), host)
+  }
+
   if (command === "risk" && subcommand === "resolve") {
     return resolveRiskFromCli([maybeId, ...rest].filter((value): value is string => Boolean(value)), host)
   }
@@ -422,7 +427,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     ].join("\n"))
   }
 
-  return failure("Usage: runesmith <go|ignite|heal|up|status|run|next|launch|dashboard|prove|install|init|doctor|risk resolve|faultline resolve|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
+  return failure("Usage: runesmith <go|ignite|heal|up|status|run|next|launch|dashboard|prove|install|init|doctor|worker claim|risk resolve|faultline resolve|mission start|mission evidence|mission tick|mission list|mission inspect>\n")
 }
 
 function success(stdout: string): CliResult {
@@ -1025,6 +1030,42 @@ async function startMissionFromCli(args: string[], host: CliHost): Promise<CliRe
     `goal: ${goal}`,
     `next: ${pulse.nextAction.label} [${pulse.health}/${pulse.nextAction.priority}]`,
     `runtime: ${runtimeCapsulePath}`,
+    "",
+  ].join("\n"))
+}
+
+async function claimWorkerFromCli(args: string[], host: CliHost): Promise<CliResult> {
+  const runtimeCapsulePath = await resolveRuntimeCapsulePath(host)
+  const capsule = await loadRuntimeCapsule(host, runtimeCapsulePath)
+  if (!capsule.ok) {
+    return failure(`${capsule.error.message}\n`)
+  }
+
+  const snapshot = capsule.value?.runtime ?? emptySnapshot
+  const runtime = createRuntime({
+    snapshot,
+    idFactory: createCliIdFactory(snapshot),
+  })
+  registerCliAgentMesh(runtime)
+
+  const claimed = claimWorkerDispatchPacket(runtime, {
+    packetId: args[0],
+  })
+  if (!claimed.ok) return failure(`${claimed.error.message}\n`)
+
+  await saveRuntimeCapsule(host, {
+    path: runtimeCapsulePath,
+    snapshot: runtime.snapshot(),
+  })
+
+  return success([
+    "Worker packet claimed",
+    `packet: ${claimed.value.packetId}`,
+    `mission: ${claimed.value.missionId}`,
+    `task: ${claimed.value.taskId}`,
+    `agent: ${claimed.value.agentId}`,
+    `lease: ${claimed.value.leaseId}`,
+    `replayed: ${claimed.value.replayed ? "yes" : "no"}`,
     "",
   ].join("\n"))
 }

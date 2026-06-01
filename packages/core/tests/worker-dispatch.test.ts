@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import {
   buildWorkerDispatchPrompt,
+  claimWorkerDispatchPacket,
   createRuntime,
   deriveWorkerDispatch,
   type AgentContract,
@@ -245,6 +246,93 @@ describe("worker dispatch", () => {
       summary: "Worker Dispatch has 2 claimable packets for mission_alpha across 2 agent contracts.",
     })
     expect(dispatch.packets.map((packet) => packet.state)).toEqual(["leased", "claimable", "claimable"])
+  })
+
+  test("claims worker packets without requiring mission or task ids", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.registerContract(artificer)
+    runtime.registerContract(steward)
+    runtime.startMission({
+      goal: "Ship packet claim orchestration",
+      taskPlan: [
+        {
+          key: "plan",
+          title: "Plan: packet claim",
+          description: "Record the packet claim boundary.",
+          requiredCapabilities: ["repository-maintenance"],
+          requiredEvidence: ["decision"],
+        },
+        {
+          key: "adapter-forge",
+          title: "Forge: adapter packet claim",
+          description: "Expose packet claim to OpenCode.",
+          requiredCapabilities: ["typescript", "testing"],
+          requiredEvidence: ["file-change", "test-result"],
+          dependsOn: ["plan"],
+        },
+        {
+          key: "dashboard-forge",
+          title: "Forge: dashboard packet claim",
+          description: "Expose packet claim to the dashboard.",
+          requiredCapabilities: ["typescript", "testing", "ui"],
+          requiredEvidence: ["file-change", "test-result"],
+          dependsOn: ["plan"],
+        },
+      ],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_steward",
+      holder: "steward",
+      idempotencyKey: "claim-plan",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_alpha",
+        taskId: "task_alpha",
+        type: "decision",
+        summary: "Packet claim boundary approved",
+        payload: {},
+        createdAt: "2026-05-27T00:00:01.000Z",
+      },
+    })
+    runtime.completeTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_steward",
+    })
+
+    const packetId = deriveWorkerDispatch(runtime.snapshot()).packets[0]?.id
+    const claimed = claimWorkerDispatchPacket(runtime, { packetId, ttlMs: 45_000 })
+    if (!claimed.ok) throw new Error(claimed.error.message)
+    const replayed = claimWorkerDispatchPacket(runtime, { packetId, ttlMs: 45_000 })
+    if (!replayed.ok) throw new Error(replayed.error.message)
+
+    expect(claimed.value).toMatchObject({
+      packetId: "worker_mission_alpha_task_alpha_adapter_forge_agent_atlas",
+      missionId: "mission_alpha",
+      taskId: "task_alpha_adapter_forge",
+      agentId: "agent_atlas",
+      holder: "runesmith-worker:agent_atlas",
+      replayed: false,
+    })
+    expect(claimed.value.lease).toMatchObject({
+      holder: "runesmith-worker:agent_atlas",
+      idempotencyKey: "worker-dispatch:mission_alpha:task_alpha_adapter_forge:agent_atlas",
+    })
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_adapter_forge).toMatchObject({
+      status: "running",
+      assignedAgentId: "agent_atlas",
+    })
+    expect(replayed.value).toMatchObject({
+      packetId,
+      leaseId: claimed.value.leaseId,
+      replayed: true,
+    })
   })
 
   test("reports blocked worker dispatch when no packet can execute", () => {

@@ -161,6 +161,7 @@ export type DashboardAction =
   | { type: "run-next-action"; verdict?: RiskResolutionVerdict; summary?: string; faultlineSummary?: string }
   | { type: "run-os-loop"; maxSteps?: number; verdict?: RiskResolutionVerdict; summary?: string; faultlineSummary?: string }
   | { type: "run-proof-plan" }
+  | { type: "claim-worker-packet"; packetId?: string }
   | { type: "refine-plan"; missionId?: string }
   | { type: "resolve-risk"; verdict?: RiskResolutionVerdict; summary?: string }
   | { type: "resolve-faultline"; summary?: string }
@@ -609,6 +610,12 @@ export function reduceDashboardModel(model: DashboardModel, action: DashboardAct
         commandLabel: "Proof plan passed",
         detailPrefix: "Runesmith proof plan completed for",
         noticePrefix: "Proof plan passed for",
+      })
+
+    case "claim-worker-packet":
+      return deriveDashboardModel({
+        ...model,
+        notice: "Claimed the next Worker Dispatch packet.",
       })
 
     case "refine-plan":

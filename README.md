@@ -91,7 +91,7 @@ Agent Mesh is the default contract layer below Dispatch Matrix. Runesmith instal
 
 Dispatch Matrix sits beside Plan Contract as the agent-routing signal. It reads dependency readiness, active task leases, and registered agent contracts, then classifies the mission as `serial`, `parallel`, `blocked`, `drained`, or `idle`. When multiple independent slices are ready, it balances recommendations across matching agent contracts and the shared mission loop claims every safe ready slot in the same pass; when a slice has no matching contract or unmet dependencies, it names the blocker before the engine tries to parallelize unsafe work.
 
-Worker Dispatch is the execution packet layer below Dispatch Matrix. It converts every claimable or leased route into a stable packet containing the assigned agent, model, allowed tools, file scope, required evidence, completion criteria, claim idempotency key, and handoff text. A single ready slice appears as `ready`; multiple independent slices appear as `parallel-ready`; active leases stay visible as `active`; and unroutable maps report blockers. The packet model is shared by OpenCode prompts, compact bootstrap context, `runesmith_covenant_status`, and the dashboard right rail, so the engine can scale from one active worker to parallel agent slices without asking the user to manage mission or task IDs.
+Worker Dispatch is the execution packet layer below Dispatch Matrix. It converts every claimable or leased route into a stable packet containing the assigned agent, model, allowed tools, file scope, required evidence, completion criteria, claim idempotency key, and handoff text. A single ready slice appears as `ready`; multiple independent slices appear as `parallel-ready`; active leases stay visible as `active`; and unroutable maps report blockers. The packet model is shared by OpenCode prompts, compact bootstrap context, `runesmith_covenant_status`, CLI status/inspect, and the dashboard right rail, so the engine can scale from one active worker to parallel agent slices without asking the user to manage mission or task IDs. OpenCode can call `runesmith_worker_claim`, the terminal can run `runesmith worker claim`, and the dashboard can click `Claim packet`; all three mutate the same runtime capsule through the same packet claim primitive.
 
 The static Covenant is paired with a live `Runesmith Control Brief`. That brief is derived from the runtime capsule and tells the agent the active mission, active task, next Covenant stage, required evidence, and missing evidence. Failed or unknown test runs stay diagnostic, enter Repair Gate, and keep the loop focused on the latest failing command until passing proof exists. Three failed proof diagnostics without passing proof escalate to Faultline, so the engine stops a blind repair loop and asks the agent to question the architecture before another patch.
 
@@ -154,7 +154,7 @@ The dashboard is intentionally not a static report. It models the working loop a
 - **Runebook card**: see the current procedure card, autonomy mode, tool hint, evidence requirement, and exact commands Runesmith wants the agent to follow.
 - **Run OS**: run Runeweave from one primary control, so the dashboard keeps executing engine-owned cards until the mission seals or a stop condition needs code, risk, repair, decision-guard review, or operator input.
 - **Run Next**: execute just the active Runebook card when the operator wants a single bounded step.
-- **Worker Dispatch**: inspect claimable and leased worker packets with assigned agent, model, scope, evidence contract, lease, and claim idempotency metadata.
+- **Worker Dispatch**: inspect and claim worker packets with assigned agent, model, scope, evidence contract, lease, and claim idempotency metadata.
 - **Proof Plan**: see the exact verification commands Runesmith wants next, including focused diagnostic reruns and Runescope impacted tests before broad proof.
 - **Proof Runner**: run the active proof plan from the dashboard and persist the resulting proof or diagnostic evidence.
 - **Risk Resolver**: when Loop Pulse says `Resolve risk`, record the decision and re-enter the shared mission loop from the dashboard or OpenCode tool.
@@ -326,6 +326,18 @@ bun packages/cli/src/index.ts mission inspect <mission-id>
 
 `mission inspect` prints the mission status, Loop Pulse next action, Proof Plan commands, Mission Map tasks, Agent Mesh-backed Plan Contract status, Dispatch Matrix slots, Worker Dispatch packets, Scope Sentinel changes, Redline Proof ordering, Repair Contract status, Review Lens findings, Seal Audit checks, active Runebook card, required and missing evidence, active diagnostics, active runes, task list, evidence ledger entries, and active leases for that mission. Repeated failed proof appears as `Review faultline` with the Faultline card and protocol, so terminal users see the same architecture breakpoint as OpenCode and the dashboard.
 
+Claim the next executable Worker Dispatch packet without looking up mission or task ids:
+
+```bash
+bun packages/cli/src/index.ts worker claim
+```
+
+Pass a packet id only when replaying or selecting a specific visible packet:
+
+```bash
+bun packages/cli/src/index.ts worker claim worker_mission_alpha_task_alpha_agent_atlas
+```
+
 Runesmith stores the default runtime capsule at `.runesmith/runtime/capsule.json`. Change `.runesmith/config.json` `runtimeDir` to move the capsule; OpenCode startup, `runesmith status`, `doctor`, mission commands, and the packaged dashboard API all follow that config. The CLI still accepts `--snapshot <path>` for explicit exports, but normal usage does not require it.
 
 ## OpenCode
@@ -411,6 +423,7 @@ Once installed and OpenCode is restarted, users do not need to invoke a workflow
 - `runesmith_plan_refine`: remaps a thin mission into ordered proof-backed slices, records the planning decision, persists the capsule, and advances the loop so independent ready work is claimed automatically.
 - `runesmith_os_run`: run Runeweave, repeatedly executing engine-owned Runebook cards until sealed or stopped by implementation work, failed proof, Faultline, risk, blocker, idle state, or safety limit.
 - `runesmith_next`: run the active Runebook card from one tool, including proof execution, repair proof, recovery, supplied risk or Faultline decision application, or normal loop advancement.
+- `runesmith_worker_claim`: claim the next or selected Worker Dispatch packet without raw mission/task ids, using the packet's assigned contract, holder, idempotency key, and lease TTL.
 - `runesmith_autopilot_tick`: manually run the same evidence-gated advance loop and return the live Loop Pulse and Proof Plan, including repair diagnostics, Faultline breakpoints when repeated verification failed, and risk holds when unresolved risk needs a later decision.
 - `runesmith_proof_run`: execute the active Proof Plan inside OpenCode, record proof or diagnostics, and advance the mission when verification passes.
 - `runesmith_risk_resolve`: record a decision for the active unresolved risk and advance the shared mission loop without raw evidence plumbing.

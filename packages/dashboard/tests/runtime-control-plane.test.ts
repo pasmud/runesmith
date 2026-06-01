@@ -367,6 +367,50 @@ describe("dashboard runtime control plane", () => {
     })
   })
 
+  test("claims a Worker Dispatch packet from dashboard runtime control", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.startMission({
+      goal: "Claim worker packet from dashboard",
+      taskPlan: [
+        {
+          key: "forge",
+          title: "Forge: dashboard worker claim",
+          description: "Claim a worker packet from dashboard control.",
+          requiredCapabilities: ["typescript", "testing"],
+          requiredEvidence: ["file-change", "test-result"],
+        },
+      ],
+    })
+
+    const result = await applyDashboardRuntimeAction(runtime.snapshot(), {
+      type: "claim-worker-packet",
+    }, {
+      idFactory: ids,
+      now: fixedNow,
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        action: "claim-worker-packet",
+        missionId: "mission_alpha",
+        taskId: "task_alpha",
+        status: "running",
+        workerClaim: {
+          packetId: "worker_mission_alpha_task_alpha_agent_atlas",
+          agentId: "agent_atlas",
+          leaseId: "lease_alpha",
+          replayed: false,
+        },
+      },
+    })
+    if (!result.ok) return
+    expect(result.value.snapshot.graphs.mission_alpha.tasks.task_alpha).toMatchObject({
+      status: "running",
+      assignedAgentId: "agent_atlas",
+    })
+  })
+
   test("runs next action as automatic plan refinement for thin dashboard missions", async () => {
     const forged = await applyDashboardRuntimeAction(emptySnapshot, {
       type: "forge-directive",

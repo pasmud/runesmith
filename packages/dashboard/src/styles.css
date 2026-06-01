@@ -1521,6 +1521,11 @@ svg {
   white-space: nowrap;
 }
 
+.dispatch-action {
+  width: 100%;
+  margin-top: 10px;
+}
+
 .dispatch-slots {
   display: grid;
   gap: 7px;

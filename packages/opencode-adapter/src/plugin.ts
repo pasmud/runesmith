@@ -16,6 +16,7 @@ import {
   buildScopeSentinelPrompt,
   buildSealAuditPrompt,
   buildWorkerDispatchPrompt,
+  claimWorkerDispatchPacket,
   createRunesmithAgentContracts,
   createRuntime,
   createRunicCovenant,
@@ -96,6 +97,7 @@ export type RunesmithPlugin = {
     runesmith_proof_run: ToolDefinition<ProofRunArgs>
     runesmith_risk_resolve: ToolDefinition<RiskResolveArgs>
     runesmith_faultline_resolve: ToolDefinition<FaultlineResolveArgs>
+    runesmith_worker_claim: ToolDefinition<WorkerClaimArgs>
     runesmith_covenant_status: ToolDefinition<CovenantStatusArgs>
     runesmith_mission_start: ToolDefinition<MissionStartArgs>
     runesmith_mission_status: ToolDefinition<MissionStatusArgs>
@@ -175,6 +177,12 @@ type RiskResolveArgs = {
 type FaultlineResolveArgs = {
   summary?: string
   evidenceId?: string
+}
+
+type WorkerClaimArgs = {
+  packetId?: string
+  holder?: string
+  ttlMs?: number
 }
 
 type MissionStartArgs = {
@@ -408,6 +416,30 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             idFactory: options.idFactory,
             now: options.now,
             args,
+          })
+        },
+      },
+      runesmith_worker_claim: {
+        description:
+          "Claim the next or selected Worker Dispatch packet without requiring raw mission or task ids.",
+        parameters: objectSchema({
+          packetId: stringSchema("Optional Worker Dispatch packet id. If omitted, Runesmith claims the next claimable packet."),
+          holder: stringSchema("Optional lease holder override. Defaults to the packet's assigned worker holder."),
+          ttlMs: numberSchema("Optional lease time to live in milliseconds."),
+        }),
+        async execute(args) {
+          const result = claimWorkerDispatchPacket(runtime, args)
+          if (!result.ok) return formatError("Worker packet claim rejected", result.error)
+
+          return persistAndFormat(options.runtimeStore, runtime, "Worker packet claimed", {
+            packetId: result.value.packetId,
+            missionId: result.value.missionId,
+            taskId: result.value.taskId,
+            agentId: result.value.agentId,
+            holder: result.value.holder,
+            leaseId: result.value.leaseId,
+            replayed: result.value.replayed,
+            workerDispatch: result.value.workerDispatch,
           })
         },
       },
@@ -1609,6 +1641,7 @@ function buildAutopilotPrompt(): string {
     "Use Runesmith Repair Contract during failed proof: keep the repair hypothesis-linked, one-variable, and tied to the exact failing command before broad proof.",
     "Prefer `runesmith_os_run` when you need Runesmith to keep executing engine-owned Runebook cards until the mission is sealed or a real stop condition appears.",
     "Prefer `runesmith_next` when you need Runesmith to execute the current Runebook card without choosing a lower-level tool.",
+    "Prefer `runesmith_worker_claim` when Worker Dispatch has claimable packets and you need the engine to claim one without raw mission or task ids.",
     "Prefer `runesmith_plan_refine` when Plan Contract is thin and you can express the work as concrete tasks with dependencies and required evidence.",
     "When proof is missing, call `runesmith_proof_run` to execute the live Runesmith Proof Plan before asking for completion. When Faultline is active, follow the architecture breakpoint before rerunning proof.",
     "When Loop Pulse says `Resolve risk`, call `runesmith_risk_resolve` with a short decision summary instead of asking the user to find mission ids or manually attach decision evidence.",
@@ -1704,7 +1737,7 @@ function buildMessageBootstrap(
     "Let Runesmith choose the procedure from runtime state.",
     "Before mutating coding work, use Runesmith to prepare or resume the active mission.",
     "If Plan Contract is thin, call runesmith_plan_refine with concrete proof-backed slices before broad implementation.",
-    "Prefer runesmith_os_run, runesmith_next, runesmith_plan_refine, runesmith_proof_run, runesmith_risk_resolve, or runesmith_faultline_resolve when runtime state makes them the next engine-owned action.",
+    "Prefer runesmith_os_run, runesmith_next, runesmith_worker_claim, runesmith_plan_refine, runesmith_proof_run, runesmith_risk_resolve, or runesmith_faultline_resolve when runtime state makes them the next engine-owned action.",
     "Do not ask the user to load skills or invoke workflows by name.",
     "</RUNESMITH_BOOTSTRAP>",
   ].join("\n")
