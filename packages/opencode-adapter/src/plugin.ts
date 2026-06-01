@@ -595,7 +595,8 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
         },
       },
       runesmith_task_evidence: {
-        description: "Attach manual evidence to the active mission task when automatic OpenCode hooks cannot infer it.",
+        description:
+          "Attach manual evidence to the active mission task when automatic OpenCode hooks cannot infer it. For Review or Seal, attach decision evidence only after Review Lens or Seal Audit says ready. Do not attach broad file/test summaries as Review or Seal evidence.",
         parameters: objectSchema({
           missionId: stringSchema("Optional mission id. If omitted, Runesmith targets the focused worker packet or active task."),
           taskId: stringSchema("Optional task id. If omitted, Runesmith targets the focused worker packet or active task."),
@@ -669,7 +670,8 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
         },
       },
       runesmith_task_complete: {
-        description: "Attempt to complete a task after required evidence validation.",
+        description:
+          "Attempt to complete a task after required evidence validation. Review and Seal tasks still run through Review Lens and Seal Audit; use runesmith_next or runesmith_autopilot_tick when those gates can decide autonomously.",
         parameters: objectSchema({
           missionId: stringSchema("Optional mission id. If omitted, Runesmith targets the focused worker packet or active task."),
           taskId: stringSchema("Optional task id. If omitted, Runesmith targets the focused worker packet or active task."),
@@ -1871,6 +1873,7 @@ function buildAutopilotPrompt(): string {
     "When the user asks for coding, repo, debugging, UI, or research-to-implementation work, call `runesmith_autopilot_prepare` with the latest user goal or message list before starting edits.",
     "If you reach a session-idle point before preparation, Runesmith can infer the latest user goal from chat context and prepare the mission automatically.",
     "Continue under the returned mission, task, and lease. New autopilot missions are planned as Forge, Review, and Seal tasks. Runesmith records shell, test, file-change, and safe Covenant decision evidence automatically; use `runesmith_task_evidence` for risks, diagnostics, external proof, or decisions the tool hooks cannot infer. When the active task is obvious, you can pass only a summary or description; Runesmith resolves the active mission and task.",
+    "For Review or Seal, prefer `runesmith_next`, `runesmith_os_run`, or `runesmith_autopilot_tick`. Attach manual decision evidence only after Review Lens or Seal Audit says ready. Do not attach broad file/test summaries as Review or Seal evidence.",
     "Follow the active Runesmith Runebook card and Active runes as automatic procedure, not as user-invoked workflows.",
     "Use Runesmith Plan Contract as the plan-quality signal: if the map is thin, call `runesmith_plan_refine` with concrete proof-backed execution slices before broad autonomous work. That records the planning decision, remaps the mission, and lets the shared loop claim independent ready slices.",
     "Use Runesmith Dispatch Matrix as the agent-routing signal: claim only ready slots, respect active leases, and parallelize only independent ready work with matching contracts.",

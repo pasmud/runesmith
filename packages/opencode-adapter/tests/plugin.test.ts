@@ -919,6 +919,25 @@ describe("opencode adapter", () => {
     expect(compactOutput.context.join("\n")).toContain("Handoff:")
   })
 
+  test("guides Review and Seal through decision gates instead of broad manual evidence", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({ runtime })
+
+    expect(plugin.tool.runesmith_task_evidence.description).toContain("Review or Seal")
+    expect(plugin.tool.runesmith_task_evidence.description).toContain("decision")
+    expect(plugin.tool.runesmith_task_evidence.description).toContain("Do not attach broad file/test summaries")
+    expect(plugin.tool.runesmith_task_complete.description).toContain("Review Lens")
+    expect(plugin.tool.runesmith_task_complete.description).toContain("Seal Audit")
+
+    const systemOutput = { system: ["Base system prompt"] }
+    await plugin["experimental.chat.system.transform"]?.({}, systemOutput)
+    const prompt = systemOutput.system.join("\n")
+
+    expect(prompt).toContain("Review or Seal")
+    expect(prompt).toContain("Do not attach broad file/test summaries")
+    expect(prompt).toContain("Review Lens or Seal Audit says ready")
+  })
+
   test("injects a compact Runesmith bootstrap into the first OpenCode user message once", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const plugin = createRunesmithPlugin({ runtime })

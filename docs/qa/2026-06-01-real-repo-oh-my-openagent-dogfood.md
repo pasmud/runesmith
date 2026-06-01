@@ -96,3 +96,10 @@ Evidence ledger highlights:
 ## Remaining Follow-Up
 
 The run exposed one non-blocking ergonomics issue: after runtime advanced to the seal task, the model attached a broad manual evidence note (`file-change and test-result evidence`) to the seal task before adding the required seal decision. The gate behaved correctly and rejected completion until decision evidence existed, but the tool guidance should make seal/review evidence expectations more obvious.
+
+Follow-up fix:
+
+- `runesmith_task_evidence` now explicitly says Review or Seal should receive decision evidence only after Review Lens or Seal Audit says ready.
+- `runesmith_task_complete` now tells OpenCode that Review and Seal still run through Review Lens and Seal Audit, and to use `runesmith_next` or `runesmith_autopilot_tick` when those gates can decide autonomously.
+- The injected Runesmith Autopilot prompt now says not to attach broad file/test summaries as Review or Seal evidence.
+- Regression test: `guides Review and Seal through decision gates instead of broad manual evidence`.
