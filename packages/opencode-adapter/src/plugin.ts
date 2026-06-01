@@ -650,6 +650,17 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           })
           if (!result.ok) return formatError("Evidence rejected", result.error)
 
+          const graph = runtime.snapshot().graphs[target.missionId]
+          const task = graph?.tasks[target.taskId]
+          if (isGuardedCovenantTask(task, Object.values(graph?.tasks ?? {}))) {
+            return advanceAutopilotLoop({
+              runtime,
+              proofPlanOptions: options.proofPlanOptions || undefined,
+              runtimeStore: options.runtimeStore,
+              recoverStale: false,
+            })
+          }
+
           return persistAndFormat(options.runtimeStore, runtime, "Evidence recorded", {
             missionId: target.missionId,
             taskId: target.taskId,

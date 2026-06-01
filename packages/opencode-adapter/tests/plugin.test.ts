@@ -465,6 +465,98 @@ describe("opencode adapter", () => {
     expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("running")
   })
 
+  test("manual seal decision evidence advances a clear Covenant mission without a second tool call", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({ runtime })
+
+    runtime.startMission({
+      goal: "Seal after manual evidence from OpenCode",
+      taskPlan: createCovenantTaskPlan("Seal after manual evidence from OpenCode"),
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed OpenCode adapter",
+        payload: { files: ["packages/opencode-adapter/src/plugin.ts"] },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "OpenCode adapter tests passed",
+        payload: { command: "bun test packages/opencode-adapter/tests/plugin.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.completeTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha_review",
+      contractId: "agent_oracle",
+      holder: "oracle",
+      idempotencyKey: "claim-task-alpha-review",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_review_decision",
+        taskId: "task_alpha_review",
+        type: "decision",
+        summary: "Review approved verified adapter evidence",
+        payload: { stage: "review", verdict: "approved" },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+    runtime.completeTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha_review",
+      contractId: "agent_oracle",
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha_seal",
+      contractId: "agent_steward",
+      holder: "steward",
+      idempotencyKey: "claim-task-alpha-seal",
+      ttlMs: 30_000,
+    })
+
+    const evidence = await plugin.tool.runesmith_task_evidence.execute({
+      description: "Seal decision evidence - mission complete",
+    } as any)
+
+    expect(JSON.parse(evidence.output)).toMatchObject({
+      ok: true,
+      value: {
+        status: "completed",
+        taskId: "task_alpha_seal",
+        missionStatus: "complete",
+      },
+    })
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha_seal.status).toBe("complete")
+    expect(runtime.snapshot().graphs.mission_alpha.mission.status).toBe("complete")
+  })
+
   test("exposes the Runic Covenant and injects it into OpenCode once", async () => {
     const plugin = createRunesmithPlugin()
 
