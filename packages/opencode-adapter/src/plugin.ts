@@ -54,6 +54,7 @@ import {
   type EvidenceType,
   type IdFactory,
   type MissionEvent,
+  type MissionTask,
   type MissionTaskPlanItem,
   type ProofCommandExecution,
   type ProofCommandRunner,
@@ -676,8 +677,17 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
               },
             })
           }
-          const task = runtime.snapshot().graphs[target.missionId]?.tasks[target.taskId]
+          const graph = runtime.snapshot().graphs[target.missionId]
+          const task = graph?.tasks[target.taskId]
           const contractId = normalizeGoal(args.contractId) ?? task?.assignedAgentId ?? defaultAtlasContract.id
+          if (isGuardedCovenantTask(task, Object.values(graph?.tasks ?? {}))) {
+            return advanceAutopilotLoop({
+              runtime,
+              proofPlanOptions: options.proofPlanOptions || undefined,
+              runtimeStore: options.runtimeStore,
+              recoverStale: false,
+            })
+          }
           const result = runtime.completeTask({
             missionId: target.missionId,
             taskId: target.taskId,
@@ -1087,6 +1097,16 @@ function summarizeManualEvidenceValue(value: unknown): string | undefined {
   } catch {
     return undefined
   }
+}
+
+function isGuardedCovenantTask(task: MissionTask | undefined, missionTasks: MissionTask[]): boolean {
+  const title = normalizeGoal(task?.title)?.toLowerCase()
+  if (!title?.startsWith("review:") && !title?.startsWith("seal:")) return false
+
+  const titles = missionTasks.map((missionTask) => normalizeGoal(missionTask.title)?.toLowerCase())
+  return titles.some((missionTitle) => missionTitle?.startsWith("forge:"))
+    && titles.some((missionTitle) => missionTitle?.startsWith("review:"))
+    && titles.some((missionTitle) => missionTitle?.startsWith("seal:"))
 }
 
 type RecordToolExecutionEvidenceInput = {
