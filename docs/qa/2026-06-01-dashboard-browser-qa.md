@@ -120,3 +120,28 @@ Observed result:
 - Dashboard test suite passed: 40 tests, 0 failures.
 - Full repo test suite passed: 311 tests, 0 failures.
 - Typecheck, production build, package dry-run, and diff whitespace check completed successfully.
+
+## Follow-Up Adapter Evidence QA
+
+After guarded OpenCode evidence was changed so manual Review/Seal decision evidence re-enters the shared loop immediately, the dashboard was smoke-tested again against the current local dev server.
+
+Environment:
+
+- URL: `http://127.0.0.1:5173/`
+- Browser path: Codex in-app Browser for DOM, console, and click checks.
+- Runtime state shown: sealed OpenCode dogfood capsule with Forge, Review, and Seal tasks complete.
+
+Flow under test:
+
+`dashboard loads current runtime capsule -> sidebar navigation remains interactive -> Snapshot and Run next controls remain responsive -> sealed Mission Map and Plan Contract remain visible -> console stays clean`
+
+Evidence:
+
+- Page identity: `Runesmith Mission Control` at `http://127.0.0.1:5173/`.
+- DOM snapshot contained the OpenClaw-style Runesmith OS shell, Home/Agents/Covenant/Policies/Snapshots navigation, Capsule, Snapshot, Run OS, Run next, Run proof, Autopilot cycle, mission lanes, Mission Map, Plan Contract, and live capsule artifact.
+- Navigation clicks exercised: Agents, Covenant, Policies, Snapshots, Home.
+- Runtime control clicks exercised: Run next and Snapshot.
+- Run next returned `Autopilot found no pending work.` for the sealed capsule.
+- Snapshot created a `Manual checkpoint` artifact without console errors.
+- Console health: no browser console errors after load, navigation, Run next, or Snapshot.
+- The in-app Browser could not type into the Mission directive input because its virtual clipboard was unavailable. The typed Forge flow remains covered by `packages/dashboard/tests/runtime-control-plane.test.ts` and `packages/dashboard/tests/dashboard-model.test.ts`; a future browser QA run should repeat typed Forge with a browser backend that supports text input.
