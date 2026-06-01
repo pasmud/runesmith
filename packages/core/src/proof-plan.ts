@@ -1,7 +1,10 @@
 import { createRunicCovenant, type RunicCovenant } from "./covenant.js"
+import { getRequiredEvidenceForTask } from "./contracts.js"
 import { deriveLoopPulse, type LoopPulse } from "./loop-pulse.js"
+import { missingRequiredEvidence } from "./evidence-ledger.js"
 import type { RuntimeSnapshot } from "./runtime.js"
 import type { Evidence, EvidenceType, MissionGraph, MissionTask } from "./types.js"
+import { selectWorkerEvidenceTarget, type WorkerEvidenceTarget } from "./worker-dispatch.js"
 
 export type ProofPlanStatus = "idle" | "not-needed" | "needs-proof" | "needs-repair"
 export type ProofPlanCommandKind =
@@ -34,6 +37,7 @@ export type ProofPlan = {
   handoff: string
   missionId?: string
   taskId?: string
+  workerDispatch?: WorkerEvidenceTarget
   missingEvidence: EvidenceType[]
   diagnostics: string[]
   commands: ProofPlanCommand[]
@@ -66,8 +70,9 @@ export function deriveProofPlan(
   const latestDiagnosticCommand = firstDiagnosticCommand(evidence)
   const latestPassingProofCommand = firstPassingTestCommand(evidence)
   const changedFiles = extractChangedFiles(evidence)
+  const missingEvidence = getMissingEvidence(snapshot, selected)
   const needsRepair = pulse.nextAction.id === "repair-diagnostic" || pulse.nextAction.id === "review-faultline"
-  const needsTestProof = pulse.missingEvidence.includes("test-result")
+  const needsTestProof = missingEvidence.includes("test-result")
   const commands = buildProofCommands({
     changedFiles,
     latestDiagnosticCommand: needsRepair ? latestDiagnosticCommand : undefined,
@@ -83,7 +88,8 @@ export function deriveProofPlan(
     handoff: buildHandoff(status, selected.task, commands),
     missionId: selected.graph.mission.id,
     taskId: selected.task.id,
-    missingEvidence: pulse.missingEvidence,
+    workerDispatch: selected.workerDispatch,
+    missingEvidence,
     diagnostics,
     commands,
   }
@@ -104,6 +110,7 @@ export function buildProofPlanPrompt(
     `Status: ${plan.status}`,
     `Mission: ${plan.missionId ?? "none"}`,
     `Task: ${plan.taskId ?? "none"}`,
+    `Worker packet: ${plan.workerDispatch?.packetId ?? "none"}`,
     `Handoff: ${plan.handoff}`,
     `Missing evidence: ${formatList(plan.missingEvidence)}`,
     `Diagnostics: ${formatList(plan.diagnostics)}`,
@@ -115,7 +122,14 @@ export function buildProofPlanPrompt(
 function selectProofTarget(
   snapshot: RuntimeSnapshot,
   pulse: LoopPulse,
-): { graph: MissionGraph; task: MissionTask } | undefined {
+): { graph: MissionGraph; task: MissionTask; workerDispatch?: WorkerEvidenceTarget } | undefined {
+  const workerDispatch = selectWorkerEvidenceTarget(snapshot)
+  if (workerDispatch) {
+    const graph = snapshot.graphs[workerDispatch.missionId]
+    const task = graph?.tasks[workerDispatch.taskId]
+    if (graph && task) return { graph, task, workerDispatch }
+  }
+
   const graph = pulse.missionId
     ? snapshot.graphs[pulse.missionId]
     : Object.values(snapshot.graphs).find((candidate) => !isTerminalMission(candidate))
@@ -127,6 +141,24 @@ function selectProofTarget(
   if (!task) return undefined
 
   return { graph, task }
+}
+
+function getMissingEvidence(
+  snapshot: RuntimeSnapshot,
+  selected: { graph: MissionGraph; task: MissionTask },
+): EvidenceType[] {
+  const contract = selected.task.assignedAgentId ? snapshot.contracts[selected.task.assignedAgentId] : undefined
+  const requiredEvidence = contract
+    ? getRequiredEvidenceForTask(selected.task, contract)
+    : selected.task.requiredEvidence ?? []
+  const ledger = snapshot.ledgers[selected.graph.mission.id]
+
+  if (!ledger) return requiredEvidence
+
+  return missingRequiredEvidence(ledger, {
+    taskId: selected.task.id,
+    requiredEvidence,
+  })
 }
 
 function buildProofCommands(input: {

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import {
   buildProofPlanPrompt,
+  claimWorkerDispatchPacket,
   createRuntime,
   deriveProofPlan,
   type AgentContract,
@@ -9,6 +10,16 @@ import {
 
 const fixedNow = () => new Date("2026-05-27T00:00:00.000Z")
 const ids = (prefix: string) => `${prefix}_alpha`
+
+function countingIds() {
+  const counts = new Map<string, number>()
+
+  return (prefix: string) => {
+    const next = (counts.get(prefix) ?? 0) + 1
+    counts.set(prefix, next)
+    return `${prefix}_${next}`
+  }
+}
 
 const atlas: AgentContract = {
   id: "agent_atlas",
@@ -24,6 +35,38 @@ const atlas: AgentContract = {
   completionCriteria: ["Code compiles", "Tests pass"],
   requiredEvidence: ["file-change", "test-result"],
   fallbacks: ["agent_oracle"],
+}
+
+const artificer: AgentContract = {
+  id: "agent_artificer",
+  displayName: "Artificer",
+  description: "UI implementation agent",
+  capabilities: ["typescript", "testing", "ui"],
+  allowedTools: ["read", "edit", "bash", "test"],
+  modelPolicy: {
+    primary: "anthropic/claude-sonnet-4.5",
+    fallbacks: ["openai/gpt-5.1-codex"],
+  },
+  fileScope: ["packages/dashboard/**"],
+  completionCriteria: ["UI renders", "Tests pass"],
+  requiredEvidence: ["file-change", "test-result"],
+  fallbacks: ["agent_atlas"],
+}
+
+const steward: AgentContract = {
+  id: "agent_steward",
+  displayName: "Steward",
+  description: "Planning agent",
+  capabilities: ["repository-maintenance"],
+  allowedTools: ["read", "edit"],
+  modelPolicy: {
+    primary: "openai/gpt-5.1-codex",
+    fallbacks: [],
+  },
+  fileScope: ["docs/**"],
+  completionCriteria: ["Decision recorded"],
+  requiredEvidence: ["decision"],
+  fallbacks: [],
 }
 
 const scripts = {
@@ -191,6 +234,129 @@ describe("proof plan", () => {
       label: "Run impacted test",
       reason: "Run the nearest proof target for changed file packages/core/src/proof-plan.ts before broad verification.",
     })
+  })
+
+  test("uses the focused Worker Dispatch packet as the proof target for parallel slices", () => {
+    let tick = 0
+    const now = () => new Date(Date.UTC(2026, 4, 27, 0, 0, tick++))
+    const runtime = createRuntime({
+      idFactory: countingIds(),
+      now,
+    })
+    runtime.registerContract(atlas)
+    runtime.registerContract(artificer)
+    runtime.registerContract(steward)
+    runtime.startMission({
+      goal: "Prove the focused worker slice",
+      taskPlan: [
+        {
+          key: "plan",
+          title: "Plan: focused proof",
+          description: "Record the worker proof boundary.",
+          requiredCapabilities: ["repository-maintenance"],
+          requiredEvidence: ["decision"],
+        },
+        {
+          key: "adapter-forge",
+          title: "Forge: adapter proof",
+          description: "Prove adapter work.",
+          requiredCapabilities: ["typescript", "testing"],
+          requiredEvidence: ["file-change", "test-result"],
+          dependsOn: ["plan"],
+        },
+        {
+          key: "dashboard-forge",
+          title: "Forge: dashboard proof",
+          description: "Prove dashboard work.",
+          requiredCapabilities: ["typescript", "testing", "ui"],
+          requiredEvidence: ["file-change", "test-result"],
+          dependsOn: ["plan"],
+        },
+      ],
+    })
+    runtime.claimTask({
+      missionId: "mission_1",
+      taskId: "task_1",
+      contractId: "agent_steward",
+      holder: "steward",
+      idempotencyKey: "plan-claim",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_1",
+      evidence: {
+        id: "evidence_plan",
+        taskId: "task_1",
+        type: "decision",
+        summary: "Focused proof boundary approved",
+        payload: {},
+        createdAt: "2026-05-27T00:00:01.000Z",
+      },
+    })
+    runtime.completeTask({
+      missionId: "mission_1",
+      taskId: "task_1",
+      contractId: "agent_steward",
+    })
+    const adapter = claimWorkerDispatchPacket(runtime, {
+      packetId: "worker_mission_1_task_1_adapter_forge_agent_atlas",
+    })
+    if (!adapter.ok) throw new Error(adapter.error.message)
+    const dashboard = claimWorkerDispatchPacket(runtime, {
+      packetId: "worker_mission_1_task_1_dashboard_forge_agent_artificer",
+    })
+    if (!dashboard.ok) throw new Error(dashboard.error.message)
+    const focused = claimWorkerDispatchPacket(runtime, {
+      packetId: "worker_mission_1_task_1_adapter_forge_agent_atlas",
+    })
+    if (!focused.ok) throw new Error(focused.error.message)
+    runtime.addTaskEvidence({
+      missionId: "mission_1",
+      evidence: {
+        id: "evidence_adapter_file",
+        taskId: "task_1_adapter_forge",
+        type: "file-change",
+        summary: "Changed adapter worker code",
+        payload: {
+          filePath: "packages/opencode-adapter/src/plugin.ts",
+          workerDispatch: {
+            packetId: "worker_mission_1_task_1_adapter_forge_agent_atlas",
+            agentId: "agent_atlas",
+            leaseId: "lease_2",
+          },
+        },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+
+    const plan = deriveProofPlan(runtime.snapshot(), {
+      packageManager: "bun@1.3.13",
+      scripts,
+      repositoryFiles: [
+        "packages/opencode-adapter/src/plugin.ts",
+        "packages/opencode-adapter/tests/plugin.test.ts",
+      ],
+    })
+
+    expect(plan).toMatchObject({
+      status: "needs-proof",
+      missionId: "mission_1",
+      taskId: "task_1_adapter_forge",
+      missingEvidence: ["test-result"],
+      workerDispatch: {
+        packetId: "worker_mission_1_task_1_adapter_forge_agent_atlas",
+        agentId: "agent_atlas",
+        holder: "runesmith-worker:agent_atlas",
+        leaseId: "lease_2",
+      },
+    })
+    expect(plan.commands.map((command) => command.command)).toEqual([
+      "bun test packages/opencode-adapter/tests/plugin.test.ts",
+      "bun run typecheck",
+      "bun test",
+      "bun run build",
+    ])
+    expect(plan.handoff).toBe("Run proof for task_1_adapter_forge: bun test packages/opencode-adapter/tests/plugin.test.ts -> bun run typecheck -> bun test -> bun run build.")
   })
 
   test("includes lint when the repository exposes a lint proof script", () => {

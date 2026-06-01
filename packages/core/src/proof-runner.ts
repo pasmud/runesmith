@@ -17,6 +17,7 @@ export type ProofRunCommandResult = {
   label: string
   exitCode: number
   evidenceType: EvidenceType
+  workerDispatch?: ProofPlan["workerDispatch"]
   stdout?: string
   stderr?: string
   stdoutTruncated?: boolean
@@ -71,6 +72,7 @@ export async function runProofPlan(
       label: command.label,
       exitCode: execution.exitCode,
       evidenceType,
+      workerDispatch: plan.workerDispatch,
       stdout: stdout.value,
       stderr: stderr.value,
       stdoutTruncated: stdout.truncated || undefined,
@@ -90,6 +92,7 @@ export async function runProofPlan(
           label: command.label,
           exitCode: execution.exitCode,
           mode: "runesmith-proof-runner",
+          ...(plan.workerDispatch ? { workerDispatch: plan.workerDispatch } : {}),
           stdout: stdout.value,
           stderr: stderr.value,
           stdoutTruncated: stdout.truncated || undefined,
