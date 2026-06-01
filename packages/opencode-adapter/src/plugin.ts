@@ -49,6 +49,7 @@ import {
   runtimeCapsulePathFromConfig,
   saveRuntimeCapsule,
   selectRunicLoopTask,
+  selectWorkerEvidenceTarget,
   type AgentContract,
   type EvidenceType,
   type IdFactory,
@@ -915,7 +916,8 @@ async function recordToolExecutionEvidence(input: RecordToolExecutionEvidenceInp
   if (!tool || tool.startsWith("runesmith_")) return
 
   const snapshot = input.runtime.snapshot()
-  const target = selectRunicLoopTask(snapshot)
+  const workerTarget = selectWorkerEvidenceTarget(snapshot)
+  const target = workerTarget ?? selectRunicLoopTask(snapshot)
   if (!target) return
 
   const args = extractToolArgs(input.input, input.output)
@@ -933,6 +935,16 @@ async function recordToolExecutionEvidence(input: RecordToolExecutionEvidenceInp
       payload: {
         tool,
         ...evidence.payload,
+        ...(workerTarget
+          ? {
+              workerDispatch: {
+                packetId: workerTarget.packetId,
+                agentId: workerTarget.agentId,
+                holder: workerTarget.holder,
+                leaseId: workerTarget.leaseId,
+              },
+            }
+          : {}),
       },
       createdAt: nowIso(input.now),
     },

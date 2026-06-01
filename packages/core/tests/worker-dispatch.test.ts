@@ -5,6 +5,7 @@ import {
   claimWorkerDispatchPacket,
   createRuntime,
   deriveWorkerDispatch,
+  selectWorkerEvidenceTarget,
   type AgentContract,
 } from "../src/index"
 
@@ -332,6 +333,48 @@ describe("worker dispatch", () => {
       packetId,
       leaseId: claimed.value.leaseId,
       replayed: true,
+    })
+  })
+
+  test("records a durable focused worker packet for evidence routing", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Route proof to focused worker",
+      taskPlan: [
+        {
+          key: "forge",
+          title: "Forge: focused proof",
+          description: "Capture proof on the focused worker packet.",
+          requiredCapabilities: ["typescript", "testing"],
+          requiredEvidence: ["file-change", "test-result"],
+        },
+      ],
+    })
+
+    const claimed = claimWorkerDispatchPacket(runtime)
+    if (!claimed.ok) throw new Error(claimed.error.message)
+    const target = selectWorkerEvidenceTarget(runtime.snapshot())
+
+    expect(target).toEqual({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      packetId: "worker_mission_alpha_task_alpha_agent_atlas",
+      agentId: "agent_atlas",
+      holder: "runesmith-worker:agent_atlas",
+      leaseId: "lease_alpha",
+    })
+    expect(runtime.snapshot().graphs.mission_alpha.events.at(-1)).toMatchObject({
+      type: "worker.dispatch.claimed",
+      targetId: "task_alpha",
+      message: "Worker Dispatch packet claimed",
+      data: {
+        packetId: "worker_mission_alpha_task_alpha_agent_atlas",
+        agentId: "agent_atlas",
+        holder: "runesmith-worker:agent_atlas",
+        leaseId: "lease_alpha",
+        replayed: false,
+      },
     })
   })
 

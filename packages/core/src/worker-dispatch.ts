@@ -67,6 +67,15 @@ export type ClaimWorkerDispatchPacketValue = {
   claim?: ClaimTaskValue
 }
 
+export type WorkerEvidenceTarget = {
+  missionId: string
+  taskId: string
+  packetId: string
+  agentId: string
+  holder: string
+  leaseId: string
+}
+
 const defaultWorkerLeaseTtlMs = 120_000
 
 export function deriveWorkerDispatch(snapshot: RuntimeSnapshot): WorkerDispatch {
@@ -150,6 +159,17 @@ export function claimWorkerDispatchPacket(
       )
     }
 
+    const focused = recordWorkerDispatchClaim(runtime, {
+      packetId: packet.id,
+      missionId: packet.missionId,
+      taskId: packet.taskId,
+      agentId: packet.agentId,
+      holder: lease.holder,
+      leaseId: lease.id,
+      replayed: true,
+    })
+    if (!focused.ok) return focused
+
     return ok({
       packetId: packet.id,
       missionId: packet.missionId,
@@ -183,6 +203,17 @@ export function claimWorkerDispatchPacket(
   })
   if (!claimed.ok) return claimed
 
+  const focused = recordWorkerDispatchClaim(runtime, {
+    packetId: packet.id,
+    missionId: packet.missionId,
+    taskId: packet.taskId,
+    agentId: packet.agentId,
+    holder: claimed.value.lease.holder,
+    leaseId: claimed.value.lease.id,
+    replayed: claimed.value.replayed,
+  })
+  if (!focused.ok) return focused
+
   return ok({
     packetId: packet.id,
     missionId: packet.missionId,
@@ -196,6 +227,64 @@ export function claimWorkerDispatchPacket(
     workerDispatch: deriveWorkerDispatch(runtime.snapshot()),
     claim: claimed.value,
   })
+}
+
+export function selectWorkerEvidenceTarget(snapshot: RuntimeSnapshot): WorkerEvidenceTarget | undefined {
+  const events = Object.values(snapshot.graphs)
+    .flatMap((graph) => graph.events.map((event, index) => ({ graph, event, index })))
+    .filter((entry) => entry.event.type === "worker.dispatch.claimed")
+    .sort((left, right) => {
+      return right.event.at.localeCompare(left.event.at) || right.index - left.index
+    })
+
+  for (const entry of events) {
+    const data = entry.event.data ?? {}
+    const packetId = stringValue(data.packetId)
+    const agentId = stringValue(data.agentId)
+    const holder = stringValue(data.holder)
+    const leaseId = stringValue(data.leaseId)
+    const taskId = stringValue(data.taskId) ?? entry.event.targetId
+    if (!packetId || !agentId || !holder || !leaseId || !taskId) continue
+
+    const task = entry.graph.tasks[taskId]
+    const lease = snapshot.leases.leases[leaseId]
+    if (!task || ["complete", "failed", "cancelled"].includes(task.status)) continue
+    if (!lease || lease.status !== "active" || lease.targetId !== taskId) continue
+
+    return {
+      missionId: entry.graph.mission.id,
+      taskId,
+      packetId,
+      agentId,
+      holder,
+      leaseId,
+    }
+  }
+
+  return undefined
+}
+
+function recordWorkerDispatchClaim(
+  runtime: RunesmithRuntime,
+  input: WorkerEvidenceTarget & { replayed: boolean },
+): Result<void> {
+  const recorded = runtime.recordMissionEvent({
+    missionId: input.missionId,
+    targetId: input.taskId,
+    type: "worker.dispatch.claimed",
+    message: "Worker Dispatch packet claimed",
+    data: {
+      packetId: input.packetId,
+      taskId: input.taskId,
+      agentId: input.agentId,
+      holder: input.holder,
+      leaseId: input.leaseId,
+      replayed: input.replayed,
+    },
+  })
+  if (!recorded.ok) return recorded
+
+  return ok(undefined)
 }
 
 function buildWorkerDispatchPacket(
@@ -307,4 +396,8 @@ function normalizeId(value: string): string {
 
 function formatList(values: string[]): string {
   return values.length > 0 ? values.join(", ") : "none"
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined
 }
