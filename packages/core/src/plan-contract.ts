@@ -2,7 +2,7 @@ import { deriveMissionMap, type MissionMapTask } from "./mission-map.js"
 import type { RuntimeSnapshot } from "./runtime.js"
 import type { EvidenceType, TaskStatus } from "./types.js"
 
-export type PlanContractStatus = "idle" | "thin" | "ready" | "blocked"
+export type PlanContractStatus = "idle" | "thin" | "ready" | "blocked" | "complete"
 
 export type PlanContractSlice = {
   id: string
@@ -58,6 +58,20 @@ export function derivePlanContract(snapshot: RuntimeSnapshot): PlanContract {
       missing,
       warnings: [],
       summary: `Plan contract blocked for ${map.missionId}: ${count} mapped task${count === 1 ? "" : "s"} ${count === 1 ? "lacks" : "lack"} required evidence.`,
+    }
+  }
+
+  if (isCompletePlanMap(planTasks)) {
+    return {
+      status: "complete",
+      missionId: map.missionId,
+      goal: map.goal,
+      taskCount: map.taskCount,
+      implementationTaskCount: implementationSlices.length,
+      executionSlices,
+      missing: [],
+      warnings: [],
+      summary: `Plan contract complete for ${map.missionId}: all ${map.taskCount} mapped task${map.taskCount === 1 ? " is" : "s are"} complete with required evidence.`,
     }
   }
 
@@ -160,6 +174,10 @@ function isStageOnlyCovenantMap(tasks: MissionMapTask[]): boolean {
 
   const keys = new Set(tasks.map((task) => task.key))
   return keys.has("forge") && keys.has("review") && keys.has("seal")
+}
+
+function isCompletePlanMap(tasks: MissionMapTask[]): boolean {
+  return tasks.length > 0 && tasks.every((task) => task.status === "complete")
 }
 
 function formatList(values: string[]): string {

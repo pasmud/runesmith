@@ -1450,6 +1450,11 @@ svg {
   background: #f5fff8;
 }
 
+.plan-contract-slices span[data-status="complete"] {
+  border-color: #cdebd8;
+  background: #f5fff8;
+}
+
 .plan-contract-slices strong {
   overflow: hidden;
   color: var(--ink);

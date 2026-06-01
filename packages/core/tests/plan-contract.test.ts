@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  advanceRunicMissionLoop,
   buildPlanContractPrompt,
   createCovenantTaskPlan,
   createRuntime,
@@ -15,7 +16,7 @@ const atlas: AgentContract = {
   id: "agent_atlas",
   displayName: "Atlas",
   description: "Implementation agent",
-  capabilities: ["typescript", "testing"],
+  capabilities: ["typescript", "testing", "repository-maintenance"],
   allowedTools: ["read", "edit", "test"],
   modelPolicy: {
     primary: "openai/gpt-5.1-codex",
@@ -86,6 +87,63 @@ describe("plan contract", () => {
       ["review", "queued"],
       ["seal", "queued"],
     ])
+  })
+
+  test("marks a completed Covenant map as complete instead of thin", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Ship a sealed app change",
+      taskPlan: createCovenantTaskPlan("Ship a sealed app change"),
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed implementation",
+        payload: { files: ["packages/core/src/plan-contract.ts"] },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Plan contract tests passed",
+        payload: { command: "bun test packages/core/tests/plan-contract.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    advanceRunicMissionLoop(runtime, {
+      contract: atlas,
+      holder: "runesmith-core-loop",
+      idempotencyScope: "core-loop",
+      ttlMs: 30_000,
+    })
+
+    const contract = derivePlanContract(runtime.snapshot())
+
+    expect(contract).toMatchObject({
+      status: "complete",
+      missionId: "mission_alpha",
+      taskCount: 3,
+      implementationTaskCount: 1,
+      missing: [],
+      warnings: [],
+      summary: "Plan contract complete for mission_alpha: all 3 mapped tasks are complete with required evidence.",
+    })
   })
 
   test("marks a decomposed mission map ready for execution", () => {
