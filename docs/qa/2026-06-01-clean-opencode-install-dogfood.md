@@ -189,3 +189,4 @@ Remaining production dogfood still needed before the full final goal is complete
 
 - Run an actual OpenCode `run` coding request with model credentials and capture file/shell/tool evidence through OpenCode hooks.
 - Dogfood against at least one additional real repository beyond the Runesmith checkout and the clean synthetic projects.
+- Keep install/recovery dogfood current after install-surface changes. The latest recovery run is recorded in `docs/qa/2026-06-01-install-recovery-dogfood.md`.

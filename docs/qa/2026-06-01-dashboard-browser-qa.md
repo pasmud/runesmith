@@ -50,7 +50,7 @@ The dogfood run generated a local runtime capsule with:
 
 ## Result
 
-Dashboard browser QA passed for the core OS flow above. The remaining QA coverage still needed before the full final goal is complete is a clean OpenCode-project install run plus dogfooding on additional real repositories with captured proof and docs updated from those runs.
+Dashboard browser QA passed for the core OS flow above. Clean OpenCode install and recovery dogfood are now recorded separately in `docs/qa/2026-06-01-clean-opencode-install-dogfood.md` and `docs/qa/2026-06-01-install-recovery-dogfood.md`. The remaining QA coverage still needed before the full final goal is complete is additional real-repository dogfooding with captured proof after each major runtime or UI change.
 
 ## Follow-Up Sealed Capsule QA
 

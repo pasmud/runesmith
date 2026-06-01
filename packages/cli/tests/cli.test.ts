@@ -1,9 +1,17 @@
 import { describe, expect, test } from "bun:test"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
 import { fileURLToPath } from "node:url"
 
 import { createMemoryHost, createNodeHost, runCli } from "../src/index"
 
 const dashboardDistIndexPath = fileURLToPath(new URL("../../dashboard/dist/index.html", import.meta.url))
+const validProjectConfig = JSON.stringify({
+  version: 1,
+  runtimeDir: ".runesmith/runtime",
+  defaultStaleAfterMs: 120000,
+})
 
 function extractOutputValue(stdout: string, key: string): string | undefined {
   const prefix = `${key}: `
@@ -89,6 +97,41 @@ const snapshot = {
 }
 
 describe("runesmith cli", () => {
+  test("node host writes basename OpenCode configs from clean project directories", async () => {
+    const projectDir = await mkdtemp(join(tmpdir(), "runesmith-cli-clean-"))
+
+    try {
+      const child = Bun.spawn([
+        "bun",
+        fileURLToPath(new URL("../src/index.ts", import.meta.url)),
+        "up",
+        "--mode",
+        "npm",
+        "--config",
+        "opencode.json",
+        "--package",
+        "runesmith@test",
+      ], {
+        cwd: projectDir,
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ])
+
+      expect(exitCode).toBe(0)
+      expect(stderr).toBe("")
+      expect(stdout).toContain("Runesmith OS")
+      expect(stdout).toContain("opencode config: opencode.json")
+      expect(await readFile(join(projectDir, "opencode.json"), "utf8")).toContain("\"runesmith@test\"")
+    } finally {
+      await rm(projectDir, { recursive: true, force: true })
+    }
+  })
+
   test("node host bounds noisy shell command output before returning to proof runner", async () => {
     const host = createNodeHost()
     const result = await host.runShellCommand!("node -e \"process.stdout.write('x'.repeat(120000))\"")
@@ -128,10 +171,30 @@ describe("runesmith cli", () => {
     })
   })
 
+  test("doctor reports corrupt project config as invalid", async () => {
+    const host = createMemoryHost(
+      {
+        ".runesmith/config.json": "{broken config",
+      },
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+      },
+    )
+
+    const result = await runCli(["doctor", "--mode", "npm", "--config", "opencode.json"], host)
+
+    expect(result.exitCode).toBe(1)
+    expect(result.stdout).toContain("config: invalid (.runesmith/config.json) - Project config is not valid JSON")
+    expect(result.stdout).toContain("status: incomplete")
+    expect(result.stdout).toContain("next: run `runesmith heal` to repair config, runtime, and OpenCode plugin wiring.")
+  })
+
   test("doctor fails with actionable readiness checks when install files are missing", async () => {
     const host = createMemoryHost(
       {
-        ".runesmith/config.json": "{}",
+        ".runesmith/config.json": validProjectConfig,
       },
       {
         commands: {
@@ -162,7 +225,7 @@ describe("runesmith cli", () => {
 
   test("doctor fails with an OpenCode install hint when the opencode command is missing", async () => {
     const host = createMemoryHost({
-      ".runesmith/config.json": "{}",
+      ".runesmith/config.json": validProjectConfig,
       ".runesmith/runtime/capsule.json": JSON.stringify({
         version: 1,
         updatedAt: "2026-05-27T00:00:00.000Z",

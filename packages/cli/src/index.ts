@@ -198,7 +198,10 @@ export function createNodeHost(): CliHost {
       return { exitCode, stdout, stderr }
     },
     async writeText(path: string, text: string): Promise<void> {
-      await mkdir(dirname(path), { recursive: true })
+      const parentDir = dirname(path)
+      if (parentDir && parentDir !== ".") {
+        await mkdir(parentDir, { recursive: true })
+      }
       await writeFile(path, text, "utf8")
     },
   }

@@ -96,13 +96,22 @@ async function checkDashboard(host: CliHost): Promise<DoctorCheck> {
 
 async function checkProjectConfig(host: CliHost): Promise<DoctorCheck> {
   const path = ".runesmith/config.json"
-  const found = await host.exists(path)
+  const config = await loadProjectConfig(host, path)
+  if (!config.ok) {
+    return {
+      label: "config",
+      path,
+      status: "invalid",
+      detail: config.error.message,
+      ok: false,
+    }
+  }
 
   return {
     label: "config",
     path,
-    status: found ? "found" : "missing",
-    ok: found,
+    status: config.value ? "found" : "missing",
+    ok: Boolean(config.value),
   }
 }
 
