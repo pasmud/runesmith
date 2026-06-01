@@ -192,6 +192,8 @@ bun run typecheck
 bun run build
 ```
 
+QA and dogfooding notes live in `docs/qa/`. The first dashboard browser QA run is recorded in `docs/qa/2026-06-01-dashboard-browser-qa.md` with the runtime-backed Forge, Refine Plan, and Run Next flow that was exercised against the local dashboard.
+
 Start the local Runesmith OS and a real mission in one command:
 
 ```bash
