@@ -8,6 +8,8 @@ import {
   createRunesmithAgentContracts,
   defaultRunesmithAgentContract,
   deriveDispatchMatrix,
+  deriveProofPlan,
+  selectWorkerEvidenceTarget,
   type IdFactory,
 } from "../src/index"
 
@@ -223,6 +225,95 @@ describe("runesmith agent mesh", () => {
       status: "serial",
       readySlotCount: 0,
       activeSlotCount: 2,
+    })
+  })
+
+  test("auto-focuses the worker packet returned by an engine-owned parallel claim", () => {
+    const runtime = createRuntime({
+      idFactory: deterministicIds(),
+      now: () => new Date("2026-05-27T00:00:00.000Z"),
+    })
+    for (const contract of createRunesmithAgentContracts()) {
+      runtime.registerContract(contract)
+    }
+    const started = runtime.startMission({
+      goal: "Focus auto-claimed worker packet",
+      taskPlan: [
+        {
+          key: "plan",
+          title: "Plan the worker focus boundary",
+          description: "Approve the independent worker slices.",
+          requiredCapabilities: ["repository-maintenance", "release"],
+          requiredEvidence: ["decision"],
+        },
+        {
+          key: "ui",
+          title: "Build the focused dashboard worker",
+          description: "Implement dashboard worker focus.",
+          requiredCapabilities: ["typescript", "ui"],
+          requiredEvidence: ["file-change", "test-result"],
+          dependsOn: ["plan"],
+        },
+        {
+          key: "release",
+          title: "Prepare focused release worker",
+          description: "Prepare release worker focus.",
+          requiredCapabilities: ["repository-maintenance", "release"],
+          requiredEvidence: ["decision"],
+          dependsOn: ["plan"],
+        },
+      ],
+    })
+    expect(started.ok).toBe(true)
+    if (!started.ok) return
+    const planClaim = runtime.claimTask({
+      missionId: started.value.missionId,
+      taskId: started.value.rootTaskId,
+      contractId: "agent_steward",
+      holder: "steward",
+      idempotencyKey: "claim-plan",
+      ttlMs: 30_000,
+    })
+    expect(planClaim.ok).toBe(true)
+    runtime.addTaskEvidence({
+      missionId: started.value.missionId,
+      evidence: {
+        id: "evidence_plan",
+        taskId: started.value.rootTaskId,
+        type: "decision",
+        summary: "Independent slices approved",
+        payload: { mode: "test" },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+
+    const advanced = advanceRunicMissionLoop(runtime, {
+      contract: defaultRunesmithAgentContract,
+      holder: "mesh-dispatch",
+      idempotencyScope: "dispatch",
+    })
+
+    expect(advanced).toMatchObject({
+      ok: true,
+      value: {
+        status: "waiting-for-evidence",
+        missionId: "mission_1",
+        taskId: "task_1_ui",
+      },
+    })
+    const target = selectWorkerEvidenceTarget(runtime.snapshot())
+    expect(target).toEqual({
+      missionId: "mission_1",
+      taskId: "task_1_ui",
+      packetId: "worker_mission_1_task_1_ui_agent_artificer",
+      agentId: "agent_artificer",
+      holder: "mesh-dispatch",
+      leaseId: "lease_2",
+    })
+    expect(deriveProofPlan(runtime.snapshot()).workerDispatch).toMatchObject({
+      packetId: "worker_mission_1_task_1_ui_agent_artificer",
+      taskId: "task_1_ui",
+      agentId: "agent_artificer",
     })
   })
 })

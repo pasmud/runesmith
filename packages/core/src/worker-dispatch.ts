@@ -53,6 +53,14 @@ export type ClaimWorkerDispatchPacketInput = {
   ttlMs?: number
 }
 
+export type FocusWorkerDispatchPacketInput = {
+  packetId?: string
+  missionId?: string
+  taskId?: string
+  agentId?: string
+  replayed?: boolean
+}
+
 export type ClaimWorkerDispatchPacketValue = {
   packetId: string
   missionId: string
@@ -227,6 +235,67 @@ export function claimWorkerDispatchPacket(
     workerDispatch: deriveWorkerDispatch(runtime.snapshot()),
     claim: claimed.value,
   })
+}
+
+export function focusWorkerDispatchPacket(
+  runtime: RunesmithRuntime,
+  input: FocusWorkerDispatchPacketInput,
+): Result<WorkerEvidenceTarget> {
+  const dispatch = deriveWorkerDispatch(runtime.snapshot())
+  const packet = input.packetId
+    ? dispatch.packets.find((candidate) => candidate.id === input.packetId)
+    : dispatch.packets.find((candidate) => {
+        return candidate.state === "leased"
+          && (!input.missionId || candidate.missionId === input.missionId)
+          && (!input.taskId || candidate.taskId === input.taskId)
+          && (!input.agentId || candidate.agentId === input.agentId)
+      })
+
+  if (!packet) {
+    return err(
+      runtimeError("INVALID_TRANSITION", "No leased Worker Dispatch packet is available to focus", {
+        packetId: input.packetId,
+        missionId: input.missionId,
+        taskId: input.taskId,
+        agentId: input.agentId,
+      }),
+    )
+  }
+
+  if (packet.state !== "leased") {
+    return err(
+      runtimeError("INVALID_TRANSITION", "Worker Dispatch packet must be leased before it can be focused", {
+        packetId: packet.id,
+        state: packet.state,
+      }),
+    )
+  }
+
+  const lease = runtime.snapshot().leases.leases[packet.leaseId ?? ""]
+  if (!lease) {
+    return err(
+      runtimeError("INVALID_TRANSITION", "Worker Dispatch packet lease is missing", {
+        packetId: packet.id,
+        leaseId: packet.leaseId,
+      }),
+    )
+  }
+
+  const target: WorkerEvidenceTarget = {
+    missionId: packet.missionId,
+    taskId: packet.taskId,
+    packetId: packet.id,
+    agentId: packet.agentId,
+    holder: lease.holder,
+    leaseId: lease.id,
+  }
+  const focused = recordWorkerDispatchClaim(runtime, {
+    ...target,
+    replayed: input.replayed ?? true,
+  })
+  if (!focused.ok) return focused
+
+  return ok(target)
 }
 
 export function selectWorkerEvidenceTarget(snapshot: RuntimeSnapshot): WorkerEvidenceTarget | undefined {

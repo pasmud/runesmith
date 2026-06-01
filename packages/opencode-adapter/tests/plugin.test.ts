@@ -1231,6 +1231,115 @@ describe("opencode adapter", () => {
     })
   })
 
+  test("routes OpenCode evidence to an engine-focused Worker Dispatch packet without a manual claim", async () => {
+    let tick = 0
+    const now = () => new Date(Date.UTC(2026, 4, 27, 0, 0, tick++))
+    const runtime = createRuntime({ idFactory: countingIds(), now })
+    const plugin = createRunesmithPlugin({
+      runtime,
+      now,
+    })
+
+    runtime.startMission({
+      goal: "Auto-focus engine-owned worker evidence",
+      taskPlan: [
+        {
+          key: "plan",
+          title: "Plan: automatic worker focus",
+          description: "Record the automatic worker focus boundary.",
+          requiredCapabilities: ["repository-maintenance"],
+          requiredEvidence: ["decision"],
+        },
+        {
+          key: "adapter-forge",
+          title: "Forge: adapter auto focus",
+          description: "Capture adapter proof without manual worker claim.",
+          requiredCapabilities: ["typescript", "testing"],
+          requiredEvidence: ["file-change", "test-result"],
+          dependsOn: ["plan"],
+        },
+        {
+          key: "dashboard-forge",
+          title: "Forge: dashboard auto focus",
+          description: "Capture dashboard proof without manual worker claim.",
+          requiredCapabilities: ["typescript", "testing", "ui"],
+          requiredEvidence: ["file-change", "test-result"],
+          dependsOn: ["plan"],
+        },
+      ],
+    })
+    runtime.claimTask({
+      missionId: "mission_1",
+      taskId: "task_1",
+      contractId: "agent_steward",
+      holder: "steward",
+      idempotencyKey: "plan-claim",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_1",
+      evidence: {
+        id: "evidence_plan",
+        taskId: "task_1",
+        type: "decision",
+        summary: "Automatic worker focus boundary approved",
+        payload: {},
+        createdAt: "2026-05-27T00:00:01.000Z",
+      },
+    })
+    runtime.completeTask({
+      missionId: "mission_1",
+      taskId: "task_1",
+      contractId: "agent_steward",
+    })
+
+    const next = await plugin.tool.runesmith_next.execute({})
+    expect(JSON.parse(next.output)).toMatchObject({
+      ok: true,
+      value: {
+        status: "advanced",
+        nextStatus: "claimed",
+        missionId: "mission_1",
+        taskId: "task_1_adapter_forge",
+        proofPlan: {
+          workerDispatch: {
+            packetId: "worker_mission_1_task_1_adapter_forge_agent_atlas",
+            agentId: "agent_atlas",
+            holder: "runesmith-autopilot",
+            leaseId: "lease_2",
+          },
+        },
+      },
+    })
+
+    await plugin["tool.execute.after"]?.(
+      {
+        tool: "edit",
+        args: { filePath: "packages/opencode-adapter/src/plugin.ts" },
+      },
+      {
+        result: { status: "changed" },
+      },
+    )
+
+    const evidence = Object.values(runtime.snapshot().ledgers.mission_1.evidence)
+      .filter((entry) => entry.type === "file-change")
+    expect(evidence).toHaveLength(1)
+    expect(evidence[0]).toMatchObject({
+      taskId: "task_1_adapter_forge",
+      payload: {
+        tool: "edit",
+        filePath: "packages/opencode-adapter/src/plugin.ts",
+        workerDispatch: {
+          packetId: "worker_mission_1_task_1_adapter_forge_agent_atlas",
+          agentId: "agent_atlas",
+          holder: "runesmith-autopilot",
+          leaseId: "lease_2",
+        },
+      },
+    })
+  })
+
   test("runs proof for the focused Worker Dispatch packet", async () => {
     let tick = 0
     const now = () => new Date(Date.UTC(2026, 4, 27, 0, 0, tick++))

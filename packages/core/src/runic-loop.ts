@@ -8,6 +8,7 @@ import { taskDependenciesComplete } from "./mission-graph.js"
 import { deriveReviewLens, summarizeReviewLens } from "./review-lens.js"
 import { deriveSealAudit, summarizeSealAudit } from "./seal-audit.js"
 import type { RunesmithRuntime, RuntimeSnapshot } from "./runtime.js"
+import { focusWorkerDispatchPacket } from "./worker-dispatch.js"
 import {
   err,
   ok,
@@ -137,6 +138,9 @@ export function advanceRunicMissionLoop(
     if (!claimedSlots.ok) return claimedSlots
     const claimedTask = claimedSlots.value.find((claimed) => claimed.id === target.taskId) ?? claimedSlots.value[0]
     if (claimedTask) {
+      const focused = focusRunicWorkerTask(runtime, target.missionId, claimedTask)
+      if (!focused.ok) return focused
+
       return ok({
         status: "claimed",
         missionId: target.missionId,
@@ -226,6 +230,9 @@ export function advanceRunicMissionLoop(
   if (!claimedReady.ok) return claimedReady
 
   if (claimedReady.value.length > 0) {
+    const focused = focusRunicWorkerTask(runtime, target.missionId, claimedReady.value[0]!)
+    if (!focused.ok) return focused
+
     return advanceRunicMissionLoop(runtime, options, depth + 1)
   }
 
@@ -449,6 +456,10 @@ function recoverRunicStaleWork(
     const claimedReady = claimReadyDispatchSlots(runtime, options, recoveredSnapshot, graph.mission.id)
     if (!claimedReady.ok) return claimedReady
     let claimed = claimedReady.value.find((claimedTask) => claimedTask.id === target?.taskId) ?? claimedReady.value[0]
+    if (claimed) {
+      const focused = focusRunicWorkerTask(runtime, graph.mission.id, claimed)
+      if (!focused.ok) return focused
+    }
     if (!claimed && target && task?.status === "queued") {
       const fallbackClaim = claimRunicTask(runtime, options, {
         missionId: target.missionId,
@@ -517,6 +528,28 @@ function claimRunicTask(
 
   if (!claimed.ok) return claimed
   return ok(claimed.value.task)
+}
+
+function focusRunicWorkerTask(
+  runtime: RunesmithRuntime,
+  missionId: string,
+  task: MissionTask,
+): Result<void> {
+  if (!task.assignedAgentId) return ok(undefined)
+
+  const focused = focusWorkerDispatchPacket(runtime, {
+    missionId,
+    taskId: task.id,
+    agentId: task.assignedAgentId,
+    replayed: false,
+  })
+  if (!focused.ok) {
+    if (focused.error.code === "INVALID_TRANSITION") return ok(undefined)
+
+    return focused
+  }
+
+  return ok(undefined)
 }
 
 function getMissingEvidence(
