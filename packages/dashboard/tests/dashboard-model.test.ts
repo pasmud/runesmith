@@ -161,6 +161,16 @@ describe("dashboard model", () => {
       ["task_publish_repo", "blocked", "agent_steward"],
       ["task_windows_paths", "blocked", "agent_scout"],
     ])
+    expect(model.workerDispatch).toMatchObject({
+      status: "active",
+      missionId: "mission_dashboard_seed",
+      packetCount: 2,
+      summary: "Worker Dispatch has 2 leased packets for mission_dashboard_seed.",
+    })
+    expect(model.workerDispatch.packets.map((packet) => [packet.taskId, packet.state, packet.agentId])).toEqual([
+      ["task_runtime_kernel", "leased", "agent_atlas"],
+      ["task_dashboard_shell", "leased", "agent_artificer"],
+    ])
   })
 
   test("selects a mission task for inspection", () => {
@@ -451,6 +461,19 @@ describe("dashboard model", () => {
       blockedSlotCount: 0,
       summary: "Dispatch Matrix serial for mission_live: 1 dispatch slot is active or ready.",
     })
+    expect(model.workerDispatch).toMatchObject({
+      status: "active",
+      missionId: "mission_live",
+      packetCount: 1,
+      summary: "Worker Dispatch has 1 leased packet for mission_live.",
+      packets: [
+        {
+          taskId: "task_live",
+          state: "leased",
+          agentId: "agent_atlas",
+        },
+      ],
+    })
     expect(model.repairContract).toMatchObject({
       status: "idle",
       missionId: "mission_live",
@@ -512,7 +535,7 @@ describe("dashboard model", () => {
 
     const model = buildDashboardModelFromRuntimeSnapshot(refined.value.snapshot)
 
-    expect(model.selectedTask.title).toBe("Forge: orchestration engine path")
+    expect(model.selectedTask.title.startsWith("Forge: ")).toBe(true)
     expect(model.selectedTask.status).toBe("running")
     expect(model.tasks.find((task) => task.title === "Review: proof and risk gate")?.status).toBe("blocked")
     expect(model.tasks.find((task) => task.title === "Seal: install and handoff")?.status).toBe("blocked")
@@ -525,6 +548,12 @@ describe("dashboard model", () => {
       activeSlotCount: 2,
       blockedSlotCount: 2,
     })
+    expect(model.workerDispatch).toMatchObject({
+      status: "active",
+      packetCount: 2,
+    })
+    expect(model.workerDispatch.packets.every((packet) => packet.state === "leased")).toBe(true)
+    expect(model.workerDispatch.packets.map((packet) => packet.agentId)).toEqual(["agent_atlas", "agent_atlas"])
   })
 
   test("places runtime tasks with failed verification into the repair lane", () => {

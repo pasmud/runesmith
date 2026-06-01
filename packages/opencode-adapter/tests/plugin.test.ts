@@ -234,6 +234,20 @@ describe("opencode adapter", () => {
           summary: "Dispatch Matrix serial for mission_alpha: 1 dispatch slot is active or ready.",
           activeSlotCount: 1,
         },
+        workerDispatch: {
+          status: "active",
+          summary: "Worker Dispatch has 1 leased packet for mission_alpha.",
+          packetCount: 1,
+          packets: [
+            {
+              id: "worker_mission_alpha_task_alpha_agent_atlas",
+              state: "leased",
+              taskId: "task_alpha",
+              agentId: "agent_atlas",
+              holder: "runesmith-autopilot",
+            },
+          ],
+        },
         sealAudit: {
           status: "collecting-proof",
           missionId: "mission_alpha",
@@ -454,6 +468,7 @@ describe("opencode adapter", () => {
     expect(systemOutput.system.join("\n")).toContain("Runesmith Mission Map")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Plan Contract")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Dispatch Matrix")
+    expect(systemOutput.system.join("\n")).toContain("Runesmith Worker Dispatch")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Scope Sentinel")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Redline Proof")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Repair Contract")
@@ -477,6 +492,7 @@ describe("opencode adapter", () => {
     expect(compactOutput.context.join("\n")).toContain("Runesmith Mission Map")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Plan Contract")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Dispatch Matrix")
+    expect(compactOutput.context.join("\n")).toContain("Runesmith Worker Dispatch")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Scope Sentinel")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Redline Proof")
     expect(compactOutput.context.join("\n")).toContain("Runesmith Repair Contract")
@@ -514,6 +530,7 @@ describe("opencode adapter", () => {
     expect(userParts[0].text).toContain("Active protocol: Pathfinder Intake Protocol")
     expect(userParts[0].text).toContain("Plan Contract: idle")
     expect(userParts[0].text).toContain("Dispatch Matrix: idle")
+    expect(userParts[0].text).toContain("Worker Dispatch: idle")
     expect(userParts[0].text).toContain("Redline Proof: idle")
     expect(userParts[0].text).toContain("Mission Memory:")
     expect(userParts[0].text).toContain("Repair Contract:")
@@ -662,6 +679,8 @@ describe("opencode adapter", () => {
     expect(prompt).toContain("Plan contract thin for mission_alpha")
     expect(prompt).toContain("Runesmith Dispatch Matrix")
     expect(prompt).toContain("Dispatch Matrix serial for mission_alpha")
+    expect(prompt).toContain("Runesmith Worker Dispatch")
+    expect(prompt).toContain("Worker Dispatch has 1 leased packet for mission_alpha.")
     expect(prompt).toContain("Runesmith Redline Proof")
     expect(prompt).toContain("Status: not-applicable")
     expect(prompt).toContain("Runesmith Repair Contract")

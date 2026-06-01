@@ -15,6 +15,7 @@ import {
   deriveRunebook,
   deriveScopeSentinel,
   deriveSealAudit,
+  deriveWorkerDispatch,
   createRunesmithAgentContractMap,
   createRunicPlanRefinementTaskPlan,
   defaultRunesmithAgentContract,
@@ -43,6 +44,7 @@ import {
   type RuntimeCapsule,
   type RuntimeSnapshot,
   type TaskStatus,
+  type WorkerDispatch,
 } from "@runesmith/core"
 
 export type MissionStatus = "running" | "verified" | "stale" | "blocked"
@@ -120,6 +122,7 @@ export type DashboardModel = {
   commandLog: CommandLogItem[]
   covenantStages: CovenantStage[]
   dispatchMatrix: DispatchMatrix
+  workerDispatch: WorkerDispatch
   loopPulse: LoopPulse
   missionMap: MissionMap
   missionMemory: MissionMemory
@@ -713,6 +716,9 @@ function deriveDashboardModel(input: {
   const dispatchMatrix = input.runtimeSnapshot
     ? deriveDispatchMatrix(input.runtimeSnapshot)
     : buildSeededDispatchMatrix(input.tasks)
+  const workerDispatch = input.runtimeSnapshot
+    ? deriveWorkerDispatch(input.runtimeSnapshot)
+    : buildSeededWorkerDispatch(input.tasks)
   const proofPlan = input.runtimeSnapshot
     ? deriveProofPlan(input.runtimeSnapshot)
     : buildSeededProofPlan(input.tasks)
@@ -743,6 +749,7 @@ function deriveDashboardModel(input: {
     activeCovenantStage,
     activeCovenantStageId: activeCovenantStage.id,
     dispatchMatrix,
+    workerDispatch,
     loopPulse,
     missionMap,
     missionMemory,
@@ -797,6 +804,14 @@ function buildSeededDispatchMatrix(tasks: TaskCard[]): DispatchMatrix {
   }
 
   return deriveDispatchMatrix(buildSeededRuntimeSnapshot(tasks))
+}
+
+function buildSeededWorkerDispatch(tasks: TaskCard[]): WorkerDispatch {
+  if (tasks.length === 0) {
+    return deriveWorkerDispatch(emptyRuntimeSnapshot())
+  }
+
+  return deriveWorkerDispatch(buildSeededRuntimeSnapshot(tasks))
 }
 
 function buildSeededReviewLens(tasks: TaskCard[]): ReviewLens {

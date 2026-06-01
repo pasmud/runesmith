@@ -24,6 +24,7 @@ import {
   deriveRunebook,
   deriveScopeSentinel,
   deriveSealAudit,
+  deriveWorkerDispatch,
   loadProjectConfig,
   loadRuntimeCapsule,
   prepareRunicMission,
@@ -57,6 +58,7 @@ import {
   type SealAudit,
   type RiskResolutionVerdict,
   type RuntimeSnapshot,
+  type WorkerDispatch,
 } from "@runesmith/core"
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
 import {
@@ -340,6 +342,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     const missionMap = deriveMissionMap(snapshot.value)
     const planContract = derivePlanContract(snapshot.value)
     const dispatchMatrix = deriveDispatchMatrix(snapshot.value)
+    const workerDispatch = deriveWorkerDispatch(snapshot.value)
     const scopeSentinel = deriveScopeSentinel(snapshot.value)
     const redlineProof = deriveRedlineProof(snapshot.value)
     const repairContract = deriveRepairContract(snapshot.value)
@@ -376,6 +379,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
       `Status: ${dispatchMatrix.status}`,
       `Summary: ${dispatchMatrix.summary}`,
       ...formatDispatchMatrixSlotLines(dispatchMatrix),
+      "Worker dispatch:",
+      `Status: ${workerDispatch.status}`,
+      `Summary: ${workerDispatch.summary}`,
+      ...formatWorkerDispatchPacketLines(workerDispatch),
       "Scope sentinel:",
       `Summary: ${scopeSentinel.summary}`,
       ...formatScopeSentinelChangeLines(scopeSentinel),
@@ -633,6 +640,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
   const missionMap = deriveMissionMap(snapshot)
   const planContract = derivePlanContract(snapshot)
   const dispatchMatrix = deriveDispatchMatrix(snapshot)
+  const workerDispatch = deriveWorkerDispatch(snapshot)
   const scopeSentinel = deriveScopeSentinel(snapshot)
   const redlineProof = deriveRedlineProof(snapshot)
   const repairContract = deriveRepairContract(snapshot)
@@ -658,6 +666,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     `mission map: ${formatMissionMapSummary(missionMap)}`,
     `plan contract: ${formatPlanContractSummary(planContract)}`,
     `dispatch matrix: ${formatDispatchMatrixSummary(dispatchMatrix)}`,
+    `worker dispatch: ${formatWorkerDispatchSummary(workerDispatch)}`,
     `scope sentinel: ${formatScopeSentinelSummary(scopeSentinel)}`,
     `redline proof: ${formatRedlineProofSummary(redlineProof)}`,
     `repair contract: ${formatRepairContractSummary(repairContract)}`,
@@ -1632,11 +1641,30 @@ function formatDispatchMatrixSummary(dispatchMatrix: DispatchMatrix): string {
   return `${dispatchMatrix.status}; ${dispatchMatrix.summary}`
 }
 
+function formatWorkerDispatchSummary(workerDispatch: WorkerDispatch): string {
+  return `${workerDispatch.status}; ${workerDispatch.summary}`
+}
+
 function formatDispatchMatrixSlotLines(dispatchMatrix: DispatchMatrix): string[] {
   if (dispatchMatrix.slots.length === 0) return ["- none"]
 
   return dispatchMatrix.slots.map((slot) => {
     return `- ${slot.lane} ${slot.key} ${slot.taskId}: agent=${slot.recommendedAgentId ?? "none"}; lease=${slot.activeLeaseId ?? "none"}; blockers=${formatList(slot.blockers)}`
+  })
+}
+
+function formatWorkerDispatchPacketLines(workerDispatch: WorkerDispatch): string[] {
+  if (workerDispatch.packets.length === 0) return ["- none"]
+
+  return workerDispatch.packets.map((packet) => {
+    return [
+      `- ${packet.state} ${packet.id}: agent=${packet.agentId}`,
+      `model=${packet.model}`,
+      `lease=${packet.leaseId ?? "none"}`,
+      `claim=${packet.claim?.idempotencyKey ?? "none"}`,
+      `evidence=${formatList(packet.requiredEvidence)}`,
+      `scope=${formatList(packet.fileScope)}`,
+    ].join("; ")
   })
 }
 

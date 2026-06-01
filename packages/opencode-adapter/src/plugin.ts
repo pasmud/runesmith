@@ -15,6 +15,7 @@ import {
   buildRunebookPrompt,
   buildScopeSentinelPrompt,
   buildSealAuditPrompt,
+  buildWorkerDispatchPrompt,
   createRunesmithAgentContracts,
   createRuntime,
   createRunicCovenant,
@@ -34,6 +35,7 @@ import {
   deriveRunebook,
   deriveScopeSentinel,
   deriveSealAudit,
+  deriveWorkerDispatch,
   prepareRunicMission,
   repairProjectConfig,
   repairRuntimeCapsule,
@@ -419,6 +421,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           const missionMap = deriveMissionMap(snapshot)
           const planContract = derivePlanContract(snapshot)
           const dispatchMatrix = deriveDispatchMatrix(snapshot)
+          const workerDispatch = deriveWorkerDispatch(snapshot)
           const scopeSentinel = deriveScopeSentinel(snapshot)
           const redlineProof = deriveRedlineProof(snapshot)
           const repairContract = deriveRepairContract(snapshot)
@@ -460,6 +463,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             missionMap,
             planContract,
             dispatchMatrix,
+            workerDispatch,
             scopeSentinel,
             redlineProof,
             repairContract,
@@ -637,6 +641,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             prompt = upsertPromptSection(prompt, buildMissionMapPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildPlanContractPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildDispatchMatrixPrompt(snapshot))
+            prompt = upsertPromptSection(prompt, buildWorkerDispatchPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildScopeSentinelPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildRedlineProofPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildRepairContractPrompt(snapshot))
@@ -658,6 +663,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       upsertSystemSection(output, buildMissionMapPrompt(snapshot))
       upsertSystemSection(output, buildPlanContractPrompt(snapshot))
       upsertSystemSection(output, buildDispatchMatrixPrompt(snapshot))
+      upsertSystemSection(output, buildWorkerDispatchPrompt(snapshot))
       upsertSystemSection(output, buildScopeSentinelPrompt(snapshot))
       upsertSystemSection(output, buildRedlineProofPrompt(snapshot))
       upsertSystemSection(output, buildRepairContractPrompt(snapshot))
@@ -1598,6 +1604,7 @@ function buildAutopilotPrompt(): string {
     "Follow the active Runesmith Runebook card and Active runes as automatic procedure, not as user-invoked workflows.",
     "Use Runesmith Plan Contract as the plan-quality signal: if the map is thin, call `runesmith_plan_refine` with concrete proof-backed execution slices before broad autonomous work. That records the planning decision, remaps the mission, and lets the shared loop claim independent ready slices.",
     "Use Runesmith Dispatch Matrix as the agent-routing signal: claim only ready slots, respect active leases, and parallelize only independent ready work with matching contracts.",
+    "Use Runesmith Worker Dispatch as the execution-packet signal: follow claimable packet contract, model, scope, evidence, lease, claim, and handoff metadata instead of asking the user for task IDs.",
     "Use Runesmith Redline Proof as the test-first/review-discipline signal: prefer focused failing proof or proof-file evidence before implementation edits when behavior is testable.",
     "Use Runesmith Repair Contract during failed proof: keep the repair hypothesis-linked, one-variable, and tied to the exact failing command before broad proof.",
     "Prefer `runesmith_os_run` when you need Runesmith to keep executing engine-owned Runebook cards until the mission is sealed or a real stop condition appears.",
@@ -1674,6 +1681,7 @@ function buildMessageBootstrap(
   const protocolDeck = deriveRunicProtocolDeck(snapshot, { proofPlanOptions, covenant })
   const planContract = derivePlanContract(snapshot)
   const dispatchMatrix = deriveDispatchMatrix(snapshot)
+  const workerDispatch = deriveWorkerDispatch(snapshot)
   const redlineProof = deriveRedlineProof(snapshot)
   const missionMemory = deriveMissionMemory(snapshot, covenant)
   const repairContract = deriveRepairContract(snapshot)
@@ -1687,6 +1695,7 @@ function buildMessageBootstrap(
     `Active protocol: ${protocolDeck.active.name} [${protocolDeck.active.mode}].`,
     `Plan Contract: ${planContract.status}; ${planContract.summary}`,
     `Dispatch Matrix: ${dispatchMatrix.status}; ${dispatchMatrix.summary}`,
+    `Worker Dispatch: ${workerDispatch.status}; ${workerDispatch.summary}`,
     `Redline Proof: ${redlineProof.status}; ${redlineProof.summary}`,
     `Mission Memory: ${missionMemory.status}; ${missionMemory.handoff}`,
     `Repair Contract: ${repairContract.status}; ${repairContract.summary}`,
@@ -1770,6 +1779,7 @@ function appendCompactionContext(
   upsertTextListSection(context, buildMissionMapPrompt(snapshot))
   upsertTextListSection(context, buildPlanContractPrompt(snapshot))
   upsertTextListSection(context, buildDispatchMatrixPrompt(snapshot))
+  upsertTextListSection(context, buildWorkerDispatchPrompt(snapshot))
   upsertTextListSection(context, buildScopeSentinelPrompt(snapshot))
   upsertTextListSection(context, buildRedlineProofPrompt(snapshot))
   upsertTextListSection(context, buildRepairContractPrompt(snapshot))

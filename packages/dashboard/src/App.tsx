@@ -726,6 +726,7 @@ function RightRail({
       <MissionMapPanel model={model} />
       <PlanContractPanel controlLoading={controlLoading} model={model} runRuntimeControl={runRuntimeControl} />
       <DispatchMatrixPanel model={model} />
+      <WorkerDispatchPanel model={model} />
       <ScopeSentinelPanel model={model} />
       <RedlineProofPanel model={model} />
       <RepairContractPanel model={model} />
@@ -946,6 +947,52 @@ function DispatchMatrixPanel({ model }: { model: DashboardModel }) {
           <span data-lane={matrix.status === "blocked" ? "blocked" : "complete"}>
             <strong>No dispatch slots</strong>
             <small>{matrix.summary}</small>
+          </span>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function WorkerDispatchPanel({ model }: { model: DashboardModel }) {
+  const dispatch = model.workerDispatch
+  const tone: MissionStatus =
+    dispatch.status === "blocked"
+      ? "blocked"
+      : dispatch.status === "parallel-ready" || dispatch.status === "active"
+        ? "running"
+        : dispatch.status === "ready"
+          ? "stale"
+          : "verified"
+  const packets = dispatch.packets.slice(0, 3)
+
+  return (
+    <section className="dispatch-matrix-panel" aria-label="Runesmith worker dispatch">
+      <div className="inspector-header">
+        <p className="eyebrow">Worker Dispatch</p>
+        <Badge tone={tone}>{dispatch.status}</Badge>
+      </div>
+      <div className="dispatch-matrix-head">
+        <span className={`tile-icon tile-icon-${tone}`}><Command aria-hidden="true" /></span>
+        <div>
+          <h2>{dispatch.goal ?? "No workers"}</h2>
+          <p>{dispatch.summary}</p>
+        </div>
+      </div>
+      <div className="dispatch-matrix-counts">
+        <span>{dispatch.packetCount} packets</span>
+        <span>{dispatch.blockers.length} blockers</span>
+      </div>
+      <div className="dispatch-slots" aria-label="Worker dispatch packets">
+        {packets.length > 0 ? packets.map((packet) => (
+          <span data-lane={packet.state === "claimable" ? "ready" : "active"} key={packet.id}>
+            <strong>{packet.taskKey}</strong>
+            <small>{packet.agentName} - {packet.model}</small>
+          </span>
+        )) : (
+          <span data-lane={dispatch.status === "blocked" ? "blocked" : "complete"}>
+            <strong>No worker packets</strong>
+            <small>{dispatch.blockers[0] ?? dispatch.summary}</small>
           </span>
         )}
       </div>
