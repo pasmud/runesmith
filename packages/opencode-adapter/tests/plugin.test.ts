@@ -561,6 +561,34 @@ describe("opencode adapter", () => {
     expect(runtime.snapshot().graphs.mission_alpha.mission.goal).toBe("Build a bootstrap-safe mission loop")
   })
 
+  test("prepares from the latest transformed user goal when OpenCode calls autopilot with empty args", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({ runtime })
+    const output = {
+      messages: [
+        {
+          info: { role: "user" },
+          parts: [{ type: "text", text: "Add subtract support during opencode run" }],
+        },
+      ],
+    }
+
+    await plugin["experimental.chat.messages.transform"]?.({}, output)
+
+    const prepared = await plugin.tool.runesmith_autopilot_prepare.execute({})
+
+    expect(JSON.parse(prepared.output)).toMatchObject({
+      ok: true,
+      value: {
+        goal: "Add subtract support during opencode run",
+        missionId: "mission_alpha",
+      },
+    })
+    expect(runtime.snapshot().graphs.mission_alpha.mission.goal).toBe(
+      "Add subtract support during opencode run",
+    )
+  })
+
   test("sanitizes explicit goal values that accidentally include Runesmith bootstrap text", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const plugin = createRunesmithPlugin({ runtime })
@@ -1664,6 +1692,52 @@ describe("opencode adapter", () => {
       ]),
     )
     expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.status).toBe("running")
+  })
+
+  test("classifies OpenCode bash metadata exit zero as proof evidence", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({ runtime })
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Capture proof from real OpenCode bash output",
+    })
+
+    await plugin["tool.execute.after"]?.(
+      {
+        tool: "bash",
+        args: {
+          command: "npm test",
+          description: "Run npm test to verify changes",
+          workdir: "E:\\dev\\Oh-my\\runesmith-dogfood-opencode-run",
+        },
+      },
+      {
+        output: "> dogfood@0.0.0 test > node --test TAP version 13 # pass 2 # fail 0",
+        metadata: {
+          exit: 0,
+          output: "> dogfood@0.0.0 test > node --test TAP version 13 # pass 2 # fail 0",
+          description: "Run npm test to verify changes",
+          truncated: false,
+        },
+      } as OpenCodeToolOutput,
+    )
+
+    const evidence = Object.values(runtime.snapshot().ledgers.mission_alpha.evidence)
+    expect(evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task_alpha",
+          type: "test-result",
+          payload: expect.objectContaining({
+            command: "npm test",
+            exitCode: 0,
+            result: expect.objectContaining({
+              output: expect.stringContaining("# pass 2"),
+            }),
+          }),
+        }),
+      ]),
+    )
   })
 
   test("advances immediately after captured evidence satisfies the active task", async () => {

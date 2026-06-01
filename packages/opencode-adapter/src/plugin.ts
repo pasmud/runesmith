@@ -273,6 +273,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
   const proofPlanOptions = resolveProofPlanOptions(options.proofPlanOptions)
   const covenantPrompt = buildCovenantPrompt(covenant)
   const autopilotPrompt = buildAutopilotPrompt()
+  let latestUserGoal: string | undefined
   for (const contract of options.contracts ?? createRunesmithAgentContracts()) {
     runtime.registerContract(contract)
   }
@@ -292,6 +293,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             runtime,
             runtimeStore: options.runtimeStore,
             args,
+            fallbackGoal: latestUserGoal,
           })
         },
       },
@@ -708,6 +710,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       upsertSystemSection(output, buildProofPlanPrompt(snapshot, proofPlanOptions, covenant))
     },
     "experimental.chat.messages.transform"(_input, output) {
+      latestUserGoal = extractLatestUserGoal(output.messages) ?? latestUserGoal
       injectMessageBootstrap(output, runtime.snapshot(), covenant, proofPlanOptions)
     },
     "experimental.session.compacting"(_input, output) {
@@ -719,6 +722,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
         runtimeStore: options.runtimeStore,
         input,
         output,
+        fallbackGoal: latestUserGoal,
       })
     },
     async "tool.execute.after"(input, output) {
@@ -806,6 +810,7 @@ type PrepareAutopilotMissionInput = {
   runtime: RunesmithRuntime
   runtimeStore?: PluginRuntimeStore
   args: AutopilotPrepareArgs
+  fallbackGoal?: string
 }
 
 type RefinePlanFromOpenCodeInput = {
@@ -817,7 +822,9 @@ type RefinePlanFromOpenCodeInput = {
 }
 
 async function prepareAutopilotMission(input: PrepareAutopilotMissionInput): Promise<ToolResponse> {
-  const goal = normalizeGoal(input.args.goal) ?? extractLatestUserGoal(input.args.messages)
+  const goal = normalizeGoal(input.args.goal)
+    ?? extractLatestUserGoal(input.args.messages)
+    ?? input.fallbackGoal
   if (!goal) {
     return formatError("Autopilot preparation rejected", {
       code: "AUTOPILOT_GOAL_MISSING",
@@ -879,6 +886,7 @@ type PrepareBeforeToolExecutionInput = {
   runtimeStore?: PluginRuntimeStore
   input: OpenCodeToolInput
   output: OpenCodeToolOutput
+  fallbackGoal?: string
 }
 
 async function prepareBeforeToolExecution(input: PrepareBeforeToolExecutionInput): Promise<void> {
@@ -890,7 +898,10 @@ async function prepareBeforeToolExecution(input: PrepareBeforeToolExecutionInput
   if (selectRunicLoopTask(input.runtime.snapshot())) return
 
   const messages = extractMessages(input.input) ?? extractMessages(input.output)
-  const goal = normalizeGoal(input.input.goal) ?? normalizeGoal(input.output.goal) ?? extractLatestUserGoal(messages)
+  const goal = normalizeGoal(input.input.goal)
+    ?? normalizeGoal(input.output.goal)
+    ?? extractLatestUserGoal(messages)
+    ?? input.fallbackGoal
   if (!goal) return
 
   await prepareAutopilotMission({
@@ -1581,20 +1592,29 @@ function extractFilePath(args: Record<string, unknown>): string | undefined {
 }
 
 function extractExitCode(result: Record<string, unknown> | undefined): number | undefined {
-  const value = result?.exitCode ?? result?.code ?? result?.statusCode
+  const metadata = asRecord(result?.metadata)
+  const value = result?.exitCode
+    ?? result?.code
+    ?? result?.statusCode
+    ?? result?.exit
+    ?? metadata?.exitCode
+    ?? metadata?.code
+    ?? metadata?.statusCode
+    ?? metadata?.exit
   return typeof value === "number" ? value : undefined
 }
 
 function summarizeResult(result: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   if (!result) return undefined
+  const metadata = asRecord(result.metadata)
 
   return {
     exitCode: extractExitCode(result),
-    status: normalizeGoal(result.status),
-    stdout: truncateText(normalizeGoal(result.stdout), 1_000),
-    stderr: truncateText(normalizeGoal(result.stderr), 1_000),
-    output: truncateText(normalizeGoal(result.output), 1_000),
-    message: truncateText(normalizeGoal(result.message), 1_000),
+    status: normalizeGoal(result.status) ?? normalizeGoal(metadata?.status),
+    stdout: truncateText(normalizeGoal(result.stdout) ?? normalizeGoal(metadata?.stdout), 1_000),
+    stderr: truncateText(normalizeGoal(result.stderr) ?? normalizeGoal(metadata?.stderr), 1_000),
+    output: truncateText(normalizeGoal(result.output) ?? normalizeGoal(metadata?.output), 1_000),
+    message: truncateText(normalizeGoal(result.message) ?? normalizeGoal(metadata?.message), 1_000),
   }
 }
 
