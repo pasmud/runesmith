@@ -6,6 +6,7 @@ import {
   type RunicCovenant,
 } from "./covenant.js"
 import { derivePlanContract } from "./plan-contract.js"
+import { deriveRepairContract, type RepairContract } from "./repair-contract.js"
 import { deriveReviewLens } from "./review-lens.js"
 import type { RuntimeSnapshot } from "./runtime.js"
 import type { EvidenceType } from "./types.js"
@@ -108,8 +109,10 @@ export function deriveLoopPulse(
   }
 
   const decisionGuard = deriveDecisionGuardSignal(brief, snapshot)
-  const blockers = buildBlockers(brief.taskId, brief.taskStatus, brief.missingEvidence, brief.diagnostics, brief.risks, decisionGuard)
-  const nextAction = selectNextAction(brief, snapshot, decisionGuard)
+  const repairContract = deriveRepairContract(snapshot)
+  const diagnostics = mergeRepairDiagnostics(brief.diagnostics, repairContract)
+  const blockers = buildBlockers(brief.taskId, brief.taskStatus, brief.missingEvidence, diagnostics, brief.risks, decisionGuard)
+  const nextAction = selectNextAction(brief, snapshot, decisionGuard, repairContract)
 
   return {
     status: "active",
@@ -121,7 +124,7 @@ export function deriveLoopPulse(
     taskStatus: brief.taskStatus,
     requiredEvidence: brief.requiredEvidence,
     missingEvidence: brief.missingEvidence,
-    diagnostics: brief.diagnostics,
+    diagnostics,
     risks: brief.risks,
     runes: brief.runes,
     blockers,
@@ -210,10 +213,33 @@ function buildBlockers(
   return uniqueStrings(blockers)
 }
 
+function mergeRepairDiagnostics(diagnostics: string[], repairContract: RepairContract): string[] {
+  if (!isActiveRepairContract(repairContract)) return diagnostics
+
+  return uniqueStrings([
+    ...diagnostics,
+    repairContract.diagnostic ?? repairContract.summary,
+  ])
+}
+
+function isActiveRepairContract(repairContract: RepairContract): boolean {
+  return isFaultlineRepairContract(repairContract) || isUnresolvedRepairContract(repairContract)
+}
+
+function isFaultlineRepairContract(repairContract: RepairContract, missionId?: string): boolean {
+  return (!missionId || repairContract.missionId === missionId) && repairContract.status === "faultline"
+}
+
+function isUnresolvedRepairContract(repairContract: RepairContract, missionId?: string): boolean {
+  return (!missionId || repairContract.missionId === missionId)
+    && ["awaiting-repair", "ready-for-proof", "over-broad"].includes(repairContract.status)
+}
+
 function selectNextAction(
   brief: ReturnType<typeof deriveCovenantControlBrief>,
   snapshot: RuntimeSnapshot,
   decisionGuard: DecisionGuardSignal | undefined,
+  repairContract: RepairContract,
 ): LoopPulseAction {
   if (brief.taskStatus === "stale") {
     return {
@@ -239,6 +265,24 @@ function selectNextAction(
       label: "Resolve risk",
       priority: "critical",
       reason: "Unresolved risk evidence requires an explicit later decision before completion.",
+    }
+  }
+
+  if (isFaultlineRepairContract(repairContract, brief.missionId)) {
+    return {
+      id: "review-faultline",
+      label: "Review faultline",
+      priority: "critical",
+      reason: repairContract.summary,
+    }
+  }
+
+  if (isUnresolvedRepairContract(repairContract, brief.missionId)) {
+    return {
+      id: "repair-diagnostic",
+      label: "Repair diagnostic",
+      priority: "high",
+      reason: repairContract.summary,
     }
   }
 

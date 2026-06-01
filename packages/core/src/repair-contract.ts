@@ -62,17 +62,17 @@ export function deriveRepairContract(snapshot: RuntimeSnapshot): RepairContract 
     .slice(latestPassingProofBeforeDiagnosticIndex + 1, latestDiagnosticIndex + 1)
     .filter(isDiagnosticEvidence)
   const evidenceAfterDiagnostic = evidence.slice(latestDiagnosticIndex + 1)
-  const passingProofAfterDiagnostic = evidenceAfterDiagnostic.find(isPassingProof)
+  const diagnosticSummary = latestDiagnostic.summary.trim() || `diagnostic evidence ${latestDiagnostic.id}`
+  const failingCommand = extractCommand(latestDiagnostic)
+  const passingProofAfterDiagnostic = evidenceAfterDiagnostic.find((entry) => isPassingProofForCommand(entry, failingCommand))
   const repairChanges = collectRepairChanges(
     passingProofAfterDiagnostic
       ? evidenceAfterDiagnostic.slice(0, evidenceAfterDiagnostic.indexOf(passingProofAfterDiagnostic))
       : evidenceAfterDiagnostic,
   )
   const failedAttempts = diagnosticsSinceProof.length
-  const diagnosticSummary = latestDiagnostic.summary.trim() || `diagnostic evidence ${latestDiagnostic.id}`
-  const failingCommand = extractCommand(latestDiagnostic)
 
-  if (failedAttempts >= 3 && !passingProofAfterDiagnostic) {
+  if (failedAttempts >= 3 && !passingProofAfterDiagnostic && !hasFaultlineResolution(evidenceAfterDiagnostic)) {
     return {
       status: "faultline",
       missionId: graph.mission.id,
@@ -203,6 +203,12 @@ function collectRepairChanges(evidence: Evidence[]): string[] {
   const changes: string[] = []
 
   for (const entry of evidence) {
+    if (entry.type === "command-output" && isRepairCommandEvidence(entry)) {
+      const command = extractCommand(entry)
+      if (command) changes.push(`command:${command}`)
+      continue
+    }
+
     if (entry.type !== "file-change") continue
 
     for (const filePath of extractFilePaths(entry.payload)) {
@@ -216,8 +222,31 @@ function collectRepairChanges(evidence: Evidence[]): string[] {
 
 function latestRepairAt(evidence: Evidence[]): string | undefined {
   return evidence
-    .filter((entry) => entry.type === "file-change" && extractFilePaths(entry.payload).some(isImplementationFile))
+    .filter((entry) => {
+      return (entry.type === "file-change" && extractFilePaths(entry.payload).some(isImplementationFile))
+        || (entry.type === "command-output" && isRepairCommandEvidence(entry))
+    })
     .at(-1)?.createdAt
+}
+
+function isRepairCommandEvidence(evidence: Evidence): boolean {
+  if (evidence.type !== "command-output" || !isSuccessfulCommand(evidence)) return false
+
+  const command = extractCommand(evidence)?.toLowerCase()
+  if (!command) return false
+
+  return /\b(bun|npm|pnpm|yarn)\s+(install|i|ci)\b/.test(command)
+    || /\b(npm|pnpm|yarn)\s+rebuild\b/.test(command)
+    || /\bcorepack\s+/.test(command)
+}
+
+function hasFaultlineResolution(evidence: Evidence[]): boolean {
+  return evidence.some((entry) => {
+    if (entry.type !== "decision") return false
+
+    return entry.payload.mode === "runesmith-faultline-resolution"
+      || entry.summary.toLowerCase().startsWith("faultline path:")
+  })
 }
 
 function extractFilePaths(payload: Record<string, unknown>): string[] {
@@ -261,6 +290,17 @@ function isDiagnosticEvidence(evidence: Evidence): boolean {
 function isPassingProof(evidence: Evidence): boolean {
   if (evidence.type !== "test-result") return false
 
+  return isSuccessfulCommand(evidence)
+}
+
+function isPassingProofForCommand(evidence: Evidence, command: string | undefined): boolean {
+  if (!isPassingProof(evidence)) return false
+  if (!command) return true
+
+  return extractCommand(evidence) === command
+}
+
+function isSuccessfulCommand(evidence: Evidence): boolean {
   const exitCode = evidence.payload.exitCode
   if (typeof exitCode === "number") return exitCode === 0
 

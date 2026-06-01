@@ -454,6 +454,131 @@ describe("proof plan", () => {
     expect(prompt).toContain("1. Rerun failing command: bun test packages/core/tests/proof-plan.test.ts")
   })
 
+  test("targets unresolved Forge repair proof while the active task is Seal", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Do not seal failed proof",
+      taskPlan: [
+        {
+          key: "forge",
+          title: "Forge: do not seal failed proof",
+          description: "Implement and prove the change.",
+          requiredCapabilities: ["typescript", "testing"],
+          requiredEvidence: ["file-change", "test-result"],
+        },
+        {
+          key: "review",
+          title: "Review: do not seal failed proof",
+          description: "Review the change.",
+          requiredCapabilities: ["testing"],
+          requiredEvidence: ["decision"],
+          dependsOn: ["forge"],
+        },
+        {
+          key: "seal",
+          title: "Seal: do not seal failed proof",
+          description: "Seal the mission.",
+          requiredCapabilities: ["typescript", "testing"],
+          requiredEvidence: ["decision"],
+          dependsOn: ["review"],
+        },
+      ],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed proof planner",
+        payload: { files: ["packages/core/src/proof-plan.ts"] },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Proof planner tests passed",
+        payload: { command: "bun test packages/core/tests/proof-plan.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.completeTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha_review",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha-review",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_review",
+        taskId: "task_alpha_review",
+        type: "decision",
+        summary: "Review approved",
+        payload: { stage: "review", verdict: "approved" },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+    runtime.completeTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha_review",
+      contractId: "agent_atlas",
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha_seal",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha-seal",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_build_failure",
+        taskId: "task_alpha",
+        type: "diagnostic",
+        summary: "Build failed after review",
+        payload: { command: "bun run build", exitCode: 1 },
+        createdAt: "2026-05-27T00:03:00.000Z",
+      },
+    })
+
+    const plan = deriveProofPlan(runtime.snapshot(), { packageManager: "bun@1.3.13", scripts })
+
+    expect(plan).toMatchObject({
+      status: "needs-repair",
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      diagnostics: ["Build failed after review"],
+    })
+    expect(plan.commands.map((command) => command.command)).toEqual([
+      "bun run build",
+      "bun run typecheck",
+      "bun test",
+    ])
+  })
+
   test("keeps the latest failing command available at a Faultline breakpoint", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)

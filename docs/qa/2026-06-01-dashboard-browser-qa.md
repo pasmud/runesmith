@@ -145,3 +145,33 @@ Evidence:
 - Snapshot created a `Manual checkpoint` artifact without console errors.
 - Console health: no browser console errors after load, navigation, Run next, or Snapshot.
 - The in-app Browser could not type into the Mission directive input because its virtual clipboard was unavailable. The typed Forge flow remains covered by `packages/dashboard/tests/runtime-control-plane.test.ts` and `packages/dashboard/tests/dashboard-model.test.ts`; a future browser QA run should repeat typed Forge with a browser backend that supports text input.
+
+## Follow-Up White OS Typed Flow QA
+
+After the dashboard was restyled to the white OpenClaw-inspired OS layout, the local Vite server was retested from a blank in-app Browser tab.
+
+Environment:
+
+- URL: `http://127.0.0.1:5173/`
+- Server command: `bun run dev:dashboard`
+- Browser path: Codex in-app Browser for DOM, console, and click checks.
+- Screenshot fallback: `npx playwright screenshot` because the in-app Browser screenshot API timed out on `Page.captureScreenshot`.
+- Desktop screenshot: `C:\Users\Pasen\AppData\Local\Temp\runesmith-dashboard-desktop.png`
+- Mobile screenshot: `C:\Users\Pasen\AppData\Local\Temp\runesmith-dashboard-mobile.png`
+
+Flow under test:
+
+`dashboard loads -> mission directive typed -> Forge clicked -> Run next clicked -> Plan Contract and Worker Dispatch update -> console stays clean -> desktop/mobile screenshots render without overlap`
+
+Evidence:
+
+- Page identity: `Runesmith Mission Control` at `http://127.0.0.1:5173/`.
+- Console health: no `error` or `warn` entries after load, typed Forge, or Run next.
+- Mission directive was entered with Browser keypresses because Browser fill/type could not access the virtual clipboard.
+- `Forge` created a live mission and displayed a running Forge lane with Review and Seal blocked behind it.
+- `Run next` refined the plan and displayed:
+  - `Plan Contract` ready with 5 tasks and 2 implementation slices.
+  - `Forge: orchestration engine path`.
+  - `Forge: operator interface path`.
+  - active Worker Dispatch context.
+- Desktop and mobile Playwright screenshots rendered the white OS shell with responsive layout, readable cards, visible primary controls, and no obvious first-viewport overlap.

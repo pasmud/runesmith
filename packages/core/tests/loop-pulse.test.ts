@@ -544,4 +544,134 @@ describe("loop pulse", () => {
     expect(pulse.nextAction.id).toBe("recover-stale")
     expect(pulse.taskId).toBe("task_alpha")
   })
+
+  test("prioritizes unresolved Forge repair contract before sealing", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Do not seal failed proof",
+      taskPlan: [
+        {
+          key: "forge",
+          title: "Forge: do not seal failed proof",
+          description: "Implement and prove the change.",
+          requiredCapabilities: ["typescript", "testing"],
+          requiredEvidence: ["file-change", "test-result"],
+        },
+        {
+          key: "review",
+          title: "Review: do not seal failed proof",
+          description: "Review the change.",
+          requiredCapabilities: ["testing"],
+          requiredEvidence: ["decision"],
+          dependsOn: ["forge"],
+        },
+        {
+          key: "seal",
+          title: "Seal: do not seal failed proof",
+          description: "Seal the mission.",
+          requiredCapabilities: ["typescript", "testing"],
+          requiredEvidence: ["decision"],
+          dependsOn: ["review"],
+        },
+      ],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed loop pulse",
+        payload: { filePath: "packages/core/src/loop-pulse.ts" },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Loop pulse tests passed",
+        payload: { command: "bun test packages/core/tests/loop-pulse.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.completeTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha_review",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha-review",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_review",
+        taskId: "task_alpha_review",
+        type: "decision",
+        summary: "Review approved",
+        payload: { stage: "review", verdict: "approved" },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+    runtime.completeTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha_review",
+      contractId: "agent_atlas",
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha_seal",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha-seal",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_build_failure",
+        taskId: "task_alpha",
+        type: "diagnostic",
+        summary: "Build failed after review",
+        payload: { command: "bun run build", exitCode: 1 },
+        createdAt: "2026-05-27T00:03:00.000Z",
+      },
+    })
+
+    const pulse = deriveLoopPulse(runtime.snapshot())
+
+    expect(pulse).toMatchObject({
+      health: "attention",
+      taskId: "task_alpha_seal",
+      nextAction: {
+        id: "repair-diagnostic",
+        label: "Repair diagnostic",
+        priority: "high",
+      },
+    })
+    expect(pulse.diagnostics).toContain("Build failed after review")
+    expect(pulse.blockers).toContain("diagnostic: Build failed after review")
+    expect(pulse.executionPlan.map((step) => step.id)).toEqual([
+      "acknowledge-diagnostic",
+      "repair-smallest-cause",
+      "rerun-failing-command",
+    ])
+  })
 })

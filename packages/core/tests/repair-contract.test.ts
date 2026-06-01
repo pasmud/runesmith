@@ -186,6 +186,98 @@ describe("repair contract", () => {
     })
   })
 
+  test("keeps command repairs ready for exact failing proof", () => {
+    const runtime = createClaimedRuntime()
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_build_failure",
+        taskId: "task_alpha",
+        type: "diagnostic",
+        summary: "Build failed",
+        payload: { command: "bun run build", exitCode: 1 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_install",
+        taskId: "task_alpha",
+        type: "command-output",
+        summary: "Installed dependencies",
+        payload: { command: "bun install", exitCode: 0 },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_targeted_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Targeted tests passed",
+        payload: { command: "bun test src/plugin/session-status-normalizer.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:03:00.000Z",
+      },
+    })
+
+    const contract = deriveRepairContract(runtime.snapshot())
+
+    expect(contract).toMatchObject({
+      status: "ready-for-proof",
+      failingCommand: "bun run build",
+      repairChanges: ["command:bun install"],
+      summary: "Repair contract ready for task_alpha: one repair variable changed after the diagnostic; rerun bun run build.",
+    })
+  })
+
+  test("marks command repair proven after the exact failing command passes", () => {
+    const runtime = createClaimedRuntime()
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_build_failure",
+        taskId: "task_alpha",
+        type: "diagnostic",
+        summary: "Build failed",
+        payload: { command: "bun run build", exitCode: 1 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_install",
+        taskId: "task_alpha",
+        type: "command-output",
+        summary: "Installed dependencies",
+        payload: { command: "bun install", exitCode: 0 },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_build_passed",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Build passed",
+        payload: { command: "bun run build", exitCode: 0 },
+        createdAt: "2026-05-27T00:03:00.000Z",
+      },
+    })
+
+    const contract = deriveRepairContract(runtime.snapshot())
+
+    expect(contract).toMatchObject({
+      status: "proven",
+      failingCommand: "bun run build",
+      repairChanges: ["command:bun install"],
+      passingProof: "Build passed",
+    })
+  })
+
   test("marks repeated failed repair diagnostics as a Faultline contract", () => {
     const runtime = createClaimedRuntime()
     addDiagnostic(runtime, "evidence_diagnostic_1", "2026-05-27T00:01:00.000Z")
@@ -198,6 +290,35 @@ describe("repair contract", () => {
       status: "faultline",
       failedAttempts: 3,
       summary: "Repair contract escalated for task_alpha: 3 failed proof attempts require Faultline architecture review before another patch.",
+    })
+  })
+
+  test("returns to focused repair after a Faultline decision is recorded", () => {
+    const runtime = createClaimedRuntime()
+    addDiagnostic(runtime, "evidence_diagnostic_1", "2026-05-27T00:01:00.000Z")
+    addDiagnostic(runtime, "evidence_diagnostic_2", "2026-05-27T00:02:00.000Z")
+    addDiagnostic(runtime, "evidence_diagnostic_3", "2026-05-27T00:03:00.000Z")
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_faultline",
+        taskId: "task_alpha",
+        type: "decision",
+        summary: "Faultline path: split proof runner from loop advancement",
+        payload: {
+          mode: "runesmith-faultline-resolution",
+          summary: "split proof runner from loop advancement",
+        },
+        createdAt: "2026-05-27T00:04:00.000Z",
+      },
+    })
+
+    const contract = deriveRepairContract(runtime.snapshot())
+
+    expect(contract).toMatchObject({
+      status: "awaiting-repair",
+      failedAttempts: 3,
+      summary: "Repair contract waiting for task_alpha: state a hypothesis, change one repair variable, then rerun bun test packages/core/tests/runebook.test.ts.",
     })
   })
 })

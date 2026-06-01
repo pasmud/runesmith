@@ -103,3 +103,99 @@ Follow-up fix:
 - `runesmith_task_complete` now tells OpenCode that Review and Seal still run through Review Lens and Seal Audit, and to use `runesmith_next` or `runesmith_autopilot_tick` when those gates can decide autonomously.
 - The injected Runesmith Autopilot prompt now says not to attach broad file/test summaries as Review or Seal evidence.
 - Regression test: `guides Review and Seal through decision gates instead of broad manual evidence`.
+
+## Repair/Seal Regression Dogfood
+
+A third clean local clone was used to dogfood the repair loop after the repeat run exposed a seal-stage retry loop:
+
+```text
+E:\dev\Oh-my\runesmith-dogfood-oh-my-openagent-3
+```
+
+Install command:
+
+```powershell
+bun E:/dev/Oh-my/runesmith/packages/cli/src/index.ts up --mode npm --config opencode.json --package runesmith@file:E:/dev/Oh-my/runesmith
+```
+
+Observed install result:
+
+```text
+Runesmith OS is ready
+config: .runesmith/config.json
+install: package
+opencode config: opencode.json
+plugin: runesmith@file:E:/dev/Oh-my/runesmith
+runtime: .runesmith/runtime/capsule.json
+opencode: found C:\nvm4w\nodejs\opencode.cmd
+```
+
+The OpenCode run completed the requested documentation edit and recovered missing workspace links with `bun install`, but then surfaced a Runesmith bug:
+
+- A later failed `bun run build 2>&1 | head -30` diagnostic belonged to the completed Forge task.
+- The active task had already advanced to Seal.
+- Loop Pulse and Proof Plan initially treated the mission as a seal action instead of redirecting to the unresolved Forge repair contract.
+
+Fixes added:
+
+- Loop Pulse now treats unresolved mission-level Repair Contracts as higher priority than Review/Seal decision guards.
+- Proof Plan now targets the original repair task when a repair contract is active, even if the active task is Seal.
+- Repair Contract now recognizes successful dependency install commands such as `bun install` as a scoped repair variable.
+- Repair Contract requires a passing rerun of the exact failing command when the diagnostic captured a command.
+- Faultline decisions now release the task back into focused repair instead of leaving it permanently escalated.
+
+Regression coverage:
+
+```powershell
+bun test packages/core/tests/loop-pulse.test.ts -t "prioritizes unresolved Forge repair contract before sealing"
+bun test packages/core/tests/proof-plan.test.ts -t "targets unresolved Forge repair proof while the active task is Seal"
+bun test packages/core/tests/repair-contract.test.ts
+bun test packages/core/tests/runebook-next.test.ts
+```
+
+Post-fix dogfood status before proof:
+
+```text
+next: Repair diagnostic [attention/high]
+proof plan: bun run build 2>&1 | head -30 -> bun run typecheck -> bun test -> bun run build
+repair contract: ready-for-proof; Repair contract ready for task_d8ea19f4-0396-4097-9682-c6566909ec01: one repair variable changed after the diagnostic; rerun bun run build 2>&1 | head -30.
+seal audit: blocked; 1 finding
+```
+
+Proof command:
+
+```powershell
+bun E:/dev/Oh-my/runesmith/packages/cli/src/index.ts prove
+```
+
+Observed proof result:
+
+```text
+Proof plan executed
+mission: mission_30873680-d91b-4eca-ab75-d0d018d742d7
+task: task_d8ea19f4-0396-4097-9682-c6566909ec01
+- PASS Rerun failing command: bun run build 2>&1 | head -30
+- PASS Run typecheck: bun run typecheck
+- PASS Run tests: bun test
+- PASS Run build: bun run build
+status: completed
+next: Wait for goal [clear/low]
+```
+
+Final Runesmith status:
+
+```text
+next: Wait for goal [clear/low]
+handoff: Mission mission_30873680-d91b-4eca-ab75-d0d018d742d7 is sealed with passing proof and 2 decision records.
+proof plan: none
+plan contract: complete; all 3 mapped tasks are complete with required evidence.
+dispatch matrix: drained
+worker dispatch: idle
+repair contract: proven
+review lens: sealed; 0 findings
+seal audit: sealed; 0 findings
+mission: none
+task: none
+missing evidence: none
+diagnostics: none
+```

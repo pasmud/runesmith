@@ -2,6 +2,7 @@ import { createRunicCovenant, type RunicCovenant } from "./covenant.js"
 import { getRequiredEvidenceForTask } from "./contracts.js"
 import { deriveLoopPulse, type LoopPulse } from "./loop-pulse.js"
 import { missingRequiredEvidence } from "./evidence-ledger.js"
+import { deriveRepairContract, type RepairContract } from "./repair-contract.js"
 import type { RuntimeSnapshot } from "./runtime.js"
 import type { Evidence, EvidenceType, MissionGraph, MissionTask } from "./types.js"
 import { selectWorkerEvidenceTarget, type WorkerEvidenceTarget } from "./worker-dispatch.js"
@@ -49,7 +50,8 @@ export function deriveProofPlan(
   covenant: RunicCovenant = createRunicCovenant(),
 ): ProofPlan {
   const pulse = deriveLoopPulse(snapshot, covenant)
-  const selected = selectProofTarget(snapshot, pulse)
+  const repairContract = deriveRepairContract(snapshot)
+  const selected = selectProofTarget(snapshot, pulse, repairContract)
 
   if (!selected) {
     return {
@@ -122,7 +124,16 @@ export function buildProofPlanPrompt(
 function selectProofTarget(
   snapshot: RuntimeSnapshot,
   pulse: LoopPulse,
+  repairContract: RepairContract,
 ): { graph: MissionGraph; task: MissionTask; workerDispatch?: WorkerEvidenceTarget } | undefined {
+  if ((pulse.nextAction.id === "repair-diagnostic" || pulse.nextAction.id === "review-faultline")
+    && repairContract.missionId
+    && repairContract.taskId) {
+    const graph = snapshot.graphs[repairContract.missionId]
+    const task = graph?.tasks[repairContract.taskId]
+    if (graph && task) return { graph, task }
+  }
+
   const workerDispatch = selectWorkerEvidenceTarget(snapshot)
   if (workerDispatch) {
     const graph = snapshot.graphs[workerDispatch.missionId]
