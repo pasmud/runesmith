@@ -84,9 +84,54 @@ This dogfood run also proved that the default agent scopes were too specific to 
 
 The real run also showed OpenCode attempting manual `runesmith_task_evidence` and `runesmith_task_complete` calls without mission/task IDs after the automatic evidence path had advanced Forge. The adapter now resolves omitted mission/task IDs to the focused Worker Dispatch packet or active loop task. It also infers manual evidence type from natural-language summaries such as `Attach decision evidence`, so review and seal steps can proceed without exposing internal IDs to the user or model.
 
+## Follow-Up Seal and BOM Dogfood
+
+A later clean OpenCode run used a dogfood project with a UTF-8 BOM in `package.json` to verify project detection through the real package plugin path.
+
+Dogfood project:
+
+- `E:\dev\Oh-my\runesmith-dogfood-opencode-bom`
+- `opencode.json`: `{"plugin":["runesmith@file:E:/dev/Oh-my/runesmith"]}`
+- `package.json`: Node ESM app with `scripts.test = "node --test"` and a UTF-8 BOM.
+
+Command:
+
+```powershell
+opencode run --model opencode/deepseek-v4-flash-free --dangerously-skip-permissions --format json "In this repository, add an exported divide(a, b) function to src/math.js, add a node:test assertion for it in test/math.test.js, then run npm test. Keep the code change minimal. Let Runesmith continue the mission through review and seal using its active task tools; do not ask me for mission ids or task ids."
+```
+
+Observed OpenCode actions:
+
+- `runesmith_autopilot_prepare({})` created mission `mission_95392fc4-d8fc-4fa3-b947-ced6481a14c8`.
+- Edited `src/math.js` to export `divide(a, b)`.
+- Edited `test/math.test.js` to import and test `divide`.
+- Ran `npm test`.
+- Node test output reported `# pass 2` and `# fail 0`.
+- `runesmith_autopilot_tick({})` sealed the mission without manual mission IDs or task IDs.
+
+Runtime capsule proof:
+
+- Mission status: `complete`.
+- Forge, review, and seal tasks: `complete`.
+- Captured evidence:
+  - 3 `file-change` records from OpenCode edit tools.
+  - 1 `test-result` record from OpenCode bash metadata with `exitCode: 0`.
+  - 1 autonomous review `decision` containing Review Lens status `ready`.
+  - 1 autonomous seal `decision` containing Seal Audit status `ready`.
+- Inferred project scopes:
+  - `agent_atlas.fileScope`: `["src/**", "test/**", "package.json"]`
+  - `agent_oracle.fileScope`: `["src/**", "test/**", "package.json"]`
+- Seal Audit scope gate passed; no critical scope findings were present.
+
+Regressions fixed from this dogfood:
+
+- `package.json` parsing now strips a UTF-8 BOM before `JSON.parse`, so clean Windows-created app repos still receive project-aware scopes instead of monorepo defaults.
+- Review and seal completion re-run Decision Guard even when decision evidence was manually attached, so manual decisions cannot bypass Review Lens or Seal Audit blockers.
+
 ## Remaining Gaps
 
-- Seal was not completed in this dogfood run; the final goal still requires end-to-end repair, review, and seal proof across real repos.
+- End-to-end OpenCode seal now passes on a clean app repo.
+- The final goal still requires additional dogfooding on real non-fixture repos and dashboard browser QA after each major UI/runtime change.
 
 ## Verification
 
@@ -95,13 +140,21 @@ Commands run after the fixes:
 ```powershell
 bun test packages/opencode-adapter/tests/plugin.test.ts -t "classifies OpenCode bash metadata exit zero as proof evidence"
 bun test packages/opencode-adapter/tests/plugin.test.ts -t "manual evidence and completion tools default to the active task when OpenCode omits ids"
+bun test packages/opencode-adapter/tests/plugin.test.ts -t "UTF-8 BOM"
+bun test packages/core/tests/runic-loop.test.ts -t "manual"
 bun test packages/opencode-adapter/tests/plugin.test.ts
-bun run build:packages
+bun test packages/core/tests/runic-loop.test.ts
+bun test
+bun run typecheck
+bun run build
+bun pm pack --dry-run
+git diff --check
 ```
 
 Observed result:
 
-- Focused regression passed.
+- Focused regressions passed.
 - Manual no-ID evidence/completion regression passed.
-- Full OpenCode adapter suite passed after follow-up fixes.
-- Package build completed successfully.
+- Full OpenCode adapter and core runic-loop suites passed.
+- Full repo test suite passed: 310 tests, 0 failures.
+- Typecheck, production build, package dry-run, and diff whitespace check completed successfully.

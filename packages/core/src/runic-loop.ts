@@ -218,6 +218,20 @@ export function advanceRunicMissionLoop(
     })
   }
 
+  if (decisionDraft) {
+    const decisionGate = guardAutonomousDecision(snapshot, decisionDraft.stage)
+    if (!decisionGate.allowed) {
+      return ok({
+        status: "waiting-for-evidence",
+        missionId: target.missionId,
+        taskId: target.taskId,
+        missionStatus: graph.mission.status,
+        missingEvidence,
+        decisionGuard: decisionGate.guard,
+      })
+    }
+  }
+
   const completed = runtime.completeTask({
     missionId: target.missionId,
     taskId: target.taskId,
@@ -579,7 +593,7 @@ function guardAutonomousDecision(
     const blockingChecks = lens.checklist.filter((check) => check.status === "blocked" && check.id !== "review-decision")
     const criticalFindings = lens.findings.filter((finding) => finding.severity === "critical")
 
-    if (lens.status !== "ready" || blockingChecks.length > 0 || criticalFindings.length > 0) {
+    if (!["ready", "approved"].includes(lens.status) || blockingChecks.length > 0 || criticalFindings.length > 0) {
       const findings = [
         ...criticalFindings.map((finding) => finding.summary),
         ...blockingChecks.map((check) => check.detail),
@@ -604,7 +618,7 @@ function guardAutonomousDecision(
   const blockingChecks = audit.checks.filter((check) => check.status === "blocked" && check.id !== "seal-decision")
   const criticalFindings = audit.findings.filter((finding) => finding.severity === "critical")
 
-  if (audit.status !== "ready" || blockingChecks.length > 0 || criticalFindings.length > 0) {
+  if (!["ready", "sealed"].includes(audit.status) || blockingChecks.length > 0 || criticalFindings.length > 0) {
     const findings = [
       ...criticalFindings.map((finding) => finding.summary),
       ...blockingChecks.map((check) => check.detail),

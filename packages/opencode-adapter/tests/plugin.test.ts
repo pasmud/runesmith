@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 import {
   createRuntime,
@@ -128,6 +131,33 @@ describe("opencode adapter", () => {
         expect.stringContaining("outside agent_atlas file scope"),
       ]),
     )
+  })
+
+  test("infers implementation file scopes from package manifests with a UTF-8 BOM", async () => {
+    const originalCwd = process.cwd()
+    const directory = await mkdtemp(join(tmpdir(), "runesmith-bom-app-"))
+
+    try {
+      await mkdir(join(directory, "src"), { recursive: true })
+      await mkdir(join(directory, "test"), { recursive: true })
+      await writeFile(
+        join(directory, "package.json"),
+        '\ufeff{"name":"runesmith-bom-app","type":"module","scripts":{"test":"node --test"}}\n',
+      )
+      await writeFile(join(directory, "src", "math.js"), "export const value = 1\n")
+      await writeFile(join(directory, "test", "math.test.js"), "import 'node:test'\n")
+
+      process.chdir(directory)
+      const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+      createRunesmithPlugin({ runtime })
+
+      expect(runtime.snapshot().contracts.agent_atlas.fileScope).toEqual(
+        expect.arrayContaining(["src/**", "test/**", "package.json"]),
+      )
+    } finally {
+      process.chdir(originalCwd)
+      await rm(directory, { recursive: true, force: true })
+    }
   })
 
   test("starts missions through adapter tools", async () => {

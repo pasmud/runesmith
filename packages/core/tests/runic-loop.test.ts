@@ -210,6 +210,79 @@ describe("runic mission loop", () => {
     )
   })
 
+  test("does not let manual review decisions bypass Review Lens blockers", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Do not manually approve scope drift",
+      taskPlan: createCovenantTaskPlan("Do not manually approve scope drift"),
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runtime and environment",
+        payload: { files: ["packages/core/src/runic-loop.ts", ".env"] },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Core loop tests passed",
+        payload: { command: "bun test packages/core/tests/runic-loop.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+
+    advanceRunicMissionLoop(runtime, loopDefaults())
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_review_decision",
+        taskId: "task_alpha_review",
+        type: "decision",
+        summary: "Manual review accepted the scope exception",
+        payload: { stage: "review", verdict: "approved" },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+
+    const advanced = advanceRunicMissionLoop(runtime, loopDefaults())
+
+    expect(advanced).toMatchObject({
+      ok: true,
+      value: {
+        status: "waiting-for-evidence",
+        missionId: "mission_alpha",
+        taskId: "task_alpha_review",
+        missionStatus: "running",
+        decisionGuard: {
+          stage: "review",
+          status: "blocked",
+        },
+      },
+    })
+
+    const snapshot = runtime.snapshot()
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_review.status).toBe("running")
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_seal.status).toBe("queued")
+    expect(snapshot.graphs.mission_alpha.mission.status).toBe("running")
+  })
+
   test("holds autonomous seal when Seal Audit has blocking findings", () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     runtime.registerContract(atlas)
@@ -320,6 +393,113 @@ describe("runic mission loop", () => {
         }),
       ]),
     )
+  })
+
+  test("does not let manual seal decisions bypass Seal Audit blockers", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(atlas)
+    runtime.startMission({
+      goal: "Do not manually seal scope drift",
+      taskPlan: createCovenantTaskPlan("Do not manually seal scope drift"),
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed runtime and environment",
+        payload: { files: ["packages/core/src/runic-loop.ts", ".env"] },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_test",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Runic loop tests passed",
+        payload: { command: "bun test packages/core/tests/runic-loop.test.ts", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.completeTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_atlas",
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha_review",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha-review",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_review_decision",
+        taskId: "task_alpha_review",
+        type: "decision",
+        summary: "Manual review accepted the scope exception",
+        payload: { stage: "review", verdict: "approved" },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+    runtime.completeTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha_review",
+      contractId: "agent_atlas",
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha_seal",
+      contractId: "agent_atlas",
+      holder: "atlas",
+      idempotencyKey: "claim-task-alpha-seal",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_seal_decision",
+        taskId: "task_alpha_seal",
+        type: "decision",
+        summary: "Manual seal accepted the scope exception",
+        payload: { stage: "seal", verdict: "sealed" },
+        createdAt: "2026-05-27T00:03:00.000Z",
+      },
+    })
+
+    const advanced = advanceRunicMissionLoop(runtime, loopDefaults())
+
+    expect(advanced).toMatchObject({
+      ok: true,
+      value: {
+        status: "waiting-for-evidence",
+        missionId: "mission_alpha",
+        taskId: "task_alpha_seal",
+        missionStatus: "running",
+        decisionGuard: {
+          stage: "seal",
+          status: "blocked",
+        },
+      },
+    })
+
+    const snapshot = runtime.snapshot()
+    expect(snapshot.graphs.mission_alpha.tasks.task_alpha_seal.status).toBe("running")
+    expect(snapshot.graphs.mission_alpha.mission.status).toBe("running")
   })
 
   test("resolves active risk with a decision and advances the mission loop", () => {

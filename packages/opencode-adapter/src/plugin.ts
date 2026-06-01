@@ -2404,7 +2404,7 @@ function resolveProofPlanOptions(options: PluginOptions["proofPlanOptions"]): Pr
 
 function readPackageProofPlanOptions(): ProofPlanOptions {
   try {
-    const manifest = JSON.parse(readFileSync("package.json", "utf8")) as {
+    const manifest = JSON.parse(stripJsonBom(readFileSync("package.json", "utf8"))) as {
       packageManager?: unknown
       scripts?: unknown
     }
@@ -2417,6 +2417,10 @@ function readPackageProofPlanOptions(): ProofPlanOptions {
   } catch {
     return {}
   }
+}
+
+function stripJsonBom(text: string): string {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text
 }
 
 function collectRepositoryFiles(root: string): string[] {
