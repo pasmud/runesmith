@@ -2670,6 +2670,23 @@ describe("opencode adapter", () => {
     expect(result.stderr).toBe("")
   })
 
+  test("default OpenCode shell proof runner replays Windows PowerShell proof commands", async () => {
+    if (process.platform !== "win32") return
+
+    const result = await runOpenCodeShellProofCommand({
+      id: "powershell-proof",
+      kind: "rerun-diagnostic",
+      label: "PowerShell proof",
+      command: "Write-Output ok | Select-Object -First 1",
+      reason: "Replay a command captured from the OpenCode shell on Windows.",
+      evidenceType: "test-result",
+    })
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout?.trim()).toBe("ok")
+    expect(result.stderr).toBe("")
+  })
+
   test("records OpenCode proof run failures as diagnostics and keeps repair active", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const plugin = createRunesmithPlugin({

@@ -199,3 +199,59 @@ task: none
 missing evidence: none
 diagnostics: none
 ```
+
+## Fresh OpenCode Install-To-Seal Dogfood
+
+A fourth valid clean clone was used to verify the install-once OpenCode path after the repair/seal fixes:
+
+```text
+E:\dev\Oh-my\runesmith-dogfood-oh-my-openagent-6
+```
+
+Install command:
+
+```powershell
+bun E:/dev/Oh-my/runesmith/packages/cli/src/index.ts up --mode npm --config opencode.json --package runesmith@file:E:/dev/Oh-my/runesmith
+```
+
+Observed install result:
+
+```text
+Runesmith OS is ready
+config: .runesmith/config.json
+install: package
+opencode config: opencode.json
+plugin: runesmith@file:E:/dev/Oh-my/runesmith
+runtime: .runesmith/runtime/capsule.json
+opencode: found C:\nvm4w\nodejs\opencode.cmd
+```
+
+OpenCode then started mission `mission_2f4c951d-f4ec-44e2-877b-7aa7608df0c2` automatically from the natural-language request. It created the mission map, edited `docs/reference/known-issues.md`, diagnosed the missing dependency state, ran `bun install`, reran the focused test, typecheck, and build, and sealed the mission without the user managing task IDs or invoking a manual workflow.
+
+Final Runesmith status:
+
+```text
+next: Wait for goal [clear/low]
+handoff: Mission mission_2f4c951d-f4ec-44e2-877b-7aa7608df0c2 is sealed with passing proof and 2 decision records.
+proof plan: none
+mission map: 3 tasks; next none
+plan contract: complete; all 3 mapped tasks are complete with required evidence.
+dispatch matrix: drained
+worker dispatch: idle
+repair contract: proven
+review lens: sealed; 0 findings
+seal audit: sealed; 0 findings
+mission: none
+task: none
+missing evidence: none
+diagnostics: none
+```
+
+The same run exposed a Windows adapter bug: proof commands copied from OpenCode shell activity can contain PowerShell pipeline syntax such as `Select-Object`, but the OpenCode adapter proof runner replayed shell commands through Node's default Windows shell. The runner now uses PowerShell explicitly on Windows and keeps the existing shell execution path on POSIX platforms.
+
+Regression coverage:
+
+```powershell
+bun test packages/opencode-adapter/tests/plugin.test.ts -t "PowerShell proof"
+bun test packages/opencode-adapter/tests/plugin.test.ts
+```

@@ -2305,8 +2305,11 @@ async function persistRuntime(
 
 export async function runOpenCodeShellProofCommand(command: ProofPlanCommand): Promise<ProofCommandExecution> {
   return new Promise((resolve) => {
-    const child = spawn(command.command, {
-      shell: true,
+    const shellCommand = process.platform === "win32"
+      ? { command: "powershell", args: ["-NoProfile", "-Command", command.command], shell: false }
+      : { command: command.command, args: [], shell: true }
+    const child = spawn(shellCommand.command, shellCommand.args, {
+      shell: shellCommand.shell,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
     })
