@@ -4,6 +4,7 @@ import {
   createRuntime,
   defaultProjectConfigPath,
   defaultRuntimeCapsulePath,
+  deriveReviewLens,
   loadProjectConfig,
   loadRuntimeCapsule,
   saveRuntimeCapsule,
@@ -63,6 +64,70 @@ describe("opencode adapter", () => {
       "agent_scout",
       "agent_steward",
     ])
+  })
+
+  test("infers implementation file scopes for clean OpenCode app repos", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({
+      runtime,
+      proofPlanOptions: {
+        repositoryFiles: [
+          "package.json",
+          "src/math.js",
+          "test/math.test.js",
+        ],
+      },
+    })
+
+    expect(runtime.snapshot().contracts.agent_atlas.fileScope).toEqual(
+      expect.arrayContaining(["src/**", "test/**"]),
+    )
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Add multiply support to a clean app repo",
+    })
+    await plugin["tool.execute.after"]?.(
+      {
+        tool: "edit",
+        args: {
+          filePath: "E:\\dev\\Oh-my\\clean-app\\src\\math.js",
+        },
+      },
+      { output: "Edit applied successfully." } as OpenCodeToolOutput,
+    )
+    await plugin["tool.execute.after"]?.(
+      {
+        tool: "edit",
+        args: {
+          filePath: "E:\\dev\\Oh-my\\clean-app\\test\\math.test.js",
+        },
+      },
+      { output: "Edit applied successfully." } as OpenCodeToolOutput,
+    )
+    await plugin["tool.execute.after"]?.(
+      {
+        tool: "bash",
+        args: {
+          command: "npm test",
+          workdir: "E:\\dev\\Oh-my\\clean-app",
+        },
+      },
+      {
+        output: "# pass 2 # fail 0",
+        metadata: {
+          exit: 0,
+          output: "# pass 2 # fail 0",
+        },
+      } as OpenCodeToolOutput,
+    )
+
+    const reviewLens = deriveReviewLens(runtime.snapshot())
+    expect(reviewLens.status).not.toBe("blocked")
+    expect(reviewLens.findings.map((finding) => finding.summary)).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("outside agent_atlas file scope"),
+      ]),
+    )
   })
 
   test("starts missions through adapter tools", async () => {

@@ -79,8 +79,11 @@ Runtime capsule evidence:
 ## Remaining Gaps
 
 - OpenCode still attempted manual `runesmith_task_evidence` and `runesmith_task_complete` calls without mission/task IDs after the automatic evidence path had already advanced Forge. The automatic path is working, but tool guidance should reduce these manual dead-end calls.
-- Review scope policy still reflects the Runesmith repository defaults (`packages/**`, `docs/**`, `examples/**`). Generic project scope inference is still needed before the product can be called production-ready for arbitrary repos.
 - Seal was not completed in this dogfood run; the final goal still requires end-to-end repair, review, and seal proof across real repos.
+
+## Follow-Up Scope Fix
+
+This dogfood run also proved that the default agent scopes were too specific to the Runesmith monorepo. The adapter now infers project-aware implementation scopes from repository files when a clean app layout is detected. For a repo containing `src/math.js` and `test/math.test.js`, Atlas and Oracle receive `src/**` and `test/**` instead of the monorepo defaults, and Review Lens no longer blocks verified app changes as out-of-scope.
 
 ## Verification
 

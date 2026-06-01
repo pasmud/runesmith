@@ -267,6 +267,10 @@ const autopilotStaleAfterMs = 120_000
 const shellProofCaptureLimit = 64_000
 const runesmithOpenCodeSkillsPath = fileURLToPath(new URL("../../../.opencode/skills", import.meta.url))
 
+function atlasContractFor(runtime: RunesmithRuntime): AgentContract {
+  return runtime.snapshot().contracts[defaultAtlasContract.id] ?? defaultAtlasContract
+}
+
 export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlugin {
   const runtime = options.runtime ?? createRuntime(options)
   const covenant = options.covenant ?? createRunicCovenant()
@@ -274,7 +278,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
   const covenantPrompt = buildCovenantPrompt(covenant)
   const autopilotPrompt = buildAutopilotPrompt()
   let latestUserGoal: string | undefined
-  for (const contract of options.contracts ?? createRunesmithAgentContracts()) {
+  for (const contract of options.contracts ?? createProjectAwareAgentContracts(proofPlanOptions.repositoryFiles)) {
     runtime.registerContract(contract)
   }
 
@@ -834,7 +838,7 @@ async function prepareAutopilotMission(input: PrepareAutopilotMissionInput): Pro
 
   const prepared = prepareRunicMission(input.runtime, {
     goal,
-    contract: defaultAtlasContract,
+    contract: atlasContractFor(input.runtime),
     holder: "runesmith-autopilot",
     idempotencyScope: "autopilot",
     ttlMs: 30_000,
@@ -861,7 +865,7 @@ async function refinePlanFromOpenCode(input: RefinePlanFromOpenCodeInput): Promi
   const refined = refineRunicMissionPlan(input.runtime, {
     missionId: normalizeGoal(input.args.missionId),
     taskPlan: taskPlan.value,
-    contract: defaultAtlasContract,
+    contract: atlasContractFor(input.runtime),
     holder: "runesmith-autopilot",
     idempotencyScope: "plan-refine",
     ttlMs: 30_000,
@@ -1037,7 +1041,7 @@ async function advanceIdleOrchestration(input: AdvanceIdleOrchestrationInput): P
 
 async function advanceAutopilotLoop(input: AdvanceAutopilotLoopInput): Promise<ToolResponse> {
   const advanced = advanceRunicMissionLoop(input.runtime, {
-    contract: defaultAtlasContract,
+    contract: atlasContractFor(input.runtime),
     holder: "runesmith-autopilot",
     idempotencyScope: "autopilot",
     ttlMs: 30_000,
@@ -1109,7 +1113,7 @@ async function runNextFromOpenCode(input: RunNextFromOpenCodeInput): Promise<Too
   const snapshot = input.runtime.snapshot()
   const nextEvidenceId = createProofEvidenceIdFactory(snapshot, input.idFactory)
   const next = await runRunebookNext(input.runtime, {
-    contract: defaultAtlasContract,
+    contract: atlasContractFor(input.runtime),
     holder: "runesmith-autopilot",
     idempotencyScope: "next",
     ttlMs: 30_000,
@@ -1139,7 +1143,7 @@ async function runOsFromOpenCode(input: RunOsFromOpenCodeInput): Promise<ToolRes
   const snapshot = input.runtime.snapshot()
   const nextEvidenceId = createProofEvidenceIdFactory(snapshot, input.idFactory)
   const loop = await runRuneweave(input.runtime, {
-    contract: defaultAtlasContract,
+    contract: atlasContractFor(input.runtime),
     holder: "runesmith-autopilot",
     idempotencyScope: "os-run",
     ttlMs: 30_000,
@@ -1171,7 +1175,7 @@ async function runIdleRuneweave(input: RunIdleRuneweaveInput): Promise<ToolRespo
   const snapshot = input.runtime.snapshot()
   const nextEvidenceId = createProofEvidenceIdFactory(snapshot, input.idFactory)
   const loop = await runRuneweave(input.runtime, {
-    contract: defaultAtlasContract,
+    contract: atlasContractFor(input.runtime),
     holder: "runesmith-autopilot",
     idempotencyScope: "idle-os",
     ttlMs: 30_000,
@@ -1203,7 +1207,7 @@ async function runProofFromOpenCode(input: RunProofFromOpenCodeInput): Promise<T
   let decisionGuard: RunicDecisionGuard | undefined
   if (proofRun.status === "passed") {
     const advanced = advanceRunicMissionLoop(input.runtime, {
-      contract: defaultAtlasContract,
+      contract: atlasContractFor(input.runtime),
       holder: "runesmith-autopilot",
       idempotencyScope: "proof-run",
       ttlMs: 30_000,
@@ -1240,7 +1244,7 @@ async function runProofFromOpenCode(input: RunProofFromOpenCodeInput): Promise<T
 
 async function resolveRiskFromOpenCode(input: ResolveRiskFromOpenCodeInput): Promise<ToolResponse> {
   const resolved = resolveRunicRisk(input.runtime, {
-    contract: defaultAtlasContract,
+    contract: atlasContractFor(input.runtime),
     holder: "runesmith-autopilot",
     idempotencyScope: "risk-resolve",
     ttlMs: 30_000,
@@ -1276,7 +1280,7 @@ async function resolveRiskFromOpenCode(input: ResolveRiskFromOpenCodeInput): Pro
 
 async function resolveFaultlineFromOpenCode(input: ResolveFaultlineFromOpenCodeInput): Promise<ToolResponse> {
   const resolved = resolveRunicFaultline(input.runtime, {
-    contract: defaultAtlasContract,
+    contract: atlasContractFor(input.runtime),
     holder: "runesmith-autopilot",
     idempotencyScope: "faultline-resolve",
     ttlMs: 30_000,
@@ -2154,6 +2158,144 @@ function createProofEvidenceIdFactory(snapshot: RuntimeSnapshot, idFactory: IdFa
 
     return id
   }
+}
+
+function createProjectAwareAgentContracts(repositoryFiles: string[] | undefined): AgentContract[] {
+  const contracts = createRunesmithAgentContracts()
+  const implementationScope = inferProjectImplementationFileScope(repositoryFiles)
+  if (!implementationScope) return contracts
+
+  return contracts.map((contract) => {
+    if (contract.id === "agent_atlas" || contract.id === "agent_oracle") {
+      return {
+        ...contract,
+        fileScope: implementationScope,
+      }
+    }
+
+    if (contract.id === "agent_artificer") {
+      return {
+        ...contract,
+        fileScope: inferProjectInterfaceFileScope(repositoryFiles, implementationScope),
+      }
+    }
+
+    if (contract.id === "agent_scout") {
+      return {
+        ...contract,
+        fileScope: uniqueStrings([...implementationScope, ".runesmith/**"]),
+      }
+    }
+
+    if (contract.id === "agent_steward") {
+      return {
+        ...contract,
+        fileScope: inferProjectStewardFileScope(repositoryFiles),
+      }
+    }
+
+    return contract
+  })
+}
+
+function inferProjectImplementationFileScope(repositoryFiles: string[] | undefined): string[] | undefined {
+  const files = normalizeRepositoryFiles(repositoryFiles)
+  if (files.length === 0) return undefined
+
+  const implementationDirectories = [
+    "src",
+    "test",
+    "tests",
+    "app",
+    "pages",
+    "components",
+    "lib",
+    "server",
+    "client",
+    "api",
+    "public",
+    "scripts",
+    "prisma",
+    "migrations",
+  ]
+  const scopes = implementationDirectories
+    .filter((directory) => repositoryHasDirectory(files, directory))
+    .map((directory) => `${directory}/**`)
+
+  if (scopes.length === 0) return undefined
+
+  return uniqueStrings([
+    ...scopes,
+    ...rootProjectFiles(files),
+  ])
+}
+
+function inferProjectInterfaceFileScope(
+  repositoryFiles: string[] | undefined,
+  implementationScope: string[],
+): string[] {
+  const files = normalizeRepositoryFiles(repositoryFiles)
+  const interfaceDirectories = [
+    "app",
+    "pages",
+    "components",
+    "src",
+    "public",
+    "styles",
+  ]
+  const scopes = interfaceDirectories
+    .filter((directory) => repositoryHasDirectory(files, directory))
+    .map((directory) => `${directory}/**`)
+
+  return scopes.length > 0 ? uniqueStrings([...scopes, ...rootProjectFiles(files)]) : implementationScope
+}
+
+function inferProjectStewardFileScope(repositoryFiles: string[] | undefined): string[] {
+  const files = normalizeRepositoryFiles(repositoryFiles)
+  return uniqueStrings([
+    ".opencode/**",
+    ".runesmith/**",
+    "docs/**",
+    "README.md",
+    ...rootProjectFiles(files),
+  ])
+}
+
+function normalizeRepositoryFiles(repositoryFiles: string[] | undefined): string[] {
+  if (!repositoryFiles) return []
+
+  return uniqueStrings(repositoryFiles.map(normalizeRepositoryPath).filter(Boolean))
+}
+
+function repositoryHasDirectory(files: string[], directory: string): boolean {
+  return files.some((file) => file === directory || file.startsWith(`${directory}/`))
+}
+
+function rootProjectFiles(files: string[]): string[] {
+  const knownRootFiles = new Set([
+    "package.json",
+    "bun.lock",
+    "bun.lockb",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "package-lock.json",
+    "tsconfig.json",
+    "jsconfig.json",
+    "vite.config.js",
+    "vite.config.ts",
+    "next.config.js",
+    "next.config.ts",
+    "eslint.config.js",
+    "eslint.config.mjs",
+    "vitest.config.ts",
+    "playwright.config.ts",
+  ])
+
+  return files.filter((file) => knownRootFiles.has(file))
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)]
 }
 
 function resolveProofPlanOptions(options: PluginOptions["proofPlanOptions"]): ProofPlanOptions {
