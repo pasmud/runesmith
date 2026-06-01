@@ -76,14 +76,17 @@ Runtime capsule evidence:
 - Forge task transitioned from `running` to `complete` after required `file-change` and `test-result` evidence were present.
 - Review task was claimed by `agent_oracle`.
 
-## Remaining Gaps
-
-- OpenCode still attempted manual `runesmith_task_evidence` and `runesmith_task_complete` calls without mission/task IDs after the automatic evidence path had already advanced Forge. The automatic path is working, but tool guidance should reduce these manual dead-end calls.
-- Seal was not completed in this dogfood run; the final goal still requires end-to-end repair, review, and seal proof across real repos.
-
 ## Follow-Up Scope Fix
 
 This dogfood run also proved that the default agent scopes were too specific to the Runesmith monorepo. The adapter now infers project-aware implementation scopes from repository files when a clean app layout is detected. For a repo containing `src/math.js` and `test/math.test.js`, Atlas and Oracle receive `src/**` and `test/**` instead of the monorepo defaults, and Review Lens no longer blocks verified app changes as out-of-scope.
+
+## Follow-Up Manual Tool Fix
+
+The real run also showed OpenCode attempting manual `runesmith_task_evidence` and `runesmith_task_complete` calls without mission/task IDs after the automatic evidence path had advanced Forge. The adapter now resolves omitted mission/task IDs to the focused Worker Dispatch packet or active loop task. It also infers manual evidence type from natural-language summaries such as `Attach decision evidence`, so review and seal steps can proceed without exposing internal IDs to the user or model.
+
+## Remaining Gaps
+
+- Seal was not completed in this dogfood run; the final goal still requires end-to-end repair, review, and seal proof across real repos.
 
 ## Verification
 
@@ -91,6 +94,7 @@ Commands run after the fixes:
 
 ```powershell
 bun test packages/opencode-adapter/tests/plugin.test.ts -t "classifies OpenCode bash metadata exit zero as proof evidence"
+bun test packages/opencode-adapter/tests/plugin.test.ts -t "manual evidence and completion tools default to the active task when OpenCode omits ids"
 bun test packages/opencode-adapter/tests/plugin.test.ts
 bun run build:packages
 ```
@@ -98,5 +102,6 @@ bun run build:packages
 Observed result:
 
 - Focused regression passed.
-- Full OpenCode adapter suite passed: `48 pass`, `0 fail`.
+- Manual no-ID evidence/completion regression passed.
+- Full OpenCode adapter suite passed after follow-up fixes.
 - Package build completed successfully.

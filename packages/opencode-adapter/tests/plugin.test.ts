@@ -207,6 +207,56 @@ describe("opencode adapter", () => {
     })
   })
 
+  test("manual evidence and completion tools default to the active task when OpenCode omits ids", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({ runtime })
+
+    runtime.startMission({
+      goal: "Finish review without exposing task ids",
+      taskPlan: [
+        {
+          key: "review",
+          title: "Review: Finish review without exposing task ids",
+          description: "Record a review decision without requiring the model to pass ids.",
+          requiredCapabilities: ["testing"],
+          requiredEvidence: ["decision"],
+        },
+      ],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_oracle",
+      holder: "oracle",
+      idempotencyKey: "claim-review",
+      ttlMs: 30_000,
+    })
+    expect(runtime.snapshot().graphs.mission_alpha.tasks.task_alpha.status).toBe("running")
+
+    const evidence = await plugin.tool.runesmith_task_evidence.execute({
+      description: "Attach decision evidence",
+    } as any)
+    expect(JSON.parse(evidence.output)).toMatchObject({
+      ok: true,
+      value: {
+        taskId: "task_alpha",
+        type: "decision",
+      },
+    })
+
+    const completed = await plugin.tool.runesmith_task_complete.execute({
+      description: "Complete review task",
+    } as any)
+
+    expect(JSON.parse(completed.output)).toMatchObject({
+      ok: true,
+      value: {
+        taskId: "task_alpha",
+        status: "complete",
+      },
+    })
+  })
+
   test("exposes the Runic Covenant and injects it into OpenCode once", async () => {
     const plugin = createRunesmithPlugin()
 

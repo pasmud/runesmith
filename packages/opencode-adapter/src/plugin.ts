@@ -205,18 +205,20 @@ type TaskClaimArgs = {
 }
 
 type TaskEvidenceArgs = {
-  missionId: string
-  taskId: string
-  type: EvidenceType
-  summary: string
+  missionId?: string
+  taskId?: string
+  type?: EvidenceType
+  summary?: string
+  description?: string
   payload?: Record<string, unknown>
   evidenceId?: string
 }
 
 type TaskCompleteArgs = {
-  missionId: string
-  taskId: string
-  contractId: string
+  missionId?: string
+  taskId?: string
+  contractId?: string
+  description?: string
 }
 
 type RecoverArgs = {
@@ -591,44 +593,89 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
         },
       },
       runesmith_task_evidence: {
-        description: "Attach evidence to a mission task.",
+        description: "Attach manual evidence to the active mission task when automatic OpenCode hooks cannot infer it.",
         parameters: objectSchema({
-          missionId: stringSchema("Mission id"),
-          taskId: stringSchema("Task id"),
-          type: stringSchema("Evidence type"),
+          missionId: stringSchema("Optional mission id. If omitted, Runesmith targets the focused worker packet or active task."),
+          taskId: stringSchema("Optional task id. If omitted, Runesmith targets the focused worker packet or active task."),
+          type: stringSchema("Optional evidence type. If omitted, Runesmith infers decision, risk, diagnostic, test-result, file-change, or command-output from the summary."),
           summary: stringSchema("Short evidence summary"),
+          description: stringSchema("Optional natural-language evidence description used as the summary and type hint."),
           payload: objectSchema({}),
           evidenceId: stringSchema("Optional stable evidence id"),
         }),
         async execute(args) {
+          const target = resolveManualTaskTarget(runtime.snapshot(), args.missionId, args.taskId)
+          if (!target) {
+            return formatError("Evidence rejected", {
+              code: "ACTIVE_TASK_NOT_FOUND",
+              message: "Runesmith could not find an active task for manual evidence. Start or resume a mission first.",
+              details: {
+                missionId: args.missionId,
+                taskId: args.taskId,
+              },
+            })
+          }
+          const evidenceType = resolveManualEvidenceType(args.type, args.summary ?? args.description)
+          if (!evidenceType) {
+            return formatError("Evidence rejected", {
+              code: "EVIDENCE_TYPE_MISSING",
+              message: "Manual evidence needs an evidence type or a description that names decision, risk, diagnostic, test, file, or command evidence.",
+              details: {
+                missionId: target.missionId,
+                taskId: target.taskId,
+              },
+            })
+          }
+          const summary = normalizeGoal(args.summary)
+            ?? normalizeGoal(args.description)
+            ?? `Manual ${evidenceType} evidence for ${target.taskId}`
           const result = runtime.addTaskEvidence({
-            missionId: args.missionId,
+            missionId: target.missionId,
             evidence: {
               id: args.evidenceId ?? `evidence_${crypto.randomUUID()}`,
-              taskId: args.taskId,
-              type: args.type,
-              summary: args.summary,
-              payload: args.payload ?? {},
+              taskId: target.taskId,
+              type: evidenceType,
+              summary,
+              payload: args.payload ?? { source: "opencode-manual-tool" },
               createdAt: nowIso(options.now),
             },
           })
           if (!result.ok) return formatError("Evidence rejected", result.error)
 
           return persistAndFormat(options.runtimeStore, runtime, "Evidence recorded", {
-            taskId: args.taskId,
-            type: args.type,
+            missionId: target.missionId,
+            taskId: target.taskId,
+            type: evidenceType,
           })
         },
       },
       runesmith_task_complete: {
         description: "Attempt to complete a task after required evidence validation.",
         parameters: objectSchema({
-          missionId: stringSchema("Mission id"),
-          taskId: stringSchema("Task id"),
-          contractId: stringSchema("Agent contract id"),
+          missionId: stringSchema("Optional mission id. If omitted, Runesmith targets the focused worker packet or active task."),
+          taskId: stringSchema("Optional task id. If omitted, Runesmith targets the focused worker packet or active task."),
+          contractId: stringSchema("Optional agent contract id. If omitted, Runesmith uses the assigned agent for the active task."),
+          description: stringSchema("Optional natural-language completion note."),
         }),
         async execute(args) {
-          const result = runtime.completeTask(args)
+          const target = resolveManualTaskTarget(runtime.snapshot(), args.missionId, args.taskId)
+          if (!target) {
+            return formatError("Task completion rejected", {
+              code: "ACTIVE_TASK_NOT_FOUND",
+              message: "Runesmith could not find an active task to complete. Start or resume a mission first.",
+              details: {
+                missionId: args.missionId,
+                taskId: args.taskId,
+              },
+            })
+          }
+          const task = runtime.snapshot().graphs[target.missionId]?.tasks[target.taskId]
+          const contractId = normalizeGoal(args.contractId) ?? task?.assignedAgentId ?? defaultAtlasContract.id
+          const result = runtime.completeTask({
+            missionId: target.missionId,
+            taskId: target.taskId,
+            contractId,
+          })
           if (!result.ok) return formatError("Task completion rejected", result.error)
 
           return persistAndFormat(options.runtimeStore, runtime, "Task completed", {
@@ -916,6 +963,56 @@ async function prepareBeforeToolExecution(input: PrepareBeforeToolExecutionInput
       messages,
     },
   })
+}
+
+function resolveManualTaskTarget(
+  snapshot: RuntimeSnapshot,
+  missionId: string | undefined,
+  taskId: string | undefined,
+): { missionId: string; taskId: string } | undefined {
+  const explicitMissionId = normalizeGoal(missionId)
+  const explicitTaskId = normalizeGoal(taskId)
+  if (explicitMissionId && explicitTaskId) {
+    return {
+      missionId: explicitMissionId,
+      taskId: explicitTaskId,
+    }
+  }
+  if (!explicitMissionId && explicitTaskId) {
+    const graph = Object.values(snapshot.graphs).find((candidate) => candidate.tasks[explicitTaskId])
+    if (graph && !["complete", "failed", "cancelled"].includes(graph.mission.status)) {
+      return {
+        missionId: graph.mission.id,
+        taskId: explicitTaskId,
+      }
+    }
+  }
+
+  const workerTarget = selectWorkerEvidenceTarget(snapshot)
+  if (!explicitMissionId && !explicitTaskId && workerTarget) {
+    return {
+      missionId: workerTarget.missionId,
+      taskId: workerTarget.taskId,
+    }
+  }
+
+  return selectRunicLoopTask(snapshot, explicitMissionId)
+}
+
+function resolveManualEvidenceType(type: EvidenceType | undefined, text: string | undefined): EvidenceType | undefined {
+  if (type && isEvidenceType(type)) return type
+
+  const normalized = normalizeGoal(text)?.toLowerCase()
+  if (!normalized) return undefined
+
+  if (/\b(decision|approve|approval|accepted|reject|rejected)\b/.test(normalized)) return "decision"
+  if (/\b(risk|hazard|unsafe|concern)\b/.test(normalized)) return "risk"
+  if (/\b(diagnostic|error|failure|failed|stack|trace|exception)\b/.test(normalized)) return "diagnostic"
+  if (/\b(test|proof|verified|verification|pass|passed|green)\b/.test(normalized)) return "test-result"
+  if (/\b(file|diff|edit|change|changed|patch)\b/.test(normalized)) return "file-change"
+  if (/\b(command|shell|bash|output|log)\b/.test(normalized)) return "command-output"
+
+  return undefined
 }
 
 type RecordToolExecutionEvidenceInput = {
@@ -1668,7 +1765,7 @@ function buildAutopilotPrompt(): string {
     "Runesmith is installed as the orchestration engine for this OpenCode session.",
     "When the user asks for coding, repo, debugging, UI, or research-to-implementation work, call `runesmith_autopilot_prepare` with the latest user goal or message list before starting edits.",
     "If you reach a session-idle point before preparation, Runesmith can infer the latest user goal from chat context and prepare the mission automatically.",
-    "Continue under the returned mission, task, and lease. New autopilot missions are planned as Forge, Review, and Seal tasks. Runesmith records shell, test, file-change, and safe Covenant decision evidence automatically; use `runesmith_task_evidence` for risks, diagnostics, external proof, or decisions the tool hooks cannot infer.",
+    "Continue under the returned mission, task, and lease. New autopilot missions are planned as Forge, Review, and Seal tasks. Runesmith records shell, test, file-change, and safe Covenant decision evidence automatically; use `runesmith_task_evidence` for risks, diagnostics, external proof, or decisions the tool hooks cannot infer. When the active task is obvious, you can pass only a summary or description; Runesmith resolves the active mission and task.",
     "Follow the active Runesmith Runebook card and Active runes as automatic procedure, not as user-invoked workflows.",
     "Use Runesmith Plan Contract as the plan-quality signal: if the map is thin, call `runesmith_plan_refine` with concrete proof-backed execution slices before broad autonomous work. That records the planning decision, remaps the mission, and lets the shared loop claim independent ready slices.",
     "Use Runesmith Dispatch Matrix as the agent-routing signal: claim only ready slots, respect active leases, and parallelize only independent ready work with matching contracts.",
@@ -1684,7 +1781,7 @@ function buildAutopilotPrompt(): string {
     "When Loop Pulse says `Review faultline`, call `runesmith_faultline_resolve` with the architecture path, redesign, revert, scope split, or new hypothesis before another proof run.",
     "When the active task has required evidence, call `runesmith_autopilot_tick` or let session-idle events advance it. The tick may complete the task only after the evidence gate is satisfied, synthesize Review and Seal decisions when safe, then claim the next dependency-ready task.",
     "Do not ask the user to invoke Runesmith, skills, or a workflow by name. Keep the user experience install-once and direct.",
-    "Before claiming completion, attach required evidence and use `runesmith_task_complete`; if state looks stale or conflicting, run `runesmith_recover` first.",
+    "Before claiming completion, attach required evidence and use `runesmith_task_complete`; omit missionId/taskId when completing the current active task. If state looks stale or conflicting, run `runesmith_recover` first.",
   ].join("\n")
 }
 
