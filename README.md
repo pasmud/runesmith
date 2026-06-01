@@ -192,7 +192,7 @@ bun run typecheck
 bun run build
 ```
 
-QA and dogfooding notes live in `docs/qa/`. The first dashboard browser QA run is recorded in `docs/qa/2026-06-01-dashboard-browser-qa.md` with the runtime-backed Forge, Refine Plan, and Run Next flow that was exercised against the local dashboard.
+QA and dogfooding notes live in `docs/qa/`. The dashboard browser QA run is recorded in `docs/qa/2026-06-01-dashboard-browser-qa.md` with the runtime-backed Forge, Refine Plan, and Run Next flow that was exercised against the local dashboard. Clean OpenCode install dogfood is recorded in `docs/qa/2026-06-01-clean-opencode-install-dogfood.md`, covering project-local plugin config, direct plugin startup, runtime capsule creation, mission ignition, plan refinement, Worker Dispatch focus, and doctor readiness.
 
 Start the local Runesmith OS and a real mission in one command:
 
