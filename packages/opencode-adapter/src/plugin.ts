@@ -210,6 +210,7 @@ type TaskEvidenceArgs = {
   type?: EvidenceType
   summary?: string
   description?: string
+  evidence?: unknown
   payload?: Record<string, unknown>
   evidenceId?: string
 }
@@ -600,6 +601,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           type: stringSchema("Optional evidence type. If omitted, Runesmith infers decision, risk, diagnostic, test-result, file-change, or command-output from the summary."),
           summary: stringSchema("Short evidence summary"),
           description: stringSchema("Optional natural-language evidence description used as the summary and type hint."),
+          evidence: freeformObjectSchema("Optional structured evidence object, such as { decision: \"review approved\" }."),
           payload: objectSchema({}),
           evidenceId: stringSchema("Optional stable evidence id"),
         }),
@@ -615,11 +617,11 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
               },
             })
           }
-          const evidenceType = resolveManualEvidenceType(args.type, args.summary ?? args.description)
+          const evidenceType = resolveManualEvidenceType(args.type, args.summary ?? args.description, args.evidence)
           if (!evidenceType) {
             return formatError("Evidence rejected", {
               code: "EVIDENCE_TYPE_MISSING",
-              message: "Manual evidence needs an evidence type or a description that names decision, risk, diagnostic, test, file, or command evidence.",
+              message: "Manual evidence needs an evidence type, a description that names decision, risk, diagnostic, test, file, or command evidence, or a structured evidence object such as { decision: \"...\" }.",
               details: {
                 missionId: target.missionId,
                 taskId: target.taskId,
@@ -628,7 +630,12 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
           }
           const summary = normalizeGoal(args.summary)
             ?? normalizeGoal(args.description)
+            ?? summarizeManualEvidence(args.evidence)
             ?? `Manual ${evidenceType} evidence for ${target.taskId}`
+          const payload = args.payload
+            ?? (args.evidence === undefined
+              ? { source: "opencode-manual-tool" }
+              : { source: "opencode-manual-tool", evidence: args.evidence })
           const result = runtime.addTaskEvidence({
             missionId: target.missionId,
             evidence: {
@@ -636,7 +643,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
               taskId: target.taskId,
               type: evidenceType,
               summary,
-              payload: args.payload ?? { source: "opencode-manual-tool" },
+              payload,
               createdAt: nowIso(options.now),
             },
           })
@@ -999,20 +1006,87 @@ function resolveManualTaskTarget(
   return selectRunicLoopTask(snapshot, explicitMissionId)
 }
 
-function resolveManualEvidenceType(type: EvidenceType | undefined, text: string | undefined): EvidenceType | undefined {
+function resolveManualEvidenceType(
+  type: EvidenceType | undefined,
+  text: string | undefined,
+  evidence: unknown = undefined,
+): EvidenceType | undefined {
   if (type && isEvidenceType(type)) return type
 
   const normalized = normalizeGoal(text)?.toLowerCase()
-  if (!normalized) return undefined
+  if (normalized) {
+    if (/\b(decision|approve|approval|accepted|reject|rejected)\b/.test(normalized)) return "decision"
+    if (/\b(risk|hazard|unsafe|concern)\b/.test(normalized)) return "risk"
+    if (/\b(diagnostic|error|failure|failed|stack|trace|exception)\b/.test(normalized)) return "diagnostic"
+    if (/\b(test|proof|verified|verification|pass|passed|green)\b/.test(normalized)) return "test-result"
+    if (/\b(file|diff|edit|change|changed|patch)\b/.test(normalized)) return "file-change"
+    if (/\b(command|shell|bash|output|log)\b/.test(normalized)) return "command-output"
+  }
 
-  if (/\b(decision|approve|approval|accepted|reject|rejected)\b/.test(normalized)) return "decision"
-  if (/\b(risk|hazard|unsafe|concern)\b/.test(normalized)) return "risk"
-  if (/\b(diagnostic|error|failure|failed|stack|trace|exception)\b/.test(normalized)) return "diagnostic"
-  if (/\b(test|proof|verified|verification|pass|passed|green)\b/.test(normalized)) return "test-result"
-  if (/\b(file|diff|edit|change|changed|patch)\b/.test(normalized)) return "file-change"
-  if (/\b(command|shell|bash|output|log)\b/.test(normalized)) return "command-output"
+  return inferManualEvidenceTypeFromStructuredEvidence(evidence)
+}
+
+const structuredEvidenceTypeKeys: Array<[string, EvidenceType]> = [
+  ["decision", "decision"],
+  ["approval", "decision"],
+  ["risk", "risk"],
+  ["hazard", "risk"],
+  ["diagnostic", "diagnostic"],
+  ["error", "diagnostic"],
+  ["failure", "diagnostic"],
+  ["test", "test-result"],
+  ["testResult", "test-result"],
+  ["proof", "test-result"],
+  ["file", "file-change"],
+  ["fileChange", "file-change"],
+  ["diff", "file-change"],
+  ["command", "command-output"],
+  ["shell", "command-output"],
+  ["output", "command-output"],
+]
+
+function inferManualEvidenceTypeFromStructuredEvidence(evidence: unknown): EvidenceType | undefined {
+  const record = asRecord(evidence)
+  if (!record) return undefined
+
+  for (const [key, evidenceType] of structuredEvidenceTypeKeys) {
+    if (record[key] !== undefined) return evidenceType
+  }
 
   return undefined
+}
+
+function summarizeManualEvidence(evidence: unknown): string | undefined {
+  const direct = normalizeGoal(evidence)
+  if (direct) return direct
+
+  const record = asRecord(evidence)
+  if (!record) return undefined
+
+  for (const [key] of structuredEvidenceTypeKeys) {
+    if (record[key] === undefined) continue
+
+    return summarizeManualEvidenceValue(record[key])
+  }
+
+  return undefined
+}
+
+function summarizeManualEvidenceValue(value: unknown): string | undefined {
+  const direct = normalizeGoal(value)
+  if (direct) return direct
+
+  const extracted = normalizeGoal(extractTextValue(value))
+  if (extracted) return extracted
+
+  const record = asRecord(value)
+  if (!record) return undefined
+
+  try {
+    return truncateText(JSON.stringify(record), 500)
+  } catch {
+    return undefined
+  }
 }
 
 type RecordToolExecutionEvidenceInput = {
@@ -2310,6 +2384,9 @@ function inferProjectImplementationFileScope(repositoryFiles: string[] | undefin
     "server",
     "client",
     "api",
+    "packages",
+    "docs",
+    "examples",
     "public",
     "scripts",
     "prisma",
@@ -2501,6 +2578,14 @@ function objectSchema(properties: Record<string, unknown>): Record<string, unkno
     type: "object",
     properties,
     additionalProperties: false,
+  }
+}
+
+function freeformObjectSchema(description: string): Record<string, unknown> {
+  return {
+    type: "object",
+    description,
+    additionalProperties: true,
   }
 }
 

@@ -160,6 +160,28 @@ describe("opencode adapter", () => {
     }
   })
 
+  test("keeps documentation paths inside project-aware implementation review scopes", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    createRunesmithPlugin({
+      runtime,
+      proofPlanOptions: {
+        repositoryFiles: [
+          "package.json",
+          "src/plugin/session-status-normalizer.ts",
+          "src/plugin/session-status-normalizer.test.ts",
+          "docs/reference/known-issues.md",
+        ],
+      },
+    })
+
+    expect(runtime.snapshot().contracts.agent_atlas.fileScope).toEqual(
+      expect.arrayContaining(["src/**", "docs/**", "package.json"]),
+    )
+    expect(runtime.snapshot().contracts.agent_oracle.fileScope).toEqual(
+      expect.arrayContaining(["src/**", "docs/**", "package.json"]),
+    )
+  })
+
   test("starts missions through adapter tools", async () => {
     const runtime = createRuntime({ idFactory: ids, now: fixedNow })
     const plugin = createRunesmithPlugin({ runtime })
@@ -285,6 +307,57 @@ describe("opencode adapter", () => {
         status: "complete",
       },
     })
+  })
+
+  test("infers manual evidence type and summary from nested OpenCode evidence objects", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({ runtime })
+
+    runtime.startMission({
+      goal: "Review docs proof without exposing task ids",
+      taskPlan: [
+        {
+          key: "review",
+          title: "Review: docs proof",
+          description: "Record a decision from a nested OpenCode evidence object.",
+          requiredCapabilities: ["testing"],
+          requiredEvidence: ["decision"],
+        },
+      ],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_oracle",
+      holder: "oracle",
+      idempotencyKey: "claim-nested-review",
+      ttlMs: 30_000,
+    })
+
+    const evidence = await plugin.tool.runesmith_task_evidence.execute({
+      evidence: {
+        decision: "Scope sentinel finding is a planning artifact; the docs change is correct and tests pass.",
+      },
+    } as any)
+
+    expect(JSON.parse(evidence.output)).toMatchObject({
+      ok: true,
+      value: {
+        taskId: "task_alpha",
+        type: "decision",
+      },
+    })
+    expect(Object.values(runtime.snapshot().ledgers.mission_alpha.evidence)).toEqual([
+      expect.objectContaining({
+        type: "decision",
+        summary: expect.stringContaining("Scope sentinel finding"),
+        payload: expect.objectContaining({
+          evidence: expect.objectContaining({
+            decision: expect.stringContaining("docs change is correct"),
+          }),
+        }),
+      }),
+    ])
   })
 
   test("exposes the Runic Covenant and injects it into OpenCode once", async () => {
