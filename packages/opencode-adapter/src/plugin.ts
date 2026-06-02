@@ -2420,6 +2420,10 @@ function inferProjectImplementationFileScope(repositoryFiles: string[] | undefin
     "lib",
     "server",
     "client",
+    "js",
+    "css",
+    "styles",
+    "assets",
     "api",
     "packages",
     "docs",
@@ -2452,7 +2456,10 @@ function inferProjectInterfaceFileScope(
     "components",
     "src",
     "public",
+    "js",
+    "css",
     "styles",
+    "assets",
   ]
   const scopes = interfaceDirectories
     .filter((directory) => repositoryHasDirectory(files, directory))
@@ -2500,6 +2507,7 @@ function rootProjectFiles(files: string[]): string[] {
     "eslint.config.mjs",
     "vitest.config.ts",
     "playwright.config.ts",
+    "index.html",
   ])
 
   return files.filter((file) => knownRootFiles.has(file))

@@ -134,6 +134,72 @@ describe("opencode adapter", () => {
     )
   })
 
+  test("infers vanilla static app scopes for root HTML CSS and JS projects", async () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    const plugin = createRunesmithPlugin({
+      runtime,
+      proofPlanOptions: {
+        repositoryFiles: [
+          "package.json",
+          "index.html",
+          "js/2048.js",
+          "js/game.js",
+          "css/2048.css",
+          "tests/game.test.js",
+        ],
+      },
+    })
+
+    expect(runtime.snapshot().contracts.agent_atlas.fileScope).toEqual(
+      expect.arrayContaining(["js/**", "css/**", "tests/**", "index.html", "package.json"]),
+    )
+
+    await plugin.tool.runesmith_autopilot_prepare.execute({
+      goal: "Build a polished 2048 game",
+    })
+    await plugin["tool.execute.after"]?.(
+      {
+        tool: "edit",
+        args: {
+          filePath: "E:\\dev\\up_code\\js\\2048.js",
+        },
+      },
+      { output: "Edit applied successfully." } as OpenCodeToolOutput,
+    )
+    await plugin["tool.execute.after"]?.(
+      {
+        tool: "edit",
+        args: {
+          filePath: "E:\\dev\\up_code\\css\\2048.css",
+        },
+      },
+      { output: "Edit applied successfully." } as OpenCodeToolOutput,
+    )
+    await plugin["tool.execute.after"]?.(
+      {
+        tool: "bash",
+        args: {
+          command: "node --test tests/game.test.js",
+          workdir: "E:\\dev\\up_code",
+        },
+      },
+      {
+        output: "# pass 20 # fail 0",
+        metadata: {
+          exit: 0,
+          output: "# pass 20 # fail 0",
+        },
+      } as OpenCodeToolOutput,
+    )
+
+    const reviewLens = deriveReviewLens(runtime.snapshot())
+    expect(reviewLens.findings.map((finding) => finding.summary)).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("outside agent_atlas file scope"),
+      ]),
+    )
+  })
+
   test("infers implementation file scopes from package manifests with a UTF-8 BOM", async () => {
     const originalCwd = process.cwd()
     const directory = await mkdtemp(join(tmpdir(), "runesmith-bom-app-"))
