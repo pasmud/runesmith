@@ -53,6 +53,12 @@ export type ClaimWorkerDispatchPacketInput = {
   ttlMs?: number
 }
 
+export type ClaimWorkerDispatchPacketsInput = {
+  limit?: number
+  holderPrefix?: string
+  ttlMs?: number
+}
+
 export type FocusWorkerDispatchPacketInput = {
   packetId?: string
   missionId?: string
@@ -73,6 +79,11 @@ export type ClaimWorkerDispatchPacketValue = {
   packet: WorkerDispatchPacket
   workerDispatch: WorkerDispatch
   claim?: ClaimTaskValue
+}
+
+export type ClaimWorkerDispatchPacketsValue = {
+  claims: ClaimWorkerDispatchPacketValue[]
+  workerDispatch: WorkerDispatch
 }
 
 export type WorkerEvidenceTarget = {
@@ -234,6 +245,72 @@ export function claimWorkerDispatchPacket(
     packet,
     workerDispatch: deriveWorkerDispatch(runtime.snapshot()),
     claim: claimed.value,
+  })
+}
+
+export function claimWorkerDispatchPackets(
+  runtime: RunesmithRuntime,
+  input: ClaimWorkerDispatchPacketsInput = {},
+): Result<ClaimWorkerDispatchPacketsValue> {
+  const dispatch = deriveWorkerDispatch(runtime.snapshot())
+  const limit = Math.max(1, input.limit ?? dispatch.packets.length)
+  const packets = dispatch.packets
+    .filter((packet) => packet.state === "claimable" && packet.claim)
+    .slice(0, limit)
+
+  if (packets.length === 0) {
+    return err(
+      runtimeError("INVALID_TRANSITION", "No claimable Worker Dispatch packets are available", {
+        status: dispatch.status,
+        blockers: dispatch.blockers,
+      }),
+    )
+  }
+
+  const claims: ClaimWorkerDispatchPacketValue[] = []
+  for (const packet of packets) {
+    const claim = packet.claim
+    if (!claim) continue
+
+    const claimed = runtime.claimTask({
+      missionId: claim.missionId,
+      taskId: claim.taskId,
+      contractId: claim.contractId,
+      holder: input.holderPrefix ? `${input.holderPrefix}:${packet.agentId}` : claim.holder,
+      idempotencyKey: claim.idempotencyKey,
+      ttlMs: input.ttlMs ?? claim.ttlMs,
+    })
+    if (!claimed.ok) return claimed
+
+    const focused = recordWorkerDispatchClaim(runtime, {
+      packetId: packet.id,
+      missionId: packet.missionId,
+      taskId: packet.taskId,
+      agentId: packet.agentId,
+      holder: claimed.value.lease.holder,
+      leaseId: claimed.value.lease.id,
+      replayed: claimed.value.replayed,
+    })
+    if (!focused.ok) return focused
+
+    claims.push({
+      packetId: packet.id,
+      missionId: packet.missionId,
+      taskId: packet.taskId,
+      agentId: packet.agentId,
+      holder: claimed.value.lease.holder,
+      leaseId: claimed.value.lease.id,
+      lease: claimed.value.lease,
+      replayed: claimed.value.replayed,
+      packet,
+      workerDispatch: dispatch,
+      claim: claimed.value,
+    })
+  }
+
+  return ok({
+    claims,
+    workerDispatch: deriveWorkerDispatch(runtime.snapshot()),
   })
 }
 

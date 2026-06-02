@@ -96,6 +96,110 @@ const snapshot = {
   },
 }
 
+function parallelWorkerSnapshot() {
+  return {
+    graphs: {
+      mission_alpha: {
+        mission: {
+          id: "mission_alpha",
+          goal: "Launch parallel OpenCode runners",
+          status: "running",
+          rootTaskId: "task_plan",
+          createdAt: "2026-05-27T00:00:00.000Z",
+          updatedAt: "2026-05-27T00:00:00.000Z",
+        },
+        tasks: {
+          task_plan: {
+            id: "task_plan",
+            missionId: "mission_alpha",
+            title: "Plan runner fabric",
+            description: "Approve independent runner slices.",
+            status: "complete",
+            requiredCapabilities: ["repository-maintenance"],
+            requiredEvidence: ["decision"],
+            assignedAgentId: "agent_steward",
+            createdAt: "2026-05-27T00:00:00.000Z",
+            updatedAt: "2026-05-27T00:01:00.000Z",
+          },
+          task_adapter: {
+            id: "task_adapter",
+            missionId: "mission_alpha",
+            title: "Build adapter runner",
+            description: "Implement the OpenCode adapter runner slice.",
+            status: "queued",
+            dependsOn: ["task_plan"],
+            requiredCapabilities: ["typescript", "testing"],
+            requiredEvidence: ["file-change", "test-result"],
+            createdAt: "2026-05-27T00:00:00.000Z",
+            updatedAt: "2026-05-27T00:00:00.000Z",
+          },
+          task_dashboard: {
+            id: "task_dashboard",
+            missionId: "mission_alpha",
+            title: "Build dashboard runner",
+            description: "Implement the dashboard runner slice.",
+            status: "queued",
+            dependsOn: ["task_plan"],
+            requiredCapabilities: ["typescript", "ui"],
+            requiredEvidence: ["file-change", "test-result"],
+            createdAt: "2026-05-27T00:00:00.000Z",
+            updatedAt: "2026-05-27T00:00:00.000Z",
+          },
+        },
+        events: [],
+      },
+    },
+    ledgers: {
+      mission_alpha: {
+        evidence: {
+          evidence_plan: {
+            id: "evidence_plan",
+            taskId: "task_plan",
+            type: "decision",
+            summary: "Independent runner slices approved",
+            payload: {},
+            createdAt: "2026-05-27T00:00:01.000Z",
+          },
+        },
+      },
+    },
+    leases: { leases: {} },
+    contracts: {
+      agent_atlas: snapshot.contracts.agent_atlas,
+      agent_artificer: {
+        id: "agent_artificer",
+        displayName: "Artificer",
+        description: "Interface agent",
+        capabilities: ["typescript", "testing", "ui"],
+        allowedTools: ["read", "edit", "test"],
+        modelPolicy: {
+          primary: "openai/gpt-5.1-codex",
+          fallbacks: [],
+        },
+        fileScope: ["packages/dashboard/**"],
+        completionCriteria: ["UI renders", "Tests pass"],
+        requiredEvidence: ["file-change", "test-result"],
+        fallbacks: [],
+      },
+      agent_steward: {
+        id: "agent_steward",
+        displayName: "Steward",
+        description: "Release steward",
+        capabilities: ["repository-maintenance"],
+        allowedTools: ["read", "edit"],
+        modelPolicy: {
+          primary: "openai/gpt-5.1-codex",
+          fallbacks: [],
+        },
+        fileScope: ["docs/**"],
+        completionCriteria: ["Decision recorded"],
+        requiredEvidence: ["decision"],
+        fallbacks: [],
+      },
+    },
+  }
+}
+
 describe("runesmith cli", () => {
   test("node host writes basename OpenCode configs from clean project directories", async () => {
     const projectDir = await mkdtemp(join(tmpdir(), "runesmith-cli-clean-"))
@@ -1250,6 +1354,79 @@ describe("runesmith cli", () => {
       holder: `runesmith-worker:${agent}`,
       idempotencyKey: `worker-dispatch:mission_alpha:task_alpha:${agent}`,
     })
+  })
+
+  test("runner fabric dry-run previews parallel worker packets without leasing work", async () => {
+    const host = createMemoryHost({
+      ".runesmith/runtime/capsule.json": JSON.stringify({
+        version: 1,
+        updatedAt: "2026-05-27T00:00:00.000Z",
+        runtime: parallelWorkerSnapshot(),
+      }),
+    })
+
+    const result = await runCli(["runners", "launch", "--dry-run", "--max", "2"], host)
+    const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("Runner fabric")
+    expect(result.stdout).toContain("mode: dry-run")
+    expect(result.stdout).toContain("available: 2")
+    expect(result.stdout).toContain("claimed: 0")
+    expect(result.stdout).toContain("agent_atlas")
+    expect(result.stdout).toContain("agent_artificer")
+    expect(Object.values(capsule.runtime.leases.leases).filter((lease: any) => lease.status === "active")).toHaveLength(0)
+  })
+
+  test("runner fabric fails before leasing packets when OpenCode is unavailable", async () => {
+    const host = createMemoryHost({
+      ".runesmith/runtime/capsule.json": JSON.stringify({
+        version: 1,
+        updatedAt: "2026-05-27T00:00:00.000Z",
+        runtime: parallelWorkerSnapshot(),
+      }),
+    })
+
+    const result = await runCli(["runners", "launch", "--max", "2"], host)
+    const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
+
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain("OpenCode CLI not found")
+    expect(Object.values(capsule.runtime.leases.leases).filter((lease: any) => lease.status === "active")).toHaveLength(0)
+  })
+
+  test("runner fabric launches one OpenCode run process per claimed packet", async () => {
+    const launched: Array<{ command: string; args: string[] }> = []
+    const host = createMemoryHost(
+      {
+        ".runesmith/runtime/capsule.json": JSON.stringify({
+          version: 1,
+          updatedAt: "2026-05-27T00:00:00.000Z",
+          runtime: parallelWorkerSnapshot(),
+        }),
+      },
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+        startCommand(command, args) {
+          launched.push({ command, args })
+
+          return { pid: 1000 + launched.length }
+        },
+      },
+    )
+
+    const result = await runCli(["runners", "launch", "--max", "2"], host)
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("mode: launch")
+    expect(result.stdout).toContain("launched: 2")
+    expect(launched).toHaveLength(2)
+    expect(launched.map((item) => item.command)).toEqual(["E:/tools/opencode.exe", "E:/tools/opencode.exe"])
+    expect(launched.map((item) => item.args[0])).toEqual(["run", "run"])
+    expect(launched[0]?.args[1]).toContain("worker_mission_alpha_task_adapter_agent_atlas")
+    expect(launched[1]?.args[1]).toContain("worker_mission_alpha_task_dashboard_agent_artificer")
   })
 
   test("mission start bootstraps a planned covenant mission into the runtime capsule", async () => {

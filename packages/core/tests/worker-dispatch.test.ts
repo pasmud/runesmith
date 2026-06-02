@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import {
   buildWorkerDispatchPrompt,
   claimWorkerDispatchPacket,
+  claimWorkerDispatchPackets,
   createRuntime,
   deriveWorkerDispatch,
   selectWorkerEvidenceTarget,
@@ -334,6 +335,91 @@ describe("worker dispatch", () => {
       leaseId: claimed.value.leaseId,
       replayed: true,
     })
+  })
+
+  test("claims multiple initial worker packets before active leases serialize dispatch", () => {
+    const counts = new Map<string, number>()
+    const runtime = createRuntime({
+      idFactory: (prefix) => {
+        const next = (counts.get(prefix) ?? 0) + 1
+        counts.set(prefix, next)
+        return `${prefix}_${next}`
+      },
+      now: fixedNow,
+    })
+    runtime.registerContract(atlas)
+    runtime.registerContract(artificer)
+    runtime.registerContract(steward)
+    runtime.startMission({
+      goal: "Launch parallel OpenCode runners",
+      taskPlan: [
+        {
+          key: "plan",
+          title: "Plan: runner fabric",
+          description: "Approve independent runner slices.",
+          requiredCapabilities: ["repository-maintenance"],
+          requiredEvidence: ["decision"],
+        },
+        {
+          key: "adapter-forge",
+          title: "Forge: adapter runner",
+          description: "Build the OpenCode adapter runner slice.",
+          requiredCapabilities: ["typescript", "testing"],
+          requiredEvidence: ["file-change", "test-result"],
+          dependsOn: ["plan"],
+        },
+        {
+          key: "dashboard-forge",
+          title: "Forge: dashboard runner",
+          description: "Build the dashboard runner slice.",
+          requiredCapabilities: ["typescript", "testing", "ui"],
+          requiredEvidence: ["file-change", "test-result"],
+          dependsOn: ["plan"],
+        },
+      ],
+    })
+    runtime.claimTask({
+      missionId: "mission_1",
+      taskId: "task_1",
+      contractId: "agent_steward",
+      holder: "steward",
+      idempotencyKey: "claim-plan",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_1",
+      evidence: {
+        id: "evidence_plan",
+        taskId: "task_1",
+        type: "decision",
+        summary: "Runner slices approved",
+        payload: {},
+        createdAt: "2026-05-27T00:00:01.000Z",
+      },
+    })
+    runtime.completeTask({
+      missionId: "mission_1",
+      taskId: "task_1",
+      contractId: "agent_steward",
+    })
+
+    const claimed = claimWorkerDispatchPackets(runtime, { limit: 2, ttlMs: 45_000 })
+    if (!claimed.ok) throw new Error(claimed.error.message)
+    const dispatchAfterClaim = deriveWorkerDispatch(runtime.snapshot())
+
+    expect(claimed.value.claims.map((claim) => [claim.taskId, claim.agentId, claim.replayed])).toEqual([
+      ["task_1_adapter_forge", "agent_atlas", false],
+      ["task_1_dashboard_forge", "agent_artificer", false],
+    ])
+    expect(dispatchAfterClaim).toMatchObject({
+      status: "active",
+      packetCount: 2,
+    })
+    expect(dispatchAfterClaim.packets.map((packet) => [packet.taskId, packet.state, packet.agentId])).toEqual([
+      ["task_1_adapter_forge", "leased", "agent_atlas"],
+      ["task_1_dashboard_forge", "leased", "agent_artificer"],
+    ])
+    expect(Object.values(runtime.snapshot().leases.leases).filter((lease) => lease.status === "active")).toHaveLength(3)
   })
 
   test("records a durable focused worker packet for evidence routing", () => {

@@ -54,11 +54,11 @@ svg {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 302px;
-  width: min(1400px, calc(100vw - 48px));
-  height: calc(100vh - 48px);
+  grid-template-columns: 248px minmax(0, 1fr) 340px;
+  width: calc(100vw - 24px);
+  height: calc(100vh - 24px);
   min-height: 680px;
-  margin: 24px auto;
+  margin: 12px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 28px;

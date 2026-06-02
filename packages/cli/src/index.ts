@@ -6,6 +6,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises"
 import {
   advanceRunicMissionLoop,
   claimWorkerDispatchPacket,
+  claimWorkerDispatchPackets,
   createCovenantTaskPlan,
   createRunesmithAgentContracts,
   createRuntime,
@@ -91,6 +92,14 @@ export type CliCommandResult = {
   stderr?: string
 }
 
+export type CliStartedCommand = {
+  pid?: number
+}
+
+export type CliStartCommandOptions = {
+  visible?: boolean
+}
+
 export type CliHost = {
   exists(path: string): boolean | Promise<boolean>
   findCommand?(command: string): string | undefined | Promise<string | undefined>
@@ -98,6 +107,7 @@ export type CliHost = {
   readText(path: string): string | Promise<string>
   runCommand?(command: string, args: string[]): CliCommandResult | Promise<CliCommandResult>
   runShellCommand?(command: string): CliCommandResult | Promise<CliCommandResult>
+  startCommand?(command: string, args: string[], options?: CliStartCommandOptions): CliStartedCommand | Promise<CliStartedCommand>
   writeText(path: string, text: string): void | Promise<void>
 }
 
@@ -105,6 +115,7 @@ export type MemoryHostOptions = {
   commands?: Record<string, string | undefined>
   runCommand?: (command: string, args: string[]) => CliCommandResult | Promise<CliCommandResult>
   runShellCommand?: (command: string) => CliCommandResult | Promise<CliCommandResult>
+  startCommand?: (command: string, args: string[], options?: CliStartCommandOptions) => CliStartedCommand | Promise<CliStartedCommand>
 }
 
 export function createMemoryHost(initialFiles: Record<string, string> = {}, options: MemoryHostOptions = {}) {
@@ -141,6 +152,9 @@ export function createMemoryHost(initialFiles: Record<string, string> = {}, opti
         stdout: "",
         stderr: "",
       }
+    },
+    startCommand(command: string, args: string[], startOptions?: CliStartCommandOptions): CliStartedCommand | Promise<CliStartedCommand> {
+      return options.startCommand?.(command, args, startOptions) ?? { pid: 1 }
     },
     writeText(path: string, text: string): void {
       files.set(path, text)
@@ -197,6 +211,35 @@ export function createNodeHost(): CliHost {
 
       return { exitCode, stdout, stderr }
     },
+    async startCommand(command: string, args: string[], options?: CliStartCommandOptions): Promise<CliStartedCommand> {
+      if (options?.visible && process.platform === "win32") {
+        const script = [
+          `$args = @(${args.map(quotePowerShellSingle).join(", ")})`,
+          `Start-Process -FilePath ${quotePowerShellSingle(command)} -ArgumentList $args -WorkingDirectory (Get-Location).Path`,
+        ].join("; ")
+        const child = Bun.spawn(["powershell", "-NoProfile", "-Command", script], {
+          stdout: "pipe",
+          stderr: "pipe",
+          windowsHide: true,
+        })
+        const exitCode = await child.exited
+        if (exitCode !== 0) {
+          const stderr = await readTextBounded(child.stderr, 4_000)
+          throw new Error(stderr || `Failed to start visible process for ${command}`)
+        }
+
+        return {}
+      }
+
+      const child = Bun.spawn([command, ...args], {
+        stdin: "ignore",
+        stdout: "inherit",
+        stderr: "inherit",
+        windowsHide: true,
+      })
+
+      return { pid: child.pid }
+    },
     async writeText(path: string, text: string): Promise<void> {
       const parentDir = dirname(path)
       if (parentDir && parentDir !== ".") {
@@ -238,6 +281,10 @@ async function readTextBounded(
   }
 
   return output
+}
+
+function quotePowerShellSingle(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`
 }
 
 export async function runCli(args: string[], host: CliHost = createNodeHost()): Promise<CliResult> {
@@ -293,6 +340,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
 
   if (command === "worker" && subcommand === "claim") {
     return claimWorkerFromCli([maybeId, ...rest].filter((value): value is string => Boolean(value)), host)
+  }
+
+  if (command === "runners" && subcommand === "launch") {
+    return launchRunnerFabricFromCli([maybeId, ...rest].filter((value): value is string => Boolean(value)), host)
   }
 
   if (command === "risk" && subcommand === "resolve") {
@@ -1071,6 +1122,125 @@ async function claimWorkerFromCli(args: string[], host: CliHost): Promise<CliRes
     `replayed: ${claimed.value.replayed ? "yes" : "no"}`,
     "",
   ].join("\n"))
+}
+
+async function launchRunnerFabricFromCli(args: string[], host: CliHost): Promise<CliResult> {
+  const options = parseFlagOptions(args)
+  const maxRunners = parseMaxSteps(options.max) ?? 3
+  const ttlMs = parseMaxSteps(options["ttl-ms"])
+  const dryRun = Object.prototype.hasOwnProperty.call(options, "dry-run")
+  const visible = Object.prototype.hasOwnProperty.call(options, "visible")
+  const runtimeCapsulePath = await resolveRuntimeCapsulePath(host)
+  const capsule = await loadRuntimeCapsule(host, runtimeCapsulePath)
+  if (!capsule.ok) {
+    return failure(`${capsule.error.message}\n`)
+  }
+
+  const snapshot = capsule.value?.runtime ?? emptySnapshot
+  const runtime = createRuntime({
+    snapshot,
+    idFactory: createCliIdFactory(snapshot),
+  })
+  registerCliAgentMesh(runtime)
+
+  if (dryRun) {
+    const workerDispatch = deriveWorkerDispatch(runtime.snapshot())
+    const packets = workerDispatch.packets
+      .filter((packet) => packet.state === "claimable" && packet.claim)
+      .slice(0, maxRunners)
+
+    if (packets.length === 0) {
+      return failure("No claimable Worker Dispatch packets are available\n")
+    }
+
+    return success([
+      "Runner fabric",
+      "mode: dry-run",
+      `runtime: ${runtimeCapsulePath}`,
+      `available: ${packets.length}`,
+      "claimed: 0",
+      "launched: 0",
+      `visible: ${visible ? "yes" : "no"}`,
+      ...packets.map((packet, index) => {
+        return `runner ${index + 1}: packet=${packet.id}; task=${packet.taskId}; agent=${packet.agentId}; pid=n/a`
+      }),
+      "",
+    ].join("\n"))
+  }
+
+  const opencode = await host.findCommand?.("opencode")
+  if (!opencode) {
+    return failure("OpenCode CLI not found. Install OpenCode or rerun with --dry-run.\n")
+  }
+
+  const claimed = claimWorkerDispatchPackets(runtime, {
+    limit: maxRunners,
+    holderPrefix: "runesmith-runner",
+    ttlMs,
+  })
+  if (!claimed.ok) return failure(`${claimed.error.message}\n`)
+
+  await saveRuntimeCapsule(host, {
+    path: runtimeCapsulePath,
+    snapshot: runtime.snapshot(),
+  })
+
+  const launched: Array<{ packetId: string; taskId: string; agentId: string; pid?: number }> = []
+  for (const claim of claimed.value.claims) {
+    const prompt = buildRunnerLaunchPrompt(claim)
+    const started = await host.startCommand?.(opencode, ["run", prompt], { visible })
+    launched.push({
+      packetId: claim.packetId,
+      taskId: claim.taskId,
+      agentId: claim.agentId,
+      pid: started?.pid,
+    })
+  }
+
+  return success([
+    "Runner fabric",
+    "mode: launch",
+    `runtime: ${runtimeCapsulePath}`,
+    `claimed: ${claimed.value.claims.length}`,
+    `launched: ${launched.length}`,
+    `visible: ${visible ? "yes" : "no"}`,
+    ...launched.map((runner, index) => {
+      return `runner ${index + 1}: packet=${runner.packetId}; task=${runner.taskId}; agent=${runner.agentId}; pid=${runner.pid ?? "n/a"}`
+    }),
+    "",
+  ].join("\n"))
+}
+
+function buildRunnerLaunchPrompt(claim: {
+  packetId: string
+  missionId: string
+  taskId: string
+  agentId: string
+  leaseId: string
+  packet: {
+    title: string
+    objective: string
+    handoff: string
+    fileScope: string[]
+    requiredEvidence: EvidenceType[]
+    completionCriteria: string[]
+  }
+}): string {
+  return [
+    "Runesmith multi-runner assignment.",
+    `Packet: ${claim.packetId}`,
+    `Mission: ${claim.missionId}`,
+    `Task: ${claim.taskId}`,
+    `Agent: ${claim.agentId}`,
+    `Lease: ${claim.leaseId}`,
+    `Title: ${claim.packet.title}`,
+    `Objective: ${claim.packet.objective}`,
+    `Scope: ${formatList(claim.packet.fileScope)}`,
+    `Required evidence: ${formatList(claim.packet.requiredEvidence)}`,
+    `Completion criteria: ${formatList(claim.packet.completionCriteria)}`,
+    `Handoff: ${claim.packet.handoff}`,
+    "Work only on this packet. Do not start a duplicate mission. Record file, command, test, diagnostic, risk, or decision evidence through Runesmith/OpenCode tools as you work. Stop after the packet is proven or blocked.",
+  ].join("\n")
 }
 
 function parseMissionStartGoal(args: string[]): string {
