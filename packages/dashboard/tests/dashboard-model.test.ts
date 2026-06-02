@@ -521,6 +521,18 @@ describe("dashboard model", () => {
     expect(model.notice).toBe("Loaded runtime capsule from 2026-05-27T00:00:00.000Z.")
   })
 
+  test("builds a plain task log from live capsule tasks and evidence", () => {
+    const model = buildDashboardModelFromRuntimeCapsule(capsule)
+
+    expect(model.taskLog.map((item) => [item.taskId, item.eventType, item.summary])).toEqual([
+      ["task_review", "test-result", "Dashboard tests passed"],
+      ["task_live", "file-change", "Added capsule adapter"],
+      ["task_live", "task", "Render persisted OpenCode mission state in the dashboard."],
+      ["task_review", "task", "Check capsule mapping and UI behavior."],
+    ])
+    expect([...new Set(model.tasks.map((task) => task.agent))]).toEqual(["Atlas", "Oracle"])
+  })
+
   test("selects the active implementation slice when a refined runtime capsule loads", async () => {
     const forged = await applyDashboardRuntimeAction(emptyRuntimeSnapshot, {
       type: "forge-directive",

@@ -391,22 +391,12 @@ function HomeView({
 }) {
   return (
     <section className="home-stack">
-      <section>
-        <SectionHeader action={`View all ${model.agents.length}`} title="Top agents" />
-        <div className="top-agent-grid">
-          {model.agents.slice(0, 4).map((agent) => (
-            <button className="top-agent-card" key={agent.id} onClick={() => dispatch({ type: "select-agent", agentId: agent.id })} type="button">
-              <span className="tile-icon"><Bot aria-hidden="true" /></span>
-              <strong>{agent.name}</strong>
-              <span><i className={`status-dot status-dot-${agent.status}`} />{agent.status}</span>
-            </button>
-          ))}
-        </div>
-      </section>
+      <MissionSummaryPanel dispatch={dispatch} model={model} />
+      <TaskLogPanel dispatch={dispatch} model={model} />
 
       <section className="home-grid">
         <div className="panel-card">
-        <SectionHeader action="View all 5" title="Top apps" />
+          <SectionHeader action="Optional" title="Advanced views" />
           <div className="app-list">
             {appTiles.map(({ icon: Icon, label, owner, view }) => (
               <button className="app-row" key={label} onClick={() => dispatch({ type: "select-view", view })} type="button">
@@ -418,7 +408,7 @@ function HomeView({
         </div>
 
         <div className="panel-card">
-          <SectionHeader action={`View all ${model.snapshots.length}`} title="Recent artifacts" />
+          <SectionHeader action={`View all ${model.snapshots.length}`} title="Recent checkpoints" />
           <div className="artifact-list">
             {model.snapshots.slice(0, 3).map((snapshot) => (
               <button className="artifact-row" key={snapshot.id} onClick={() => dispatch({ type: "select-view", view: "snapshots" })} type="button">
@@ -431,10 +421,10 @@ function HomeView({
       </section>
 
       <section className="jobs-panel">
-        <SectionHeader action="View all 3" title="Cron Jobs" />
+        <SectionHeader action="Manual controls" title="Run actions" />
         <JobRow
           detail={`Active · Every 30m · by ${model.selectedAgent.name}`}
-          label="Guarded autopilot cycle"
+          label="Run autopilot"
           onRun={() => void runRuntimeControl({ type: "run-autopilot-cycle" })}
           tone="verified"
         />
@@ -446,7 +436,7 @@ function HomeView({
         />
         <JobRow
           detail={`Manual · Evidence gate verifier · ${model.metrics.verified} verified`}
-          label="Evidence verifier"
+          label="Run proof check"
           onRun={() => dispatch({ type: "run-verifier" })}
           tone="running"
         />
@@ -458,6 +448,125 @@ function HomeView({
       </section>
     </section>
   )
+}
+
+function MissionSummaryPanel({ dispatch, model }: { dispatch: DashboardDispatch; model: DashboardModel }) {
+  const engagedAgents = agentsEngagedByTasks(model.tasks)
+  const totalTasks = model.tasks.length
+  const doneTasks = model.metrics.verified
+  const openTasks = Math.max(totalTasks - doneTasks, 0)
+  const blocker =
+    model.loopPulse.health === "critical"
+      ? model.loopPulse.nextAction.label
+      : model.reviewLens.status === "blocked"
+        ? "Review is blocked"
+        : model.sealAudit.status === "blocked"
+          ? "Seal is blocked"
+          : "No critical blocker"
+
+  return (
+    <section className="simple-summary" aria-label="Mission summary">
+      <div className="simple-summary-main">
+        <p className="eyebrow">Current Mission</p>
+        <h2>{model.missionMap.goal ?? model.selectedTask.title}</h2>
+        <p>{model.missionMemory.handoff}</p>
+      </div>
+      <div className="simple-summary-grid">
+        <SummaryMetric label="Tasks" value={`${doneTasks}/${totalTasks}`} detail={`${openTasks} open`} tone={openTasks > 0 ? "running" : "verified"} />
+        <SummaryMetric label="Agents Engaged" value={String(engagedAgents.length)} detail={engagedAgents.join(", ") || "none"} tone={engagedAgents.length > 0 ? "running" : "stale"} />
+        <SummaryMetric label="Next Step" value={model.loopPulse.nextAction.label} detail={model.loopPulse.health} tone={model.loopPulse.health === "critical" ? "blocked" : model.loopPulse.health === "attention" ? "stale" : "verified"} />
+        <SummaryMetric label="Blocker" value={blocker} detail={`${model.reviewLens.findings.length + model.sealAudit.findings.length} findings`} tone={model.loopPulse.health === "critical" ? "blocked" : "verified"} />
+      </div>
+      <div className="simple-agent-strip" aria-label="Engaged agents">
+        {engagedAgents.length > 0 ? engagedAgents.map((agent) => (
+          <button key={agent} onClick={() => selectAgentByName(dispatch, model, agent)} type="button">
+            <Bot aria-hidden="true" />
+            <span>{agent}</span>
+            <small>{model.tasks.filter((task) => task.agent === agent).length} task{model.tasks.filter((task) => task.agent === agent).length === 1 ? "" : "s"}</small>
+          </button>
+        )) : (
+          <span>No agents have a task yet.</span>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function SummaryMetric({
+  detail,
+  label,
+  tone,
+  value,
+}: {
+  detail: string
+  label: string
+  tone: MissionStatus
+  value: string
+}) {
+  return (
+    <div className="summary-metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <Badge tone={tone}>{detail}</Badge>
+    </div>
+  )
+}
+
+function TaskLogPanel({ dispatch, model }: { dispatch: DashboardDispatch; model: DashboardModel }) {
+  return (
+    <section className="task-log-panel" aria-label="Task log">
+      <SectionHeader action={`${model.tasks.length} total`} title="Task Log" />
+      <div className="task-log-list">
+        {model.tasks.map((task) => {
+          const events = model.taskLog.filter((item) => item.taskId === task.id).slice(0, 4)
+          const Icon = statusIcon[task.status]
+
+          return (
+            <article className="task-log-card" data-selected={task.id === model.selectedTask.id} key={task.id}>
+              <button className="task-log-head" onClick={() => dispatch({ type: "select-task", taskId: task.id })} type="button">
+                <span className={`tile-icon tile-icon-${task.status}`}><Icon aria-hidden="true" /></span>
+                <span>
+                  <strong>{task.title}</strong>
+                  <small>{task.agent} / {task.lane}</small>
+                </span>
+                <Badge tone={task.status}>{task.status}</Badge>
+              </button>
+              <p>{task.summary}</p>
+              <div className="task-log-evidence">
+                {task.evidence.length > 0 ? task.evidence.map((evidence) => (
+                  <span key={evidence}>{evidence}</span>
+                )) : (
+                  <span>no evidence yet</span>
+                )}
+              </div>
+              <div className="task-log-events">
+                {events.length > 0 ? events.map((event) => (
+                  <div key={event.id}>
+                    <Badge tone={event.tone}>{event.eventType}</Badge>
+                    <span>{event.summary}</span>
+                  </div>
+                )) : (
+                  <div>
+                    <Badge tone="stale">waiting</Badge>
+                    <span>No evidence has been recorded for this task.</span>
+                  </div>
+                )}
+              </div>
+            </article>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function agentsEngagedByTasks(tasks: TaskCard[]): string[] {
+  return [...new Set(tasks.map((task) => task.agent).filter((agent) => agent && agent !== "Unassigned"))]
+}
+
+function selectAgentByName(dispatch: DashboardDispatch, model: DashboardModel, agentName: string) {
+  const agent = model.agents.find((item) => item.name === agentName)
+  if (agent) dispatch({ type: "select-agent", agentId: agent.id })
 }
 
 function SectionHeader({ action, title }: { action: string; title: string }) {
@@ -480,12 +589,21 @@ function JobRow({
   onRun: () => void
   tone: MissionStatus
 }) {
+  const readableDetail =
+    label === "Run autopilot"
+      ? "Continue the current mission loop."
+      : label === "Recovery sweep"
+        ? "Recover stale or expired work."
+        : label === "Run proof check"
+          ? "Run available proof for selected work."
+          : detail
+
   return (
     <div className="job-row">
       <span className={`tile-icon tile-icon-${tone}`}><Clock3 aria-hidden="true" /></span>
       <div>
         <strong>{label}</strong>
-        <span>{detail}</span>
+        <span>{readableDetail}</span>
       </div>
       <Button onClick={onRun} size="sm" variant="outline">Run</Button>
     </div>

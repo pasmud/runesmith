@@ -114,6 +114,17 @@ export type TimelineItem = {
 
 export type CommandLogItem = TimelineItem
 
+export type TaskLogItem = {
+  id: string
+  taskId: string
+  taskTitle: string
+  agent: string
+  eventType: string
+  summary: string
+  createdAt: string
+  tone: MissionStatus
+}
+
 export type DashboardModel = {
   activeCovenantStage: CovenantStage
   activeCovenantStageId: CovenantStageId
@@ -146,6 +157,7 @@ export type DashboardModel = {
   selectedTask: TaskCard
   selectedTaskId: string
   snapshots: SnapshotRecord[]
+  taskLog: TaskLogItem[]
   tasks: TaskCard[]
   timeline: TimelineItem[]
 }
@@ -750,6 +762,9 @@ function deriveDashboardModel(input: {
   const protocolDeck = input.runtimeSnapshot
     ? deriveRunicProtocolDeck(input.runtimeSnapshot)
     : buildSeededProtocolDeck(input.tasks)
+  const taskLog = input.runtimeSnapshot
+    ? buildTaskLogFromSnapshot(input.runtimeSnapshot)
+    : buildSeededTaskLog(input.tasks)
 
   return {
     ...input,
@@ -775,6 +790,7 @@ function deriveDashboardModel(input: {
     selectedAgentId: selectedAgent.id,
     selectedTask,
     selectedTaskId: selectedTask.id,
+    taskLog,
   }
 }
 
@@ -1061,6 +1077,74 @@ function buildTaskCardsFromGraph(snapshot: RuntimeSnapshot, graph: MissionGraph)
         evidence: uniqueEvidenceTypes(evidence),
       } satisfies TaskCard
     })
+}
+
+function buildTaskLogFromSnapshot(snapshot: RuntimeSnapshot): TaskLogItem[] {
+  return Object.values(snapshot.graphs)
+    .flatMap((graph) => {
+      return Object.values(graph.tasks).flatMap((task) => {
+        const contract = task.assignedAgentId ? snapshot.contracts[task.assignedAgentId] : undefined
+        const tone = mapTaskStatus(task.status, graph, task.id)
+        const taskEntry: TaskLogItem = {
+          id: `task-log-${task.id}`,
+          taskId: task.id,
+          taskTitle: task.title,
+          agent: contract?.displayName ?? task.assignedAgentId ?? "Unassigned",
+          eventType: "task",
+          summary: task.description || graph.mission.goal,
+          createdAt: task.createdAt,
+          tone,
+        }
+        const evidenceEntries = evidenceForTask(snapshot, graph.mission.id, task.id).map((evidence) => ({
+          id: `task-log-${evidence.id}`,
+          taskId: task.id,
+          taskTitle: task.title,
+          agent: contract?.displayName ?? task.assignedAgentId ?? "Unassigned",
+          eventType: evidence.type,
+          summary: evidence.summary,
+          createdAt: evidence.createdAt,
+          tone: evidenceTone(evidence),
+        } satisfies TaskLogItem))
+
+        return [taskEntry, ...evidenceEntries]
+      })
+    })
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id))
+}
+
+function buildSeededTaskLog(tasks: TaskCard[]): TaskLogItem[] {
+  return tasks.flatMap((task) => {
+    const taskEntry: TaskLogItem = {
+      id: `task-log-${task.id}`,
+      taskId: task.id,
+      taskTitle: task.title,
+      agent: task.agent,
+      eventType: "task",
+      summary: task.summary,
+      createdAt: "2026-05-27T00:00:00.000Z",
+      tone: task.status,
+    }
+
+    return [
+      taskEntry,
+      ...task.evidence.map((evidence, index) => ({
+        id: `task-log-${task.id}-${evidence}-${index}`,
+        taskId: task.id,
+        taskTitle: task.title,
+        agent: task.agent,
+        eventType: evidence,
+        summary: `${task.title} recorded ${evidence} evidence.`,
+        createdAt: `2026-05-27T00:0${Math.min(index + 1, 9)}:00.000Z`,
+        tone: evidence === "diagnostic" || evidence === "risk" ? "blocked" : "verified",
+      } satisfies TaskLogItem)),
+    ]
+  }).sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id))
+}
+
+function evidenceTone(evidence: Evidence): MissionStatus {
+  if (isDiagnosticEvidence(evidence) || evidence.type === "risk") return "blocked"
+  if (evidence.type === "test-result" || evidence.type === "decision") return "verified"
+  return "running"
 }
 
 function buildAgentsFromSnapshot(snapshot: RuntimeSnapshot, tasks: TaskCard[]): AgentNode[] {

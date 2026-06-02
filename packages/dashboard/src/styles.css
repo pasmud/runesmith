@@ -388,6 +388,8 @@ svg {
 }
 
 .top-agent-card,
+.simple-summary,
+.task-log-panel,
 .panel-card,
 .jobs-panel,
 .view-hero,
@@ -472,6 +474,199 @@ svg {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.7fr);
   gap: 14px;
+}
+
+.simple-summary,
+.task-log-panel {
+  padding: 18px;
+  border-radius: 8px;
+}
+
+.simple-summary-main {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.simple-summary-main h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.simple-summary-main p:last-child {
+  max-width: 920px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.simple-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summary-metric {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.summary-metric span:first-child {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.summary-metric strong {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.summary-metric .rs-badge {
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.simple-agent-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.simple-agent-strip button,
+.simple-agent-strip > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.simple-agent-strip button {
+  cursor: pointer;
+}
+
+.simple-agent-strip svg {
+  width: 15px;
+  height: 15px;
+  color: var(--accent);
+}
+
+.simple-agent-strip small {
+  color: var(--muted);
+}
+
+.task-log-list {
+  display: grid;
+  gap: 12px;
+}
+
+.task-log-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.task-log-card[data-selected="true"] {
+  border-color: rgba(80, 131, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(80, 131, 255, 0.10);
+}
+
+.task-log-head {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.task-log-head strong,
+.task-log-head small {
+  display: block;
+  min-width: 0;
+}
+
+.task-log-head strong {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.task-log-head small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.task-log-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.task-log-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.task-log-evidence span {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #f3f6fb;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.task-log-events {
+  display: grid;
+  gap: 7px;
+}
+
+.task-log-events div {
+  display: grid;
+  grid-template-columns: minmax(88px, max-content) minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.task-log-events span:last-child {
+  overflow-wrap: anywhere;
 }
 
 .panel-card,
@@ -2422,6 +2617,10 @@ svg {
   .mission-board {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .simple-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 900px) {
@@ -2456,6 +2655,7 @@ svg {
 
   .top-agent-grid,
   .home-grid,
+  .simple-summary-grid,
   .mission-board,
   .notification-list {
     grid-template-columns: 1fr;
@@ -2536,6 +2736,19 @@ svg {
   .policy-grid,
   .agent-facts,
   .snapshot-row {
+    grid-template-columns: 1fr;
+  }
+
+  .task-log-head {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .task-log-head .rs-badge {
+    grid-column: 2;
+    width: fit-content;
+  }
+
+  .task-log-events div {
     grid-template-columns: 1fr;
   }
 
