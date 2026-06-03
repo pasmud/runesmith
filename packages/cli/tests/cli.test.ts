@@ -1512,6 +1512,36 @@ describe("runesmith cli", () => {
     expect(launched[1]?.args[1]).toContain("lease_dashboard")
   })
 
+  test("runner fabric recognizes trailing visible boolean flag", async () => {
+    const launched: Array<{ command: string; args: string[]; visible?: boolean }> = []
+    const host = createMemoryHost(
+      {
+        ".runesmith/runtime/capsule.json": JSON.stringify({
+          version: 1,
+          updatedAt: "2026-05-27T00:00:00.000Z",
+          runtime: leasedParallelWorkerSnapshot(),
+        }),
+      },
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+        startCommand(command, args, options) {
+          launched.push({ command, args, visible: options?.visible })
+
+          return { pid: 3000 + launched.length }
+        },
+      },
+    )
+
+    const result = await runCli(["runners", "launch", "--max", "2", "--visible"], host)
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("visible: yes")
+    expect(launched).toHaveLength(2)
+    expect(launched.map((item) => item.visible)).toEqual([true, true])
+  })
+
   test("mission start bootstraps a planned covenant mission into the runtime capsule", async () => {
     const host = createMemoryHost()
 

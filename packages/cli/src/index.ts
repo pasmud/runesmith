@@ -1784,9 +1784,11 @@ function parseFlagOptions(flags: string[]): Record<string, string | undefined> {
   for (let index = 0; index < flags.length; index += 1) {
     const flag = flags[index]
     const value = flags[index + 1]
-    if (flag?.startsWith("--") && value) {
-      options[flag.slice(2)] = value
-      index += 1
+    if (flag?.startsWith("--")) {
+      options[flag.slice(2)] = value && !value.startsWith("--") ? value : undefined
+      if (value && !value.startsWith("--")) {
+        index += 1
+      }
     }
   }
 
