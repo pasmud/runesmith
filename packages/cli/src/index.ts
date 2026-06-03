@@ -41,6 +41,7 @@ import {
   saveProjectConfig,
   saveRuntimeCapsule,
   type AgentContract,
+  type ClaimWorkerDispatchPacketValue,
   type DispatchMatrix,
   type Evidence,
   type EvidenceType,
@@ -53,6 +54,7 @@ import {
   type ProofPlanOptions,
   type RedlineProof,
   type RepairContract,
+  type Result as CoreResult,
   type ReviewLens,
   type RunicProtocolDeck,
   type Runebook,
@@ -61,6 +63,7 @@ import {
   type RiskResolutionVerdict,
   type RuntimeSnapshot,
   type WorkerDispatch,
+  type WorkerDispatchPacket,
 } from "@runesmith/core"
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser"
 import {
@@ -1145,12 +1148,10 @@ async function launchRunnerFabricFromCli(args: string[], host: CliHost): Promise
 
   if (dryRun) {
     const workerDispatch = deriveWorkerDispatch(runtime.snapshot())
-    const packets = workerDispatch.packets
-      .filter((packet) => packet.state === "claimable" && packet.claim)
-      .slice(0, maxRunners)
+    const packets = selectRunnerLaunchPackets(workerDispatch.packets, maxRunners)
 
     if (packets.length === 0) {
-      return failure("No claimable Worker Dispatch packets are available\n")
+      return failure("No launchable Worker Dispatch packets are available\n")
     }
 
     return success([
@@ -1162,7 +1163,7 @@ async function launchRunnerFabricFromCli(args: string[], host: CliHost): Promise
       "launched: 0",
       `visible: ${visible ? "yes" : "no"}`,
       ...packets.map((packet, index) => {
-        return `runner ${index + 1}: packet=${packet.id}; task=${packet.taskId}; agent=${packet.agentId}; pid=n/a`
+        return `runner ${index + 1}: packet=${packet.id}; task=${packet.taskId}; agent=${packet.agentId}; lease=${packet.leaseId ?? "n/a"}; pid=n/a`
       }),
       "",
     ].join("\n"))
@@ -1173,12 +1174,11 @@ async function launchRunnerFabricFromCli(args: string[], host: CliHost): Promise
     return failure("OpenCode CLI not found. Install OpenCode or rerun with --dry-run.\n")
   }
 
-  const claimed = claimWorkerDispatchPackets(runtime, {
+  const prepared = prepareRunnerLaunchClaims(runtime, {
     limit: maxRunners,
-    holderPrefix: "runesmith-runner",
     ttlMs,
   })
-  if (!claimed.ok) return failure(`${claimed.error.message}\n`)
+  if (!prepared.ok) return failure(`${prepared.error.message}\n`)
 
   await saveRuntimeCapsule(host, {
     path: runtimeCapsulePath,
@@ -1186,7 +1186,7 @@ async function launchRunnerFabricFromCli(args: string[], host: CliHost): Promise
   })
 
   const launched: Array<{ packetId: string; taskId: string; agentId: string; pid?: number }> = []
-  for (const claim of claimed.value.claims) {
+  for (const claim of prepared.value.claims) {
     const prompt = buildRunnerLaunchPrompt(claim)
     const started = await host.startCommand?.(opencode, ["run", prompt], { visible })
     launched.push({
@@ -1201,14 +1201,77 @@ async function launchRunnerFabricFromCli(args: string[], host: CliHost): Promise
     "Runner fabric",
     "mode: launch",
     `runtime: ${runtimeCapsulePath}`,
-    `claimed: ${claimed.value.claims.length}`,
+    `claimed: ${prepared.value.claimedCount}`,
     `launched: ${launched.length}`,
     `visible: ${visible ? "yes" : "no"}`,
     ...launched.map((runner, index) => {
-      return `runner ${index + 1}: packet=${runner.packetId}; task=${runner.taskId}; agent=${runner.agentId}; pid=${runner.pid ?? "n/a"}`
+      const claim = prepared.value.claims[index]
+      return `runner ${index + 1}: packet=${runner.packetId}; task=${runner.taskId}; agent=${runner.agentId}; lease=${claim?.leaseId ?? "n/a"}; pid=${runner.pid ?? "n/a"}`
     }),
     "",
   ].join("\n"))
+}
+
+function selectRunnerLaunchPackets(packets: WorkerDispatchPacket[], limit: number): WorkerDispatchPacket[] {
+  return packets
+    .filter((packet) => {
+      if (packet.state === "claimable" && packet.claim) return true
+
+      return isRunnerOwnedLeasedPacket(packet)
+    })
+    .slice(0, limit)
+}
+
+function isRunnerOwnedLeasedPacket(packet: WorkerDispatchPacket): boolean {
+  return packet.state === "leased"
+    && Boolean(packet.leaseId)
+    && (packet.holder === "runesmith-cli" || Boolean(packet.holder?.startsWith("runesmith-runner:")))
+}
+
+function prepareRunnerLaunchClaims(
+  runtime: ReturnType<typeof createRuntime>,
+  input: { limit: number; ttlMs?: number },
+): CoreResult<{ claims: ClaimWorkerDispatchPacketValue[]; claimedCount: number }> {
+  const dispatch = deriveWorkerDispatch(runtime.snapshot())
+  const leasedPackets = dispatch.packets
+    .filter(isRunnerOwnedLeasedPacket)
+    .slice(0, input.limit)
+  const claims: ClaimWorkerDispatchPacketValue[] = []
+
+  for (const packet of leasedPackets) {
+    const focused = claimWorkerDispatchPacket(runtime, { packetId: packet.id })
+    if (!focused.ok) return focused
+    claims.push(focused.value)
+  }
+
+  const remaining = input.limit - claims.length
+  let claimedCount = 0
+  if (remaining > 0) {
+    const afterFocused = deriveWorkerDispatch(runtime.snapshot())
+    const claimableCount = afterFocused.packets.filter((packet) => packet.state === "claimable" && packet.claim).length
+    if (claimableCount > 0) {
+      const claimed = claimWorkerDispatchPackets(runtime, {
+        limit: Math.min(remaining, claimableCount),
+        holderPrefix: "runesmith-runner",
+        ttlMs: input.ttlMs,
+      })
+      if (!claimed.ok) return claimed
+      claims.push(...claimed.value.claims)
+      claimedCount = claimed.value.claims.length
+    }
+  }
+
+  if (claims.length === 0) {
+    return {
+      ok: false,
+      error: {
+        code: "INVALID_TRANSITION",
+        message: "No launchable Worker Dispatch packets are available",
+      },
+    }
+  }
+
+  return { ok: true, value: { claims, claimedCount } }
 }
 
 function buildRunnerLaunchPrompt(claim: {

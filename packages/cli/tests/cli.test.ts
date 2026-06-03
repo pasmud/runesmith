@@ -200,6 +200,38 @@ function parallelWorkerSnapshot() {
   }
 }
 
+function leasedParallelWorkerSnapshot() {
+  const runtime = JSON.parse(JSON.stringify(parallelWorkerSnapshot()))
+  runtime.graphs.mission_alpha.tasks.task_adapter.status = "running"
+  runtime.graphs.mission_alpha.tasks.task_adapter.assignedAgentId = "agent_atlas"
+  runtime.graphs.mission_alpha.tasks.task_dashboard.status = "running"
+  runtime.graphs.mission_alpha.tasks.task_dashboard.assignedAgentId = "agent_artificer"
+  runtime.leases.leases = {
+    lease_adapter: {
+      id: "lease_adapter",
+      targetId: "task_adapter",
+      holder: "runesmith-cli",
+      purpose: "task.claim",
+      idempotencyKey: "cli-next:plan-refine:refined:mission_alpha:task_adapter",
+      expiresAt: "2026-05-27T00:10:00.000Z",
+      status: "active",
+      createdAt: "2026-05-27T00:00:00.000Z",
+    },
+    lease_dashboard: {
+      id: "lease_dashboard",
+      targetId: "task_dashboard",
+      holder: "runesmith-cli",
+      purpose: "task.claim",
+      idempotencyKey: "cli-next:plan-refine:refined:mission_alpha:task_dashboard",
+      expiresAt: "2026-05-27T00:10:00.000Z",
+      status: "active",
+      createdAt: "2026-05-27T00:00:00.000Z",
+    },
+  }
+
+  return runtime
+}
+
 describe("runesmith cli", () => {
   test("node host writes basename OpenCode configs from clean project directories", async () => {
     const projectDir = await mkdtemp(join(tmpdir(), "runesmith-cli-clean-"))
@@ -1378,6 +1410,24 @@ describe("runesmith cli", () => {
     expect(Object.values(capsule.runtime.leases.leases).filter((lease: any) => lease.status === "active")).toHaveLength(0)
   })
 
+  test("runner fabric dry-run previews plan-refined packets already leased by Runesmith", async () => {
+    const host = createMemoryHost({
+      ".runesmith/runtime/capsule.json": JSON.stringify({
+        version: 1,
+        updatedAt: "2026-05-27T00:00:00.000Z",
+        runtime: leasedParallelWorkerSnapshot(),
+      }),
+    })
+
+    const result = await runCli(["runners", "launch", "--dry-run", "--max", "2"], host)
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("mode: dry-run")
+    expect(result.stdout).toContain("available: 2")
+    expect(result.stdout).toContain("lease_adapter")
+    expect(result.stdout).toContain("lease_dashboard")
+  })
+
   test("runner fabric fails before leasing packets when OpenCode is unavailable", async () => {
     const host = createMemoryHost({
       ".runesmith/runtime/capsule.json": JSON.stringify({
@@ -1427,6 +1477,39 @@ describe("runesmith cli", () => {
     expect(launched.map((item) => item.args[0])).toEqual(["run", "run"])
     expect(launched[0]?.args[1]).toContain("worker_mission_alpha_task_adapter_agent_atlas")
     expect(launched[1]?.args[1]).toContain("worker_mission_alpha_task_dashboard_agent_artificer")
+  })
+
+  test("runner fabric launches plan-refined packets already leased by Runesmith", async () => {
+    const launched: Array<{ command: string; args: string[] }> = []
+    const host = createMemoryHost(
+      {
+        ".runesmith/runtime/capsule.json": JSON.stringify({
+          version: 1,
+          updatedAt: "2026-05-27T00:00:00.000Z",
+          runtime: leasedParallelWorkerSnapshot(),
+        }),
+      },
+      {
+        commands: {
+          opencode: "E:/tools/opencode.exe",
+        },
+        startCommand(command, args) {
+          launched.push({ command, args })
+
+          return { pid: 2000 + launched.length }
+        },
+      },
+    )
+
+    const result = await runCli(["runners", "launch", "--max", "2"], host)
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("mode: launch")
+    expect(result.stdout).toContain("claimed: 0")
+    expect(result.stdout).toContain("launched: 2")
+    expect(launched).toHaveLength(2)
+    expect(launched[0]?.args[1]).toContain("lease_adapter")
+    expect(launched[1]?.args[1]).toContain("lease_dashboard")
   })
 
   test("mission start bootstraps a planned covenant mission into the runtime capsule", async () => {
