@@ -102,6 +102,7 @@ describe("seal audit", () => {
       ["redline-gate", "attention"],
       ["repair-gate", "passed"],
       ["scope-gate", "passed"],
+      ["production-readiness", "attention"],
       ["review-gate", "attention"],
       ["seal-decision", "blocked"],
     ])
@@ -164,6 +165,7 @@ describe("seal audit", () => {
       ["redline-gate", "attention"],
       ["repair-gate", "passed"],
       ["scope-gate", "passed"],
+      ["production-readiness", "passed"],
       ["review-gate", "passed"],
       ["seal-decision", "attention"],
     ])

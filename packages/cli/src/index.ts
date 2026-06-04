@@ -19,6 +19,7 @@ import {
   deriveMissionMemory,
   derivePlanContract,
   deriveProofPlan,
+  deriveProductionReadiness,
   deriveRedlineProof,
   deriveRepairContract,
   deriveReviewLens,
@@ -52,6 +53,7 @@ import {
   type ProofCommandExecution,
   type ProofRunCommandResult,
   type ProofPlanOptions,
+  type ProductionReadiness,
   type RedlineProof,
   type RepairContract,
   type Result as CoreResult,
@@ -426,6 +428,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     const repairContract = deriveRepairContract(snapshot.value)
     const reviewLens = deriveReviewLens(snapshot.value)
     const sealAudit = deriveSealAudit(snapshot.value, proofOptions)
+    const productionReadiness = deriveProductionReadiness(snapshot.value)
     const memory = deriveMissionMemory(snapshot.value)
     const proofPlan = deriveProofPlan(snapshot.value, proofOptions)
     const runebook = deriveRunebook(snapshot.value, { proofPlanOptions: proofOptions })
@@ -479,6 +482,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
       `Summary: ${sealAudit.summary}`,
       ...formatSealAuditAttentionLines(sealAudit),
       `Findings: ${formatSealAuditFindings(sealAudit)}`,
+      "Production seal:",
+      `Summary: ${productionReadiness.summary}`,
+      ...formatProductionReadinessAttentionLines(productionReadiness),
+      `Findings: ${formatProductionReadinessFindings(productionReadiness)}`,
       `Required evidence: ${formatList(pulse.requiredEvidence)}`,
       `Missing evidence: ${formatList(pulse.missingEvidence)}`,
       ...formatPulseDiagnostics(pulse, "Diagnostics"),
@@ -727,6 +734,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
   const repairContract = deriveRepairContract(snapshot)
   const reviewLens = deriveReviewLens(snapshot)
   const sealAudit = deriveSealAudit(snapshot, proofOptions)
+  const productionReadiness = deriveProductionReadiness(snapshot)
   const memory = deriveMissionMemory(snapshot)
   const proofPlan = deriveProofPlan(snapshot, proofOptions)
   const runebook = deriveRunebook(snapshot, { proofPlanOptions: proofOptions })
@@ -753,6 +761,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     `repair contract: ${formatRepairContractSummary(repairContract)}`,
     `review lens: ${formatReviewLensSummary(reviewLens)}`,
     `seal audit: ${formatSealAuditSummary(sealAudit)}`,
+    `production seal: ${formatProductionReadinessSummary(productionReadiness)}`,
     `mission: ${mission ? `${mission.id} ${mission.status} ${mission.goal}` : "none"}`,
     `task: ${task ? `${task.id} ${task.status} ${task.title}` : "none"}`,
     `missing evidence: ${formatList(pulse.missingEvidence)}`,
@@ -2000,6 +2009,22 @@ function formatSealAuditFindings(audit: SealAudit): string {
   return audit.findings.length > 0 ? audit.findings.map((finding) => finding.summary).join("; ") : "none"
 }
 
+function formatProductionReadinessSummary(readiness: ProductionReadiness): string {
+  const label = readiness.findings.length === 1 ? "finding" : "findings"
+  return `${readiness.status}; ${readiness.findings.length} ${label}`
+}
+
+function formatProductionReadinessAttentionLines(readiness: ProductionReadiness): string[] {
+  const checks = readiness.checks.filter((item) => item.status !== "passed")
+  if (checks.length === 0) return ["- none"]
+
+  return checks.map((item) => `- ${item.id}: ${item.status} - ${item.detail}`)
+}
+
+function formatProductionReadinessFindings(readiness: ProductionReadiness): string {
+  return readiness.findings.length > 0 ? readiness.findings.map((finding) => finding.summary).join("; ") : "none"
+}
+
 function formatRunebookCard(runebook: Runebook): string {
   return `${runebook.activeCard.title} [${runebook.activeCard.autonomy}]`
 }
@@ -2251,6 +2276,7 @@ function buildRunesmithOpenCodeAgents(): Record<string, OpenCodeAgentConfig> {
         "Route research, repo discovery, product expectations, and WBS inputs to runesmith-scout; core code, tests, and repo changes to runesmith-atlas; UI, browser, and dashboard work to runesmith-artificer; verification, review, and repair proof to runesmith-oracle; planning, docs, and release notes to runesmith-steward.",
         "Use the installed Runesmith tools to prepare the mission, refine the plan, claim work, record evidence, run proof, recover stale work, review, and seal without asking the user to manage task ids.",
         "Do not claim completion until the Runesmith Proof Plan passes. Interactive browser/static apps require browser workflow smoke proof from node .runesmith/proof/browser-smoke.mjs in addition to unit tests.",
+        "Treat Runesmith Production Seal as the final product-readiness standard: acceptance criteria, proof obligations, implementation evidence, relevant browser interaction proof, and diagnostics must be clear before completion claims.",
         "When proof fails, delegate a focused repair to the right subagent, rerun the exact failing command, then rerun the full proof plan before sealing.",
       ].join("\n"),
     },

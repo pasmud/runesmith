@@ -8,6 +8,7 @@ import {
   buildMissionMemoryPrompt,
   buildPlanContractPrompt,
   buildProofPlanPrompt,
+  buildProductionReadinessPrompt,
   buildRedlineProofPrompt,
   buildRepairContractPrompt,
   buildReviewLensPrompt,
@@ -29,6 +30,7 @@ import {
   deriveMissionMemory,
   derivePlanContract,
   deriveProofPlan,
+  deriveProductionReadiness,
   deriveRedlineProof,
   deriveRepairContract,
   deriveReviewLens,
@@ -764,6 +766,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             prompt = upsertPromptSection(prompt, buildRepairContractPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildReviewLensPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildSealAuditPrompt(snapshot, proofPlanOptions))
+            prompt = upsertPromptSection(prompt, buildProductionReadinessPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildRunebookPrompt(snapshot, { proofPlanOptions, covenant }))
             prompt = upsertPromptSection(prompt, buildRunicProtocolPrompt(snapshot, { proofPlanOptions, covenant }))
             prompt = upsertPromptSection(prompt, buildMissionMemoryPrompt(snapshot, covenant))
@@ -786,6 +789,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       upsertSystemSection(output, buildRepairContractPrompt(snapshot))
       upsertSystemSection(output, buildReviewLensPrompt(snapshot))
       upsertSystemSection(output, buildSealAuditPrompt(snapshot, proofPlanOptions))
+      upsertSystemSection(output, buildProductionReadinessPrompt(snapshot))
       upsertSystemSection(output, buildRunebookPrompt(snapshot, { proofPlanOptions, covenant }))
       upsertSystemSection(output, buildRunicProtocolPrompt(snapshot, { proofPlanOptions, covenant }))
       upsertSystemSection(output, buildMissionMemoryPrompt(snapshot, covenant))
@@ -1999,6 +2003,7 @@ function buildAutopilotPrompt(): string {
     "For non-trivial build goals, research before implementation: delegate discovery to runesmith-scout, then blend Scout findings into a Lead-blended WBS with acceptance criteria, dependencies, risks, and proof gates before calling broad implementation done.",
     "When OpenCode exposes the Task tool, use native OpenCode Task subagents for independent Runesmith slices: runesmith-scout for research/WBS inputs, runesmith-atlas for implementation, runesmith-artificer for UI/browser work, runesmith-oracle for proof/review/repair, and runesmith-steward for planning/docs. Do not replace native Task subagents with separate terminal processes.",
     "For UI work, prefer shadcn/ui elements where applicable, clean spacing, rounded cards or controls, accessible states, and restrained motion or animation only where it improves usability.",
+    "Use Runesmith Production Seal as the final product-readiness signal: acceptance criteria, proof obligations, implementation evidence, interactive browser proof when relevant, and diagnostic cleanup must be clear before completion claims.",
     "Use Runesmith Redline Proof as the test-first/review-discipline signal: prefer focused failing proof or proof-file evidence before implementation edits when behavior is testable.",
     "Use Runesmith Repair Contract during failed proof: keep the repair hypothesis-linked, one-variable, and tied to the exact failing command before broad proof.",
     "Prefer `runesmith_os_run` when you need Runesmith to keep executing engine-owned Runebook cards until the mission is sealed or a real stop condition appears.",
@@ -2082,6 +2087,7 @@ function buildMessageBootstrap(
   const repairContract = deriveRepairContract(snapshot)
   const reviewLens = deriveReviewLens(snapshot)
   const sealAudit = deriveSealAudit(snapshot, proofPlanOptions)
+  const productionReadiness = deriveProductionReadiness(snapshot)
 
   return [
     "<RUNESMITH_BOOTSTRAP>",
@@ -2096,6 +2102,7 @@ function buildMessageBootstrap(
     `Repair Contract: ${repairContract.status}; ${repairContract.summary}`,
     `Review Lens: ${reviewLens.status}; ${reviewLens.summary}`,
     `Seal Audit: ${sealAudit.status}; ${sealAudit.summary}`,
+    `Production Seal: ${productionReadiness.status}; ${productionReadiness.summary}`,
     "Let Runesmith choose the procedure from runtime state.",
     "Before mutating coding work, use Runesmith to prepare or resume the active mission.",
     "If Plan Contract is thin, call runesmith_plan_refine with concrete proof-backed slices before broad implementation.",
@@ -2180,6 +2187,7 @@ function appendCompactionContext(
   upsertTextListSection(context, buildRepairContractPrompt(snapshot))
   upsertTextListSection(context, buildReviewLensPrompt(snapshot))
   upsertTextListSection(context, buildSealAuditPrompt(snapshot, proofPlanOptions))
+  upsertTextListSection(context, buildProductionReadinessPrompt(snapshot))
   upsertTextListSection(context, buildRunebookPrompt(snapshot, { proofPlanOptions }))
   upsertTextListSection(context, buildRunicProtocolPrompt(snapshot, { proofPlanOptions }))
   upsertTextListSection(context, buildMissionMemoryPrompt(snapshot))

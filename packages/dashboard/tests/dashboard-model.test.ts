@@ -508,6 +508,7 @@ describe("dashboard model", () => {
       ["redline-gate", "attention"],
       ["repair-gate", "passed"],
       ["scope-gate", "passed"],
+      ["production-readiness", "attention"],
       ["review-gate", "attention"],
       ["seal-decision", "blocked"],
     ])

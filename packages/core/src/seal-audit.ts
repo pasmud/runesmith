@@ -1,4 +1,5 @@
 import { deriveProofPlan, type ProofPlan, type ProofPlanOptions } from "./proof-plan.js"
+import { deriveProductionReadiness, type ProductionReadiness } from "./production-readiness.js"
 import { deriveRedlineProof, type RedlineProof } from "./redline-proof.js"
 import { deriveRepairContract, type RepairContract } from "./repair-contract.js"
 import { deriveReviewLens, type ReviewLens } from "./review-lens.js"
@@ -16,6 +17,7 @@ export type SealAuditCheckId =
   | "redline-gate"
   | "repair-gate"
   | "scope-gate"
+  | "production-readiness"
   | "review-gate"
   | "seal-decision"
 
@@ -66,6 +68,7 @@ export function deriveSealAudit(snapshot: RuntimeSnapshot, proofPlanOptions: Pro
   const repairContract = deriveRepairContract(snapshot)
   const scopeSentinel = deriveScopeSentinel(snapshot)
   const reviewLens = deriveReviewLens(snapshot)
+  const productionReadiness = deriveProductionReadiness(snapshot)
   const checks = buildChecks({
     graph,
     proofPlan,
@@ -73,10 +76,11 @@ export function deriveSealAudit(snapshot: RuntimeSnapshot, proofPlanOptions: Pro
     repairContract,
     reviewLens,
     scopeSentinel,
+    productionReadiness,
     sealDecision,
     sealTask,
   })
-  const findings = buildFindings({ checks, proofPlan, redlineProof, repairContract, reviewLens, scopeSentinel })
+  const findings = buildFindings({ checks, proofPlan, redlineProof, repairContract, reviewLens, scopeSentinel, productionReadiness })
   const status = selectStatus(graph, checks)
 
   return {
@@ -171,6 +175,7 @@ function buildChecks(input: {
   repairContract: RepairContract
   reviewLens: ReviewLens
   scopeSentinel: ScopeSentinel
+  productionReadiness: ProductionReadiness
   sealDecision: Evidence | undefined
   sealTask: MissionTask | undefined
 }): SealAuditCheck[] {
@@ -180,6 +185,7 @@ function buildChecks(input: {
     buildRedlineGateCheck(input.graph, input.redlineProof),
     buildRepairGateCheck(input.graph, input.repairContract),
     buildScopeGateCheck(input.graph, input.scopeSentinel),
+    buildProductionReadinessCheck(input.graph, input.productionReadiness),
     buildReviewGateCheck(input.graph, input.reviewLens),
     buildSealDecisionCheck(input.graph, input.reviewLens, input.sealDecision, input.sealTask),
   ]
@@ -263,6 +269,26 @@ function buildScopeGateCheck(graph: MissionGraph, scopeSentinel: ScopeSentinel):
   return check("scope-gate", "Scope gate", "attention", finding?.summary ?? scopeSentinel.summary)
 }
 
+function buildProductionReadinessCheck(graph: MissionGraph, productionReadiness: ProductionReadiness): SealAuditCheck {
+  if (graph.mission.status === "complete" || productionReadiness.status === "sealed") {
+    return check("production-readiness", "Production Seal", "passed", "Mission completed after Production Seal readiness was checked.")
+  }
+
+  if (productionReadiness.status === "blocked") {
+    return check("production-readiness", "Production Seal", "blocked", productionReadiness.findings[0]?.summary ?? productionReadiness.summary)
+  }
+
+  if (productionReadiness.status === "collecting-proof") {
+    return check("production-readiness", "Production Seal", "attention", productionReadiness.nextAction)
+  }
+
+  if (productionReadiness.status === "ready") {
+    return check("production-readiness", "Production Seal", "passed", productionReadiness.summary)
+  }
+
+  return check("production-readiness", "Production Seal", "attention", productionReadiness.summary)
+}
+
 function buildReviewGateCheck(graph: MissionGraph, reviewLens: ReviewLens): SealAuditCheck {
   if (graph.mission.status === "complete" || reviewLens.status === "sealed") {
     return check("review-gate", "Review gate", "passed", "Mission completed after review.")
@@ -311,6 +337,7 @@ function buildFindings(input: {
   repairContract: RepairContract
   reviewLens: ReviewLens
   scopeSentinel: ScopeSentinel
+  productionReadiness: ProductionReadiness
 }): SealAuditFinding[] {
   const findings: SealAuditFinding[] = []
 
@@ -353,6 +380,14 @@ function buildFindings(input: {
   }
 
   for (const finding of input.scopeSentinel.findings) {
+    if (findings.some((existing) => existing.summary === finding.summary)) continue
+    findings.push({
+      severity: finding.severity,
+      summary: finding.summary,
+    })
+  }
+
+  for (const finding of input.productionReadiness.findings) {
     if (findings.some((existing) => existing.summary === finding.summary)) continue
     findings.push({
       severity: finding.severity,
