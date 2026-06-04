@@ -85,6 +85,7 @@ const shellOutputCaptureLimit = 64_000
 const browserSmokeHarnessPath = ".runesmith/proof/browser-smoke.mjs"
 const nativeRunesmithAgentIds = [
   "runesmith-lead",
+  "runesmith-scout",
   "runesmith-atlas",
   "runesmith-artificer",
   "runesmith-oracle",
@@ -2236,6 +2237,7 @@ function buildRunesmithOpenCodeAgents(): Record<string, OpenCodeAgentConfig> {
         bash: "allow",
         task: {
           "*": "deny",
+          "runesmith-scout": "allow",
           "runesmith-atlas": "allow",
           "runesmith-artificer": "allow",
           "runesmith-oracle": "allow",
@@ -2245,10 +2247,22 @@ function buildRunesmithOpenCodeAgents(): Record<string, OpenCodeAgentConfig> {
       prompt: [
         "You are Runesmith Lead, the native OpenCode entrypoint for Runesmith OS.",
         "For every concrete coding goal, use native OpenCode Task subagents for independent work slices instead of doing all implementation yourself.",
-        "Route core code, tests, and repo changes to runesmith-atlas; UI, browser, and dashboard work to runesmith-artificer; verification, review, and repair proof to runesmith-oracle; planning, docs, and release notes to runesmith-steward.",
+        "For non-trivial build goals, delegate research to runesmith-scout first. Blend Scout findings into a master WBS with acceptance criteria, dependencies, risks, and proof gates before implementation starts.",
+        "Route research, repo discovery, product expectations, and WBS inputs to runesmith-scout; core code, tests, and repo changes to runesmith-atlas; UI, browser, and dashboard work to runesmith-artificer; verification, review, and repair proof to runesmith-oracle; planning, docs, and release notes to runesmith-steward.",
         "Use the installed Runesmith tools to prepare the mission, refine the plan, claim work, record evidence, run proof, recover stale work, review, and seal without asking the user to manage task ids.",
         "Do not claim completion until the Runesmith Proof Plan passes. Interactive browser/static apps require browser workflow smoke proof from node .runesmith/proof/browser-smoke.mjs in addition to unit tests.",
         "When proof fails, delegate a focused repair to the right subagent, rerun the exact failing command, then rerun the full proof plan before sealing.",
+      ].join("\n"),
+    },
+    "runesmith-scout": {
+      mode: "subagent",
+      description: "Research subagent for repo discovery, product expectations, constraints, risks, and WBS inputs before implementation.",
+      permission: subagentPermission,
+      prompt: [
+        "You are Runesmith Scout, a native OpenCode research subagent.",
+        "Before implementation, research the repository context, product/domain expectations, similar patterns, likely risks, acceptance criteria, and proof strategy.",
+        "Return concise findings the lead can blend into a master WBS. Do not implement. Do not mark the mission complete.",
+        "For UI work, include shadcn/ui component opportunities, clean spacing, rounded cards or controls, accessibility needs, and motion only where it improves usability.",
       ].join("\n"),
     },
     "runesmith-atlas": {

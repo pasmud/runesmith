@@ -76,7 +76,7 @@ const refinementSliceDefinitions: Record<RefinementSliceId, RefinementSliceDefin
     title: "Forge: operator interface path",
     capabilities: ["typescript", "ui", "accessibility"],
     description: (goal) =>
-      `Implement dashboard, component, interaction, or accessibility changes required for "${goal}".`,
+      `Implement dashboard, app, component, interaction, or accessibility changes required for "${goal}" using shadcn/ui elements where applicable, clean spacing, rounded cards or controls, and restrained motion or animation when it improves usability.`,
   },
   docs: {
     id: "docs",
@@ -112,8 +112,8 @@ export function createRunicPlanRefinementTaskPlan(goal: string): MissionTaskPlan
     {
       key: "pathfinder-plan",
       title: `Plan: ${normalizedGoal}`,
-      description: `Convert "${normalizedGoal}" into an engine-owned execution map with explicit proof obligations.`,
-      requiredCapabilities: ["typescript", "testing", "repository-maintenance"],
+      description: `Start with runesmith-scout research and repo discovery, then convert "${normalizedGoal}" into a Lead-blended WBS with acceptance criteria, dependencies, risks, and explicit proof obligations before implementation starts.`,
+      requiredCapabilities: ["research", "repository-maintenance"],
       requiredEvidence: ["decision"],
     },
     ...implementationSlices,
@@ -226,6 +226,13 @@ function deriveGoalProfile(goal: string): {
     interface: hasAny(text, [
       "ui",
       "dashboard",
+      "app",
+      "game",
+      "2048",
+      "playable",
+      "site",
+      "website",
+      "web app",
       "screen",
       "theme",
       "white",

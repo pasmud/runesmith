@@ -29,6 +29,7 @@ describe("runesmith agent mesh", () => {
     expect(contractMap.agent_atlas.capabilities).toEqual(["typescript", "testing", "repository-maintenance"])
     expect(contractMap.agent_oracle.capabilities).toContain("testing")
     expect(contractMap.agent_artificer.capabilities).toContain("ui")
+    expect(contractMap.agent_scout.capabilities).toContain("research")
     expect(contractMap.agent_scout.capabilities).toContain("diagnostics")
     expect(contractMap.agent_steward.capabilities).toContain("repository-maintenance")
 

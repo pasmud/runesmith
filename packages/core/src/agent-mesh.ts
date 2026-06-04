@@ -49,16 +49,16 @@ const runesmithAgentContracts = [
   {
     id: "agent_scout",
     displayName: "Scout",
-    description: "Diagnostics and recovery agent for shell, paths, stale leases, and environment state.",
-    capabilities: ["diagnostics", "recovery", "windows"],
-    allowedTools: ["read", "bash", "test"],
+    description: "Research, diagnostics, and recovery agent for discovery, repo context, shell, paths, stale leases, and environment state.",
+    capabilities: ["research", "repository-maintenance", "diagnostics", "recovery", "windows"],
+    allowedTools: ["read", "bash", "test", "websearch", "webfetch"],
     modelPolicy: {
       primary: "openai/gpt-5.1-codex-mini",
       fallbacks: ["openai/gpt-5.1-codex"],
     },
     fileScope: ["packages/**", ".runesmith/**"],
-    completionCriteria: ["Diagnostic captured", "Recovery decision recorded"],
-    requiredEvidence: ["diagnostic", "risk"],
+    completionCriteria: ["Research or diagnostic captured", "Decision or recovery path recorded"],
+    requiredEvidence: ["decision"],
     fallbacks: ["agent_atlas"],
   },
   {

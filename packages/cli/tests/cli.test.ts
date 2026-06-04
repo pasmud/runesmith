@@ -631,7 +631,7 @@ describe("runesmith cli", () => {
         "Installed Runesmith OpenCode package plugin",
         "config: opencode.jsonc",
         "plugin: runesmith@0.2.0",
-        "native agents: runesmith-lead, runesmith-atlas, runesmith-artificer, runesmith-oracle, runesmith-steward",
+        "native agents: runesmith-lead, runesmith-scout, runesmith-atlas, runesmith-artificer, runesmith-oracle, runesmith-steward",
         "backup: opencode.jsonc.runesmith.bak",
         "covenant: automatic",
         "",
@@ -667,7 +667,7 @@ describe("runesmith cli", () => {
       "runesmith@0.2.0",
     ], host)
 
-    expect(result.stdout).toContain("native agents: runesmith-lead, runesmith-atlas, runesmith-artificer, runesmith-oracle, runesmith-steward")
+    expect(result.stdout).toContain("native agents: runesmith-lead, runesmith-scout, runesmith-atlas, runesmith-artificer, runesmith-oracle, runesmith-steward")
     const config = parse(host.readText("opencode.jsonc")) as {
       agent: Record<string, { mode?: string; permission?: { task?: Record<string, string> }; prompt?: string }>
     }
@@ -678,6 +678,7 @@ describe("runesmith cli", () => {
       permission: {
         task: {
           "*": "deny",
+          "runesmith-scout": "allow",
           "runesmith-atlas": "allow",
           "runesmith-artificer": "allow",
           "runesmith-oracle": "allow",
@@ -685,11 +686,15 @@ describe("runesmith cli", () => {
         },
       },
     })
+    expect(config.agent["runesmith-scout"]).toMatchObject({ mode: "subagent" })
     expect(config.agent["runesmith-atlas"]).toMatchObject({ mode: "subagent" })
     expect(config.agent["runesmith-artificer"]).toMatchObject({ mode: "subagent" })
     expect(config.agent["runesmith-oracle"]).toMatchObject({ mode: "subagent" })
     expect(config.agent["runesmith-steward"]).toMatchObject({ mode: "subagent" })
     expect(config.agent["runesmith-lead"].prompt).toContain("use native OpenCode Task subagents")
+    expect(config.agent["runesmith-lead"].prompt).toContain("delegate research to runesmith-scout")
+    expect(config.agent["runesmith-scout"].prompt).toContain("research")
+    expect(config.agent["runesmith-scout"].prompt).toContain("WBS")
     expect(config.agent["runesmith-lead"].prompt).toContain("browser workflow smoke proof")
   })
 
@@ -710,7 +715,7 @@ describe("runesmith cli", () => {
         "Installed Runesmith OpenCode package plugin",
         "config: opencode.jsonc",
         "plugin: runesmith@git+https://github.com/pasmud/runesmith.git",
-        "native agents: runesmith-lead, runesmith-atlas, runesmith-artificer, runesmith-oracle, runesmith-steward",
+        "native agents: runesmith-lead, runesmith-scout, runesmith-atlas, runesmith-artificer, runesmith-oracle, runesmith-steward",
         "backup: none",
         "covenant: automatic",
         "",
