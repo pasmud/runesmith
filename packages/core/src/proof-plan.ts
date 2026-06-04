@@ -12,6 +12,7 @@ export type ProofPlanCommandKind =
   | "impact-test"
   | "rerun-diagnostic"
   | "rerun-stale-proof"
+  | "user-workflow"
   | "typecheck"
   | "lint"
   | "test"
@@ -73,12 +74,20 @@ export function deriveProofPlan(
   const latestPassingProofCommand = firstPassingTestCommand(evidence)
   const changedFiles = extractChangedFiles(evidence)
   const missingEvidence = getMissingEvidence(snapshot, selected)
+  const browserWorkflowProof = deriveBrowserWorkflowProof({
+    evidence,
+    changedFiles,
+    goal: selected.graph.mission.goal,
+    task: selected.task,
+    options,
+  })
   const needsRepair = pulse.nextAction.id === "repair-diagnostic" || pulse.nextAction.id === "review-faultline"
-  const needsTestProof = missingEvidence.includes("test-result")
+  const needsTestProof = missingEvidence.includes("test-result") || browserWorkflowProof.needsProof
   const commands = buildProofCommands({
     changedFiles,
     latestDiagnosticCommand: needsRepair ? latestDiagnosticCommand : undefined,
-    latestStaleProofCommand: needsRepair ? undefined : latestPassingProofCommand,
+    latestStaleProofCommand: !needsRepair && needsTestProof ? latestPassingProofCommand : undefined,
+    browserWorkflowProofCommand: browserWorkflowProof.command,
     needsTestProof,
     options,
   })
@@ -176,10 +185,14 @@ function buildProofCommands(input: {
   changedFiles: string[]
   latestDiagnosticCommand?: string
   latestStaleProofCommand?: string
+  browserWorkflowProofCommand?: ProofPlanCommand
   needsTestProof: boolean
   options: ProofPlanOptions
 }): ProofPlanCommand[] {
-  if (!input.needsTestProof && !input.latestDiagnosticCommand && !input.latestStaleProofCommand) return []
+  if (!input.needsTestProof
+    && !input.latestDiagnosticCommand
+    && !input.latestStaleProofCommand
+    && !input.browserWorkflowProofCommand) return []
 
   const commands: ProofPlanCommand[] = []
   if (input.latestDiagnosticCommand) {
@@ -213,8 +226,65 @@ function buildProofCommands(input: {
       commands.push(command)
     }
   }
+  if (input.browserWorkflowProofCommand && !commands.some((existing) => existing.command === input.browserWorkflowProofCommand?.command)) {
+    commands.push(input.browserWorkflowProofCommand)
+  }
 
   return commands
+}
+
+function deriveBrowserWorkflowProof(input: {
+  evidence: Evidence[]
+  changedFiles: string[]
+  goal: string
+  task: MissionTask
+  options: ProofPlanOptions
+}): { needsProof: boolean; command?: ProofPlanCommand } {
+  if (!requiresBrowserWorkflowProof(input)) return { needsProof: false }
+  if (hasFreshPassingBrowserWorkflowProof(input.evidence)) return { needsProof: false }
+
+  return {
+    needsProof: true,
+    command: {
+      id: "browser-workflow-smoke",
+      kind: "user-workflow",
+      label: "Run browser workflow smoke",
+      command: "node .runesmith/proof/browser-smoke.mjs",
+      reason: "Prove the browser app starts and registers user interaction before completion.",
+      evidenceType: "test-result",
+    },
+  }
+}
+
+function requiresBrowserWorkflowProof(input: {
+  changedFiles: string[]
+  goal: string
+  task: MissionTask
+  options: ProofPlanOptions
+}): boolean {
+  const repositoryFiles = input.options.repositoryFiles?.map(normalizePath) ?? []
+  const changedFiles = input.changedFiles.map(normalizePath)
+  const files = [...new Set([...repositoryFiles, ...changedFiles])]
+  const hasBrowserEntry = files.includes("index.html")
+  if (!hasBrowserEntry) return false
+
+  const hasFrontendChange = changedFiles.some((file) => /\.(html|css|[cm]?[jt]sx?)$/.test(file))
+  const intent = `${input.goal} ${input.task.title} ${input.task.description}`.toLowerCase()
+  const hasInteractiveIntent = /\b(ui|browser|frontend|front-end|game|playable|interactive|dashboard|site|web app|score|high score)\b/.test(intent)
+
+  return hasFrontendChange || hasInteractiveIntent
+}
+
+function hasFreshPassingBrowserWorkflowProof(evidence: Evidence[]): boolean {
+  const latestChange = evidence.find((entry) => entry.type === "file-change")?.createdAt
+
+  return evidence.some((entry) => {
+    if (entry.type !== "test-result" || !isPassingTestResult(entry)) return false
+    if (latestChange && entry.createdAt < latestChange) return false
+    const command = entry.payload.command
+
+    return typeof command === "string" && normalizeCommand(command).includes(".runesmith/proof/browser-smoke.mjs")
+  })
 }
 
 function impactProofCommands(changedFiles: string[], options: ProofPlanOptions): ProofPlanCommand[] {
@@ -453,6 +523,10 @@ function extractFileCandidates(payload: Record<string, unknown>): string[] {
 
 function normalizePath(path: string): string {
   return path.trim().replace(/\\/g, "/").replace(/^\.\//, "")
+}
+
+function normalizeCommand(command: string): string {
+  return command.trim().replace(/\\/g, "/")
 }
 
 function isTestFile(filePath: string): boolean {

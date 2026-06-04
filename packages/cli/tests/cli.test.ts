@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { fileURLToPath } from "node:url"
+import { parse } from "jsonc-parser"
 
 import { createMemoryHost, createNodeHost, runCli } from "../src/index"
 
@@ -630,6 +631,7 @@ describe("runesmith cli", () => {
         "Installed Runesmith OpenCode package plugin",
         "config: opencode.jsonc",
         "plugin: runesmith@0.2.0",
+        "native agents: runesmith-lead, runesmith-atlas, runesmith-artificer, runesmith-oracle, runesmith-steward",
         "backup: opencode.jsonc.runesmith.bak",
         "covenant: automatic",
         "",
@@ -640,6 +642,55 @@ describe("runesmith cli", () => {
     expect(host.readText("opencode.jsonc")).toContain("\"runesmith@0.2.0\"")
     expect(host.readText("opencode.jsonc")).not.toContain("\"runesmith@0.1.0\"")
     expect(host.readText("opencode.jsonc.runesmith.bak")).toContain("\"runesmith@0.1.0\"")
+  })
+
+  test("install adds native OpenCode Runesmith lead and subagents without removing user agents", async () => {
+    const host = createMemoryHost({
+      "opencode.jsonc": JSON.stringify({
+        plugin: ["existing-plugin"],
+        agent: {
+          reviewer: {
+            mode: "subagent",
+            description: "User-owned reviewer",
+          },
+        },
+      }, null, 2),
+    })
+
+    const result = await runCli([
+      "install",
+      "--mode",
+      "npm",
+      "--config",
+      "opencode.jsonc",
+      "--package",
+      "runesmith@0.2.0",
+    ], host)
+
+    expect(result.stdout).toContain("native agents: runesmith-lead, runesmith-atlas, runesmith-artificer, runesmith-oracle, runesmith-steward")
+    const config = parse(host.readText("opencode.jsonc")) as {
+      agent: Record<string, { mode?: string; permission?: { task?: Record<string, string> }; prompt?: string }>
+    }
+
+    expect(config.agent.reviewer).toMatchObject({ mode: "subagent" })
+    expect(config.agent["runesmith-lead"]).toMatchObject({
+      mode: "primary",
+      permission: {
+        task: {
+          "*": "deny",
+          "runesmith-atlas": "allow",
+          "runesmith-artificer": "allow",
+          "runesmith-oracle": "allow",
+          "runesmith-steward": "allow",
+        },
+      },
+    })
+    expect(config.agent["runesmith-atlas"]).toMatchObject({ mode: "subagent" })
+    expect(config.agent["runesmith-artificer"]).toMatchObject({ mode: "subagent" })
+    expect(config.agent["runesmith-oracle"]).toMatchObject({ mode: "subagent" })
+    expect(config.agent["runesmith-steward"]).toMatchObject({ mode: "subagent" })
+    expect(config.agent["runesmith-lead"].prompt).toContain("use native OpenCode Task subagents")
+    expect(config.agent["runesmith-lead"].prompt).toContain("browser workflow smoke proof")
   })
 
   test("install npm mode defaults to the git-installable Runesmith package", async () => {
@@ -659,6 +710,7 @@ describe("runesmith cli", () => {
         "Installed Runesmith OpenCode package plugin",
         "config: opencode.jsonc",
         "plugin: runesmith@git+https://github.com/pasmud/runesmith.git",
+        "native agents: runesmith-lead, runesmith-atlas, runesmith-artificer, runesmith-oracle, runesmith-steward",
         "backup: none",
         "covenant: automatic",
         "",
@@ -697,6 +749,7 @@ describe("runesmith cli", () => {
         "opencode config: opencode.jsonc",
         "plugin: runesmith@0.2.0",
         "runtime: .runesmith/runtime/capsule.json",
+        "proof harness: .runesmith/proof/browser-smoke.mjs",
         "opencode: found E:/tools/opencode.exe",
         "covenant: automatic",
         "dashboard: runesmith dashboard",
@@ -705,6 +758,7 @@ describe("runesmith cli", () => {
       stderr: "",
     })
     expect(host.readText("opencode.jsonc")).toContain("\"runesmith@0.2.0\"")
+    expect(host.readText(".runesmith/proof/browser-smoke.mjs")).toContain("Runesmith browser smoke")
   })
 
   test("up initializes the workspace, wires OpenCode, and creates the runtime capsule", async () => {
@@ -733,6 +787,7 @@ describe("runesmith cli", () => {
         "install: local shim",
         "plugin: .opencode/plugins/runesmith.ts",
         "runtime: .runesmith/runtime/capsule.json",
+        "proof harness: .runesmith/proof/browser-smoke.mjs",
         "opencode: found E:/tools/opencode.exe",
         "covenant: automatic",
         "dashboard: runesmith dashboard",
@@ -742,6 +797,7 @@ describe("runesmith cli", () => {
     })
     expect(host.readText(".runesmith/config.json")).toContain("\"runtimeDir\": \".runesmith/runtime\"")
     expect(host.readText(".opencode/plugins/runesmith.ts")).toContain("opencode-adapter/src/plugin.ts")
+    expect(host.readText(".runesmith/proof/browser-smoke.mjs")).toContain("Runesmith browser smoke")
 
     const capsule = JSON.parse(host.readText(".runesmith/runtime/capsule.json"))
     expect(capsule).toMatchObject({
@@ -799,6 +855,7 @@ describe("runesmith cli", () => {
         "install: local shim",
         "plugin: .opencode/plugins/runesmith.ts",
         "runtime: .runesmith/runtime/capsule.json",
+        "proof harness: .runesmith/proof/browser-smoke.mjs",
         "opencode: missing (install OpenCode CLI, then run `runesmith doctor`)",
         "covenant: automatic",
         "dashboard: runesmith dashboard",
@@ -1253,6 +1310,7 @@ describe("runesmith cli", () => {
         "install: local shim",
         "plugin: .opencode/plugins/runesmith.ts",
         "runtime: .runesmith/runtime/capsule.json",
+        "proof harness: .runesmith/proof/browser-smoke.mjs",
         "opencode: found E:/tools/opencode.exe",
         "covenant: automatic",
         "dashboard: runesmith dashboard",
@@ -1290,6 +1348,7 @@ describe("runesmith cli", () => {
         "install: local shim",
         "plugin: .opencode/plugins/runesmith.ts",
         "runtime: .runesmith/runtime/capsule.json",
+        "proof harness: .runesmith/proof/browser-smoke.mjs",
         "opencode: missing (install OpenCode CLI, then run `runesmith doctor`)",
         "covenant: automatic",
         "dashboard: runesmith dashboard",

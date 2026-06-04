@@ -236,6 +236,119 @@ describe("proof plan", () => {
     })
   })
 
+  test("requires browser workflow proof for interactive static apps after unit tests pass", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(artificer)
+    runtime.startMission({
+      goal: "Build a polished playable 2048 game with UI, score, and high score",
+      requiredCapabilities: ["typescript", "testing", "ui"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_artificer",
+      holder: "artificer",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed playable 2048 files",
+        payload: { files: ["index.html", "src/game.js", "public/2048.css", "tests/game.test.js"] },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_unit",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Engine tests passed",
+        payload: { command: "node --test tests/game.test.js", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+
+    const plan = deriveProofPlan(runtime.snapshot(), {
+      packageManager: "bun@1.3.13",
+      scripts: {},
+      repositoryFiles: ["index.html", "src/game.js", "public/2048.css", "tests/game.test.js"],
+    })
+
+    expect(plan.status).toBe("needs-proof")
+    expect(plan.commands.map((command) => command.command)).toContain("node .runesmith/proof/browser-smoke.mjs")
+    expect(plan.commands.find((command) => command.id === "browser-workflow-smoke")).toMatchObject({
+      kind: "user-workflow",
+      label: "Run browser workflow smoke",
+      evidenceType: "test-result",
+    })
+    expect(plan.handoff).toContain("node .runesmith/proof/browser-smoke.mjs")
+  })
+
+  test("accepts fresh browser workflow proof for interactive static apps", () => {
+    const runtime = createRuntime({ idFactory: ids, now: fixedNow })
+    runtime.registerContract(artificer)
+    runtime.startMission({
+      goal: "Build a playable 2048 browser game",
+      requiredCapabilities: ["typescript", "testing", "ui"],
+    })
+    runtime.claimTask({
+      missionId: "mission_alpha",
+      taskId: "task_alpha",
+      contractId: "agent_artificer",
+      holder: "artificer",
+      idempotencyKey: "claim-task-alpha",
+      ttlMs: 30_000,
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_file",
+        taskId: "task_alpha",
+        type: "file-change",
+        summary: "Changed playable 2048 files",
+        payload: { files: ["index.html", "src/game.js", "public/2048.css"] },
+        createdAt: "2026-05-27T00:00:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_unit",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Engine tests passed",
+        payload: { command: "node --test tests/game.test.js", exitCode: 0 },
+        createdAt: "2026-05-27T00:01:00.000Z",
+      },
+    })
+    runtime.addTaskEvidence({
+      missionId: "mission_alpha",
+      evidence: {
+        id: "evidence_browser",
+        taskId: "task_alpha",
+        type: "test-result",
+        summary: "Browser workflow smoke passed",
+        payload: { command: "node .runesmith/proof/browser-smoke.mjs", exitCode: 0 },
+        createdAt: "2026-05-27T00:02:00.000Z",
+      },
+    })
+
+    const plan = deriveProofPlan(runtime.snapshot(), {
+      packageManager: "bun@1.3.13",
+      scripts: {},
+      repositoryFiles: ["index.html", "src/game.js", "public/2048.css"],
+    })
+
+    expect(plan.status).toBe("not-needed")
+    expect(plan.commands).toEqual([])
+  })
+
   test("uses the focused Worker Dispatch packet as the proof target for parallel slices", () => {
     let tick = 0
     const now = () => new Date(Date.UTC(2026, 4, 27, 0, 0, tick++))

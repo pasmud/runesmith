@@ -82,6 +82,21 @@ import {
 } from "./options.js"
 
 const shellOutputCaptureLimit = 64_000
+const browserSmokeHarnessPath = ".runesmith/proof/browser-smoke.mjs"
+const nativeRunesmithAgentIds = [
+  "runesmith-lead",
+  "runesmith-atlas",
+  "runesmith-artificer",
+  "runesmith-oracle",
+  "runesmith-steward",
+]
+
+type OpenCodeAgentConfig = {
+  mode: "primary" | "subagent"
+  description: string
+  permission: Record<string, unknown>
+  prompt: string
+}
 
 export type CliResult = {
   exitCode: number
@@ -568,6 +583,7 @@ async function runesmithHeal(args: string[], host: CliHost): Promise<CliResult> 
   const installMode = (options.mode ?? "npm") === "npm" ? "package" : "local shim"
   const configState = await repairProjectConfig(host)
   const runtimeState = await repairRuntimeCapsule(host)
+  await ensureBrowserSmokeHarness(host)
   const install = await installRunesmith(setupArgs, host)
   if (install.exitCode !== 0) return install
 
@@ -618,6 +634,7 @@ async function runesmithUp(args: string[], host: CliHost): Promise<CliResult> {
   const installMode = options.mode === "npm" ? "package" : "local shim"
   await repairProjectConfig(host)
   const runtimeCapsulePath = await ensureRuntimeCapsule(host)
+  await ensureBrowserSmokeHarness(host)
 
   const install = await installRunesmith(args, host)
   if (install.exitCode !== 0) return install
@@ -633,6 +650,7 @@ async function runesmithUp(args: string[], host: CliHost): Promise<CliResult> {
     ...(openCodeConfig ? [`opencode config: ${openCodeConfig}`] : []),
     `plugin: ${pluginPath ?? "installed"}`,
     `runtime: ${runtimeCapsulePath}`,
+    `proof harness: ${browserSmokeHarnessPath}`,
     openCodeCli
       ? `opencode: found ${openCodeCli}`
       : "opencode: missing (install OpenCode CLI, then run `runesmith doctor`)",
@@ -2139,7 +2157,7 @@ async function installNpmPlugin(
   const backupPath = `${input.configPath}.runesmith.bak`
   const current = existed ? await host.readText(input.configPath) : "{\n}\n"
   const errors: ParseError[] = []
-  const parsed = parse(current, errors, { allowTrailingComma: true }) as { plugin?: unknown } | undefined
+  const parsed = parse(current, errors, { allowTrailingComma: true }) as { plugin?: unknown; agent?: unknown } | undefined
 
   if (errors.length > 0 || !parsed || typeof parsed !== "object") {
     return failure(`Could not parse OpenCode config: ${input.configPath}\n`)
@@ -2162,17 +2180,234 @@ async function installNpmPlugin(
       tabSize: 2,
     },
   })
-  const nextConfig = applyEdits(current, edits)
+  const configWithPlugin = applyEdits(current, edits)
+  const agentEdits = modify(configWithPlugin, ["agent"], mergeRunesmithOpenCodeAgents(parsed.agent), {
+    formattingOptions: {
+      insertSpaces: true,
+      tabSize: 2,
+    },
+  })
+  const nextConfig = applyEdits(configWithPlugin, agentEdits)
   await host.writeText(input.configPath, nextConfig.endsWith("\n") ? nextConfig : `${nextConfig}\n`)
 
   return success([
     "Installed Runesmith OpenCode package plugin",
     `config: ${input.configPath}`,
     `plugin: ${input.pluginEntry}`,
+    `native agents: ${nativeRunesmithAgentIds.join(", ")}`,
     `backup: ${existed ? backupPath : "none"}`,
     "covenant: automatic",
     "",
   ].join("\n"))
+}
+
+async function ensureBrowserSmokeHarness(host: CliHost): Promise<void> {
+  await host.writeText(browserSmokeHarnessPath, browserSmokeHarnessSource())
+}
+
+function mergeRunesmithOpenCodeAgents(existingAgents: unknown): Record<string, unknown> {
+  const merged: Record<string, unknown> = isObjectRecord(existingAgents) ? { ...existingAgents } : {}
+
+  for (const id of Object.keys(merged)) {
+    if (id.startsWith("runesmith-")) delete merged[id]
+  }
+
+  return {
+    ...merged,
+    ...buildRunesmithOpenCodeAgents(),
+  }
+}
+
+function buildRunesmithOpenCodeAgents(): Record<string, OpenCodeAgentConfig> {
+  const subagentPermission = {
+    read: "allow",
+    edit: "allow",
+    bash: "allow",
+    task: "deny",
+  }
+
+  return {
+    "runesmith-lead": {
+      mode: "primary",
+      description: "Runesmith mission lead. Converts goals into evidence-gated missions and delegates independent slices to native Runesmith subagents.",
+      permission: {
+        read: "allow",
+        edit: "allow",
+        bash: "allow",
+        task: {
+          "*": "deny",
+          "runesmith-atlas": "allow",
+          "runesmith-artificer": "allow",
+          "runesmith-oracle": "allow",
+          "runesmith-steward": "allow",
+        },
+      },
+      prompt: [
+        "You are Runesmith Lead, the native OpenCode entrypoint for Runesmith OS.",
+        "For every concrete coding goal, use native OpenCode Task subagents for independent work slices instead of doing all implementation yourself.",
+        "Route core code, tests, and repo changes to runesmith-atlas; UI, browser, and dashboard work to runesmith-artificer; verification, review, and repair proof to runesmith-oracle; planning, docs, and release notes to runesmith-steward.",
+        "Use the installed Runesmith tools to prepare the mission, refine the plan, claim work, record evidence, run proof, recover stale work, review, and seal without asking the user to manage task ids.",
+        "Do not claim completion until the Runesmith Proof Plan passes. Interactive browser/static apps require browser workflow smoke proof from node .runesmith/proof/browser-smoke.mjs in addition to unit tests.",
+        "When proof fails, delegate a focused repair to the right subagent, rerun the exact failing command, then rerun the full proof plan before sealing.",
+      ].join("\n"),
+    },
+    "runesmith-atlas": {
+      mode: "subagent",
+      description: "Implementation subagent for source code, tests, adapters, scripts, and repository mechanics.",
+      permission: subagentPermission,
+      prompt: [
+        "You are Runesmith Atlas, a native OpenCode implementation subagent.",
+        "Work only on the assigned slice. Prefer test-first changes when behavior is testable, attach precise evidence, and return changed files, commands run, failures, and residual risks.",
+        "Do not seal or summarize broad mission completion. Hand results back to Runesmith Lead for proof and review gates.",
+      ].join("\n"),
+    },
+    "runesmith-artificer": {
+      mode: "subagent",
+      description: "UI subagent for frontend, dashboard, browser, accessibility, and interaction work.",
+      permission: subagentPermission,
+      prompt: [
+        "You are Runesmith Artificer, a native OpenCode UI subagent.",
+        "Build production-grade UI slices with responsive layout, real interaction states, accessible controls, and crisp white-theme dashboard surfaces when requested.",
+        "For browser apps, prove user interaction wiring. Missing keyboard, pointer, or startup wiring is a blocking defect even if unit tests pass.",
+      ].join("\n"),
+    },
+    "runesmith-oracle": {
+      mode: "subagent",
+      description: "Verification and repair subagent for tests, diagnostics, review, and seal readiness.",
+      permission: subagentPermission,
+      prompt: [
+        "You are Runesmith Oracle, a native OpenCode proof and review subagent.",
+        "Inspect failures from root cause, rerun focused proof, verify browser workflow smoke proof when relevant, and report blockers before approval.",
+        "Do not accept passing unit tests as enough for interactive apps unless runtime/user-flow evidence is present.",
+      ].join("\n"),
+    },
+    "runesmith-steward": {
+      mode: "subagent",
+      description: "Planning, documentation, install, and handoff subagent.",
+      permission: subagentPermission,
+      prompt: [
+        "You are Runesmith Steward, a native OpenCode planning and release subagent.",
+        "Turn broad goals into concrete slices, document install and recovery paths, and keep handoffs short, factual, and evidence-linked.",
+        "Do not add ceremony for the user. The installed engine should do the orchestration automatically.",
+      ].join("\n"),
+    },
+  }
+}
+
+function browserSmokeHarnessSource(): string {
+  return [
+    "import { existsSync, readFileSync } from \"node:fs\";",
+    "import { resolve } from \"node:path\";",
+    "import vm from \"node:vm\";",
+    "",
+    "const root = process.cwd();",
+    "const indexPath = resolve(root, \"index.html\");",
+    "if (!existsSync(indexPath)) {",
+    "  console.error(\"Runesmith browser smoke: index.html was not found in the project root.\");",
+    "  process.exit(1);",
+    "}",
+    "",
+    "const html = readFileSync(indexPath, \"utf8\");",
+    "const listeners = [];",
+    "const elements = new Map();",
+    "",
+    "function createElement(name = \"element\") {",
+    "  return {",
+    "    nodeName: String(name).toUpperCase(),",
+    "    style: {},",
+    "    dataset: {},",
+    "    children: [],",
+    "    classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },",
+    "    addEventListener(type) { listeners.push({ target: name, type: String(type) }); },",
+    "    removeEventListener() {},",
+    "    appendChild(child) { this.children.push(child); return child; },",
+    "    removeChild(child) { this.children = this.children.filter((entry) => entry !== child); return child; },",
+    "    setAttribute(key, value) { this[key] = String(value); },",
+    "    getAttribute(key) { return this[key] ?? null; },",
+    "    querySelector(selector) { return getElement(`selector:${selector}`); },",
+    "    querySelectorAll() { return []; },",
+    "    focus() {},",
+    "    blur() {},",
+    "    getBoundingClientRect() { return { width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600 }; },",
+    "  };",
+    "}",
+    "",
+    "function getElement(key) {",
+    "  if (!elements.has(key)) elements.set(key, createElement(key));",
+    "  return elements.get(key);",
+    "}",
+    "",
+    "const localStorageData = new Map();",
+    "const document = {",
+    "  body: getElement(\"body\"),",
+    "  documentElement: getElement(\"html\"),",
+    "  readyState: \"complete\",",
+    "  addEventListener(type) { listeners.push({ target: \"document\", type: String(type) }); },",
+    "  removeEventListener() {},",
+    "  createElement,",
+    "  getElementById(id) { return getElement(`id:${id}`); },",
+    "  querySelector(selector) { return getElement(`selector:${selector}`); },",
+    "  querySelectorAll() { return []; },",
+    "};",
+    "",
+    "const context = {",
+    "  console,",
+    "  document,",
+    "  localStorage: {",
+    "    getItem(key) { return localStorageData.get(String(key)) ?? null; },",
+    "    setItem(key, value) { localStorageData.set(String(key), String(value)); },",
+    "    removeItem(key) { localStorageData.delete(String(key)); },",
+    "    clear() { localStorageData.clear(); },",
+    "  },",
+    "  navigator: { userAgent: \"RunesmithBrowserSmoke/1.0\" },",
+    "  location: { href: \"http://localhost/index.html\" },",
+    "  addEventListener(type) { listeners.push({ target: \"window\", type: String(type) }); },",
+    "  removeEventListener() {},",
+    "  requestAnimationFrame(callback) { return setTimeout(() => callback(Date.now()), 0); },",
+    "  cancelAnimationFrame(id) { clearTimeout(id); },",
+    "  setTimeout,",
+    "  clearTimeout,",
+    "  setInterval,",
+    "  clearInterval,",
+    "};",
+    "context.window = context;",
+    "context.self = context;",
+    "context.globalThis = context;",
+    "",
+    "const scriptTags = [...html.matchAll(/<script\\b([^>]*)>([\\s\\S]*?)<\\/script>/gi)];",
+    "if (scriptTags.length === 0) {",
+    "  console.error(\"Runesmith browser smoke: index.html has no script tags to exercise.\");",
+    "  process.exit(1);",
+    "}",
+    "",
+    "const sandbox = vm.createContext(context);",
+    "for (const [, attrs, inlineCode] of scriptTags) {",
+    "  const src = /\\bsrc=[\"']([^\"']+)[\"']/i.exec(attrs)?.[1];",
+    "  const code = src ? readFileSync(resolve(root, src), \"utf8\") : inlineCode;",
+    "  if (!code.trim()) continue;",
+    "  try {",
+    "    vm.runInContext(code, sandbox, { filename: src || \"index.html:inline\" });",
+    "  } catch (error) {",
+    "    console.error(`Runesmith browser smoke: script failed in ${src || \"inline script\"}.`);",
+    "    console.error(error?.stack || error);",
+    "    process.exit(1);",
+    "  }",
+    "}",
+    "",
+    "const interactionEvents = new Set([\"keydown\", \"keyup\", \"click\", \"pointerdown\", \"mousedown\", \"touchstart\", \"input\", \"change\", \"submit\"]);",
+    "const observed = listeners.filter((listener) => interactionEvents.has(listener.type));",
+    "if (observed.length === 0) {",
+    "  console.error(\"Runesmith browser smoke: no user interaction listeners were registered. The UI may not be instantiated.\");",
+    "  process.exit(1);",
+    "}",
+    "",
+    "console.log(`Runesmith browser smoke passed: ${observed.map((listener) => listener.type).join(\", \")}`);",
+    "",
+  ].join("\n")
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
 function resolveRepoPluginSource(): string {

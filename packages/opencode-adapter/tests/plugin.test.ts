@@ -950,6 +950,8 @@ describe("opencode adapter", () => {
     expect(systemOutput.system.join("\n")).toContain("Runesmith Plan Contract")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Dispatch Matrix")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Worker Dispatch")
+    expect(systemOutput.system.join("\n")).toContain("native OpenCode Task subagents")
+    expect(systemOutput.system.join("\n")).toContain("browser workflow smoke proof")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Scope Sentinel")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Redline Proof")
     expect(systemOutput.system.join("\n")).toContain("Runesmith Repair Contract")
