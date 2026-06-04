@@ -3,6 +3,7 @@ import {
   buildCovenantControlBrief,
   buildCovenantPrompt,
   buildDispatchMatrixPrompt,
+  buildLeadCriticPrompt,
   buildLoopPulsePrompt,
   buildMissionMapPrompt,
   buildMissionMemoryPrompt,
@@ -25,6 +26,7 @@ import {
   defaultProjectConfigPath,
   deriveDispatchMatrix,
   deriveCovenantControlBrief,
+  deriveLeadCritic,
   deriveLoopPulse,
   deriveMissionMap,
   deriveMissionMemory,
@@ -764,6 +766,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
             prompt = upsertPromptSection(prompt, buildScopeSentinelPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildRedlineProofPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildRepairContractPrompt(snapshot))
+            prompt = upsertPromptSection(prompt, buildLeadCriticPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildReviewLensPrompt(snapshot))
             prompt = upsertPromptSection(prompt, buildSealAuditPrompt(snapshot, proofPlanOptions))
             prompt = upsertPromptSection(prompt, buildProductionReadinessPrompt(snapshot))
@@ -787,6 +790,7 @@ export function createRunesmithPlugin(options: PluginOptions = {}): RunesmithPlu
       upsertSystemSection(output, buildScopeSentinelPrompt(snapshot))
       upsertSystemSection(output, buildRedlineProofPrompt(snapshot))
       upsertSystemSection(output, buildRepairContractPrompt(snapshot))
+      upsertSystemSection(output, buildLeadCriticPrompt(snapshot))
       upsertSystemSection(output, buildReviewLensPrompt(snapshot))
       upsertSystemSection(output, buildSealAuditPrompt(snapshot, proofPlanOptions))
       upsertSystemSection(output, buildProductionReadinessPrompt(snapshot))
@@ -2002,6 +2006,7 @@ function buildAutopilotPrompt(): string {
     "Use Runesmith Worker Dispatch as the execution-packet signal: follow claimable packet contract, model, scope, evidence, lease, claim, and handoff metadata instead of asking the user for task IDs.",
     "For non-trivial build goals, research before implementation: delegate discovery to runesmith-scout, then blend Scout findings into a Lead-blended WBS with acceptance criteria, dependencies, risks, and proof gates before calling broad implementation done.",
     "When OpenCode exposes the Task tool, use native OpenCode Task subagents for independent Runesmith slices: runesmith-scout for research/WBS inputs, runesmith-atlas for implementation, runesmith-artificer for UI/browser work, runesmith-oracle for proof/review/repair, and runesmith-steward for planning/docs. Do not replace native Task subagents with separate terminal processes.",
+    "Use Runesmith Lead Critic after subagent output: compare the result against the WBS, acceptance criteria, proof obligations, and scope; record decision evidence with stage `lead-critique` and verdict `approved` or `revision-requested` before review.",
     "For UI work, prefer shadcn/ui elements where applicable, clean spacing, rounded cards or controls, accessible states, and restrained motion or animation only where it improves usability.",
     "Use Runesmith Production Seal as the final product-readiness signal: acceptance criteria, proof obligations, implementation evidence, interactive browser proof when relevant, and diagnostic cleanup must be clear before completion claims.",
     "Use Runesmith Redline Proof as the test-first/review-discipline signal: prefer focused failing proof or proof-file evidence before implementation edits when behavior is testable.",
@@ -2085,6 +2090,7 @@ function buildMessageBootstrap(
   const redlineProof = deriveRedlineProof(snapshot)
   const missionMemory = deriveMissionMemory(snapshot, covenant)
   const repairContract = deriveRepairContract(snapshot)
+  const leadCritic = deriveLeadCritic(snapshot)
   const reviewLens = deriveReviewLens(snapshot)
   const sealAudit = deriveSealAudit(snapshot, proofPlanOptions)
   const productionReadiness = deriveProductionReadiness(snapshot)
@@ -2100,6 +2106,7 @@ function buildMessageBootstrap(
     `Redline Proof: ${redlineProof.status}; ${redlineProof.summary}`,
     `Mission Memory: ${missionMemory.status}; ${missionMemory.handoff}`,
     `Repair Contract: ${repairContract.status}; ${repairContract.summary}`,
+    `Lead Critic: ${leadCritic.status}; ${leadCritic.summary}`,
     `Review Lens: ${reviewLens.status}; ${reviewLens.summary}`,
     `Seal Audit: ${sealAudit.status}; ${sealAudit.summary}`,
     `Production Seal: ${productionReadiness.status}; ${productionReadiness.summary}`,
@@ -2185,6 +2192,7 @@ function appendCompactionContext(
   upsertTextListSection(context, buildScopeSentinelPrompt(snapshot))
   upsertTextListSection(context, buildRedlineProofPrompt(snapshot))
   upsertTextListSection(context, buildRepairContractPrompt(snapshot))
+  upsertTextListSection(context, buildLeadCriticPrompt(snapshot))
   upsertTextListSection(context, buildReviewLensPrompt(snapshot))
   upsertTextListSection(context, buildSealAuditPrompt(snapshot, proofPlanOptions))
   upsertTextListSection(context, buildProductionReadinessPrompt(snapshot))

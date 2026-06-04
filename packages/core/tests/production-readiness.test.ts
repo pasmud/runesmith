@@ -105,6 +105,23 @@ function addInterfaceEvidence(runtime: ReturnType<typeof createRefinedRuntime>, 
   })
 }
 
+function addLeadCritiqueApproval(runtime: ReturnType<typeof createRefinedRuntime>) {
+  runtime.addTaskEvidence({
+    missionId: "mission_alpha",
+    evidence: {
+      id: "evidence_critique",
+      taskId: "task_alpha_interface_forge",
+      type: "decision",
+      summary: "Lead critique approved the implementation against acceptance criteria",
+      payload: {
+        stage: "lead-critique",
+        verdict: "approved",
+      },
+      createdAt: "2026-05-27T00:04:00.000Z",
+    },
+  })
+}
+
 describe("production readiness", () => {
   test("blocks refined product work until Scout acceptance criteria and proof obligations are recorded", () => {
     const runtime = createRefinedRuntime()
@@ -145,7 +162,7 @@ describe("production readiness", () => {
         }),
       ]),
     )
-    expect(audit.status).toBe("collecting-proof")
+    expect(audit.status).toBe("blocked")
     expect(audit.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -160,6 +177,7 @@ describe("production readiness", () => {
     const runtime = createRefinedRuntime()
     addPlanningDecision(runtime)
     addInterfaceEvidence(runtime, true)
+    addLeadCritiqueApproval(runtime)
 
     const readiness = deriveProductionReadiness(runtime.snapshot())
 

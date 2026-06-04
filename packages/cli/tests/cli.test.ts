@@ -695,6 +695,7 @@ describe("runesmith cli", () => {
     expect(config.agent["runesmith-lead"].prompt).toContain("delegate research to runesmith-scout")
     expect(config.agent["runesmith-scout"].prompt).toContain("research")
     expect(config.agent["runesmith-scout"].prompt).toContain("WBS")
+    expect(config.agent["runesmith-lead"].prompt).toContain("stage lead-critique")
     expect(config.agent["runesmith-lead"].prompt).toContain("browser workflow smoke proof")
   })
 
@@ -1108,6 +1109,7 @@ describe("runesmith cli", () => {
         "scope sentinel: clear; 0 findings",
         "redline proof: missing; Redline Proof missing for task_alpha: implementation changed before focused failing proof was captured.",
         "repair contract: idle; No active failed diagnostic is waiting for repair on task_alpha.",
+        "lead critic: idle; 0 findings",
         "review lens: waiting-for-proof; 2 findings",
         "seal audit: collecting-proof; 4 findings",
         "production seal: collecting-proof; 1 finding",
@@ -1180,6 +1182,7 @@ describe("runesmith cli", () => {
         "scope sentinel: idle; 0 findings",
         "redline proof: idle; No mission is active for Redline Proof.",
         "repair contract: idle; No mission is active for a Repair Contract.",
+        "lead critic: idle; 0 findings",
         "review lens: idle; 0 findings",
         "seal audit: idle; 0 findings",
         "production seal: idle; 0 findings",
@@ -2343,6 +2346,10 @@ describe("runesmith cli", () => {
         "Repair contract:",
         "Status: idle",
         "Summary: No active failed diagnostic is waiting for repair on task_alpha.",
+        "Lead critic:",
+        "Summary: Lead critique is not required for this mission map.",
+        "- none",
+        "Findings: none",
         "Review lens:",
         "Summary: mission_alpha review is waiting for proof on task_alpha.",
         "- proof-freshness: blocked - task_alpha still needs passing test-result evidence.",
@@ -2428,6 +2435,10 @@ describe("runesmith cli", () => {
         "Repair contract:",
         "Status: idle",
         "Summary: No active failed diagnostic is waiting for repair on task_alpha.",
+        "Lead critic:",
+        "Summary: Lead critique is not required for this mission map.",
+        "- none",
+        "Findings: none",
         "Review lens:",
         "Summary: mission_alpha review is waiting for proof on task_alpha.",
         "- proof-freshness: blocked - task_alpha still needs passing test-result evidence.",

@@ -1,3 +1,4 @@
+import { deriveLeadCritic, type LeadCritic } from "./lead-critic.js"
 import type { RuntimeSnapshot } from "./runtime.js"
 import type { Evidence, MissionGraph, MissionTask } from "./types.js"
 
@@ -9,6 +10,7 @@ export type ProductionReadinessCheckId =
   | "acceptance-criteria"
   | "proof-obligations"
   | "implementation-evidence"
+  | "lead-critique"
   | "browser-workflow"
   | "diagnostic-clean"
 
@@ -63,6 +65,7 @@ export function deriveProductionReadiness(snapshot: RuntimeSnapshot): Production
         check("acceptance-criteria", "Acceptance criteria", "passed", "Mission is already sealed."),
         check("proof-obligations", "Proof obligations", "passed", "Mission is already sealed."),
         check("implementation-evidence", "Implementation evidence", "passed", "Mission is already sealed."),
+        check("lead-critique", "Lead critique", "passed", "Mission is already sealed."),
         check("browser-workflow", "Browser workflow", "passed", "Mission is already sealed."),
         check("diagnostic-clean", "Diagnostic state", "passed", "Mission is already sealed."),
       ],
@@ -81,10 +84,12 @@ export function deriveProductionReadiness(snapshot: RuntimeSnapshot): Production
     ?? extractStringList(planningDecision?.payload.proofPlan)
     ?? extractProofMap(planningDecision?.payload.proofMap)
     ?? []
+  const leadCritic = deriveLeadCritic(snapshot)
   const checks = [
     buildAcceptanceCriteriaCheck(planningTasks, acceptanceCriteria),
     buildProofObligationsCheck(planningTasks, proofObligations),
     buildImplementationEvidenceCheck(evidence, implementationTasks),
+    buildLeadCritiqueCheck(leadCritic),
     buildBrowserWorkflowCheck(graph, evidence, implementationTasks),
     buildDiagnosticCleanCheck(evidence, implementationTasks),
   ]
@@ -234,6 +239,22 @@ function buildImplementationEvidenceCheck(evidence: Evidence[], implementationTa
   }
 
   return check("implementation-evidence", "Implementation evidence", "passed", `${implementationTasks.length} Forge task${implementationTasks.length === 1 ? "" : "s"} have file-change and passing test-result evidence.`)
+}
+
+function buildLeadCritiqueCheck(leadCritic: LeadCritic): ProductionReadinessCheck {
+  if (leadCritic.status === "idle" || leadCritic.status === "sealed") {
+    return check("lead-critique", "Lead critique", "passed", "Lead critique is not required for this mission.")
+  }
+
+  if (leadCritic.status === "approved") {
+    return check("lead-critique", "Lead critique", "passed", leadCritic.summary)
+  }
+
+  if (leadCritic.status === "revision-requested") {
+    return check("lead-critique", "Lead critique", "blocked", leadCritic.findings[0]?.summary ?? leadCritic.summary)
+  }
+
+  return check("lead-critique", "Lead critique", "attention", leadCritic.nextAction)
 }
 
 function buildBrowserWorkflowCheck(

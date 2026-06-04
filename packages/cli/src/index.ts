@@ -14,6 +14,7 @@ import {
   defaultRuntimeCapsulePath,
   defaultRunesmithAgentContract,
   deriveDispatchMatrix,
+  deriveLeadCritic,
   deriveLoopPulse,
   deriveMissionMap,
   deriveMissionMemory,
@@ -47,6 +48,7 @@ import {
   type Evidence,
   type EvidenceType,
   type IdFactory,
+  type LeadCritic,
   type Lease,
   type MissionMap,
   type PlanContract,
@@ -426,6 +428,7 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
     const scopeSentinel = deriveScopeSentinel(snapshot.value)
     const redlineProof = deriveRedlineProof(snapshot.value)
     const repairContract = deriveRepairContract(snapshot.value)
+    const leadCritic = deriveLeadCritic(snapshot.value)
     const reviewLens = deriveReviewLens(snapshot.value)
     const sealAudit = deriveSealAudit(snapshot.value, proofOptions)
     const productionReadiness = deriveProductionReadiness(snapshot.value)
@@ -474,6 +477,10 @@ export async function runCli(args: string[], host: CliHost = createNodeHost()): 
       "Repair contract:",
       `Status: ${repairContract.status}`,
       `Summary: ${repairContract.summary}`,
+      "Lead critic:",
+      `Summary: ${leadCritic.summary}`,
+      ...formatLeadCriticAttentionLines(leadCritic),
+      `Findings: ${formatLeadCriticFindings(leadCritic)}`,
       "Review lens:",
       `Summary: ${reviewLens.summary}`,
       ...formatReviewLensBlockedLines(reviewLens),
@@ -732,6 +739,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
   const scopeSentinel = deriveScopeSentinel(snapshot)
   const redlineProof = deriveRedlineProof(snapshot)
   const repairContract = deriveRepairContract(snapshot)
+  const leadCritic = deriveLeadCritic(snapshot)
   const reviewLens = deriveReviewLens(snapshot)
   const sealAudit = deriveSealAudit(snapshot, proofOptions)
   const productionReadiness = deriveProductionReadiness(snapshot)
@@ -759,6 +767,7 @@ async function runesmithStatus(host: CliHost): Promise<CliResult> {
     `scope sentinel: ${formatScopeSentinelSummary(scopeSentinel)}`,
     `redline proof: ${formatRedlineProofSummary(redlineProof)}`,
     `repair contract: ${formatRepairContractSummary(repairContract)}`,
+    `lead critic: ${formatLeadCriticSummary(leadCritic)}`,
     `review lens: ${formatReviewLensSummary(reviewLens)}`,
     `seal audit: ${formatSealAuditSummary(sealAudit)}`,
     `production seal: ${formatProductionReadinessSummary(productionReadiness)}`,
@@ -1940,6 +1949,22 @@ function formatRepairContractSummary(repairContract: RepairContract): string {
   return `${repairContract.status}; ${repairContract.summary}`
 }
 
+function formatLeadCriticSummary(leadCritic: LeadCritic): string {
+  const label = leadCritic.findings.length === 1 ? "finding" : "findings"
+  return `${leadCritic.status}; ${leadCritic.findings.length} ${label}`
+}
+
+function formatLeadCriticAttentionLines(leadCritic: LeadCritic): string[] {
+  const checks = leadCritic.checks.filter((item) => item.status !== "passed")
+  if (checks.length === 0) return ["- none"]
+
+  return checks.map((item) => `- ${item.id}: ${item.status} - ${item.detail}`)
+}
+
+function formatLeadCriticFindings(leadCritic: LeadCritic): string {
+  return leadCritic.findings.length > 0 ? leadCritic.findings.map((finding) => finding.summary).join("; ") : "none"
+}
+
 function formatPlanContractSummary(planContract: PlanContract): string {
   return `${planContract.status}; ${planContract.summary}`
 }
@@ -2275,6 +2300,7 @@ function buildRunesmithOpenCodeAgents(): Record<string, OpenCodeAgentConfig> {
         "For non-trivial build goals, delegate research to runesmith-scout first. Blend Scout findings into a master WBS with acceptance criteria, dependencies, risks, and proof gates before implementation starts.",
         "Route research, repo discovery, product expectations, and WBS inputs to runesmith-scout; core code, tests, and repo changes to runesmith-atlas; UI, browser, and dashboard work to runesmith-artificer; verification, review, and repair proof to runesmith-oracle; planning, docs, and release notes to runesmith-steward.",
         "Use the installed Runesmith tools to prepare the mission, refine the plan, claim work, record evidence, run proof, recover stale work, review, and seal without asking the user to manage task ids.",
+        "After subagent output, critique the result against the WBS, acceptance criteria, proof obligations, and scope. Record decision evidence with stage lead-critique and verdict approved or revision-requested before review.",
         "Do not claim completion until the Runesmith Proof Plan passes. Interactive browser/static apps require browser workflow smoke proof from node .runesmith/proof/browser-smoke.mjs in addition to unit tests.",
         "Treat Runesmith Production Seal as the final product-readiness standard: acceptance criteria, proof obligations, implementation evidence, relevant browser interaction proof, and diagnostics must be clear before completion claims.",
         "When proof fails, delegate a focused repair to the right subagent, rerun the exact failing command, then rerun the full proof plan before sealing.",

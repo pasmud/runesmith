@@ -1,5 +1,6 @@
 import { missingRequiredEvidence } from "./evidence-ledger.js"
 import { getRequiredEvidenceForTask } from "./contracts.js"
+import { deriveLeadCritic, type LeadCritic } from "./lead-critic.js"
 import { deriveRedlineProof, type RedlineProof } from "./redline-proof.js"
 import { deriveRepairContract, type RepairContract } from "./repair-contract.js"
 import { deriveScopeSentinel, type ScopeSentinel } from "./scope-sentinel.js"
@@ -11,7 +12,7 @@ export type ReviewLensCheckStatus = "passed" | "blocked" | "attention"
 export type ReviewLensFindingSeverity = "critical" | "warning" | "info"
 
 export type ReviewLensCheck = {
-  id: "diff-scope" | "proof-freshness" | "redline-proof" | "risk-resolution" | "review-decision"
+  id: "diff-scope" | "proof-freshness" | "redline-proof" | "risk-resolution" | "lead-critique" | "review-decision"
   label: string
   status: ReviewLensCheckStatus
   detail: string
@@ -74,10 +75,12 @@ export function deriveReviewLens(snapshot: RuntimeSnapshot): ReviewLens {
   const reviewDecision = reviewEvidence.find((entry) => entry.type === "decision")
   const redlineProof = deriveRedlineProof(snapshot)
   const repairContract = deriveRepairContract(snapshot)
-  const status = selectReviewStatus(graph, missingEvidence, unresolvedRisks, reviewDecision, scopeSentinel)
-  const findings = buildFindings(implementationTask, missingEvidence, unresolvedRisks, taskEvidence, scopeSentinel, redlineProof, repairContract)
+  const leadCritic = deriveLeadCritic(snapshot)
+  const status = selectReviewStatus(graph, missingEvidence, unresolvedRisks, reviewDecision, scopeSentinel, leadCritic)
+  const findings = buildFindings(implementationTask, missingEvidence, unresolvedRisks, taskEvidence, scopeSentinel, redlineProof, repairContract, leadCritic)
   const checklist = buildChecklist({
     implementationTask,
+    leadCritic,
     missingEvidence,
     redlineProof,
     unresolvedRisks,
@@ -167,11 +170,13 @@ function selectReviewStatus(
   unresolvedRisks: string[],
   reviewDecision: Evidence | undefined,
   scopeSentinel: ScopeSentinel,
+  leadCritic: LeadCritic,
 ): ReviewLensStatus {
   if (graph.mission.status === "complete") return "sealed"
   if (scopeSentinel.status === "blocked") return "blocked"
   if (reviewDecision) return "approved"
   if (unresolvedRisks.length > 0) return "blocked"
+  if (leadCritic.status === "needs-critique" || leadCritic.status === "revision-requested") return "blocked"
   if (missingEvidence.length > 0) return "waiting-for-proof"
 
   return "ready"
@@ -179,6 +184,7 @@ function selectReviewStatus(
 
 function buildChecklist(input: {
   implementationTask: MissionTask
+  leadCritic: LeadCritic
   missingEvidence: EvidenceType[]
   redlineProof: RedlineProof
   unresolvedRisks: string[]
@@ -201,7 +207,7 @@ function buildChecklist(input: {
         ? "passed"
         : "blocked"
 
-  return [
+  const checklist: ReviewLensCheck[] = [
     {
       id: "diff-scope",
       label: "Diff scope",
@@ -233,7 +239,18 @@ function buildChecklist(input: {
         ? `Unresolved risk: ${input.unresolvedRisks[0]}.`
         : "No unresolved risk evidence is newer than the latest decision.",
     },
-    {
+  ]
+
+  if (input.leadCritic.status !== "idle") {
+    checklist.push({
+      id: "lead-critique",
+      label: "Lead critique",
+      status: leadCriticCheckStatus(input.leadCritic),
+      detail: input.leadCritic.nextAction,
+    })
+  }
+
+  checklist.push({
       id: "review-decision",
       label: "Review decision",
       status: input.reviewDecision ? "passed" : input.status === "ready" ? "attention" : "blocked",
@@ -242,8 +259,9 @@ function buildChecklist(input: {
         : input.status === "ready"
           ? "Review can now record an approval decision."
           : "Review decision must wait until proof and risk gates are clear.",
-    },
-  ]
+    })
+
+  return checklist
 }
 
 function buildFindings(
@@ -254,6 +272,7 @@ function buildFindings(
   scopeSentinel: ScopeSentinel,
   redlineProof: RedlineProof,
   repairContract: RepairContract,
+  leadCritic: LeadCritic,
 ): ReviewLensFinding[] {
   const findings: ReviewLensFinding[] = []
 
@@ -293,6 +312,13 @@ function buildFindings(
     })
   }
 
+  for (const finding of leadCritic.findings) {
+    findings.push({
+      severity: finding.severity,
+      summary: finding.summary,
+    })
+  }
+
   const latestDiagnostic = [...taskEvidence].reverse().find((entry) => entry.type === "diagnostic")
   if (latestDiagnostic && missingEvidence.includes("test-result")) {
     findings.push({
@@ -302,6 +328,13 @@ function buildFindings(
   }
 
   return findings
+}
+
+function leadCriticCheckStatus(leadCritic: LeadCritic): ReviewLensCheckStatus {
+  if (leadCritic.status === "approved" || leadCritic.status === "sealed" || leadCritic.status === "idle") return "passed"
+  if (leadCritic.status === "waiting-for-work") return "attention"
+
+  return "blocked"
 }
 
 function buildSummary(
