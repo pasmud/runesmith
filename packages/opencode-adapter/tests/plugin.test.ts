@@ -803,6 +803,7 @@ describe("opencode adapter", () => {
     if (!config.ok || !config.value) throw new Error("expected package plugin to create project config")
     expect(initial.value.runtime.graphs).toEqual({})
     expect(config.value.runtimeDir).toBe(".runesmith/runtime")
+    expect(host.files.get(".runesmith/proof/browser-smoke.mjs")).toContain("Runesmith browser smoke")
 
     await plugin.tool.runesmith_autopilot_prepare.execute({
       goal: "Zero-config package persistence",

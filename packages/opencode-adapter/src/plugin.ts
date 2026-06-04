@@ -270,6 +270,7 @@ const defaultAtlasContract: AgentContract = defaultRunesmithAgentContract
 const autopilotStaleAfterMs = 120_000
 const shellProofCaptureLimit = 64_000
 const runesmithOpenCodeSkillsPath = fileURLToPath(new URL("../../../.opencode/skills", import.meta.url))
+const browserSmokeHarnessPath = ".runesmith/proof/browser-smoke.mjs"
 
 function atlasContractFor(runtime: RunesmithRuntime): AgentContract {
   return runtime.snapshot().contracts[defaultAtlasContract.id] ?? defaultAtlasContract
@@ -847,6 +848,7 @@ export async function createRunesmithOpenCodePlugin(
   const projectConfig = await repairProjectConfig(host, {
     path: defaultProjectConfigPath,
   })
+  await ensureBrowserSmokeHarness(host)
   const capsulePath = options.capsulePath
     ?? (projectConfig.ok
       ? runtimeCapsulePathFromConfig(projectConfig.value.config)
@@ -881,6 +883,122 @@ export async function createRunesmithOpenCodePlugin(
     runtime,
     runtimeStore,
   })
+}
+
+async function ensureBrowserSmokeHarness(host: RuntimeStoreHost): Promise<void> {
+  await host.writeText(browserSmokeHarnessPath, browserSmokeHarnessSource())
+}
+
+function browserSmokeHarnessSource(): string {
+  return [
+    "import { existsSync, readFileSync } from \"node:fs\";",
+    "import { resolve } from \"node:path\";",
+    "import vm from \"node:vm\";",
+    "",
+    "const root = process.cwd();",
+    "const indexPath = resolve(root, \"index.html\");",
+    "if (!existsSync(indexPath)) {",
+    "  console.error(\"Runesmith browser smoke: index.html was not found in the project root.\");",
+    "  process.exit(1);",
+    "}",
+    "",
+    "const html = readFileSync(indexPath, \"utf8\");",
+    "const listeners = [];",
+    "const elements = new Map();",
+    "",
+    "function createElement(name = \"element\") {",
+    "  return {",
+    "    nodeName: String(name).toUpperCase(),",
+    "    style: {},",
+    "    dataset: {},",
+    "    children: [],",
+    "    classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },",
+    "    addEventListener(type) { listeners.push({ target: name, type: String(type) }); },",
+    "    removeEventListener() {},",
+    "    appendChild(child) { this.children.push(child); return child; },",
+    "    removeChild(child) { this.children = this.children.filter((entry) => entry !== child); return child; },",
+    "    setAttribute(key, value) { this[key] = String(value); },",
+    "    getAttribute(key) { return this[key] ?? null; },",
+    "    querySelector(selector) { return getElement(`selector:${selector}`); },",
+    "    querySelectorAll() { return []; },",
+    "    focus() {},",
+    "    blur() {},",
+    "    getBoundingClientRect() { return { width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600 }; },",
+    "  };",
+    "}",
+    "",
+    "function getElement(key) {",
+    "  if (!elements.has(key)) elements.set(key, createElement(key));",
+    "  return elements.get(key);",
+    "}",
+    "",
+    "const localStorageData = new Map();",
+    "const document = {",
+    "  body: getElement(\"body\"),",
+    "  documentElement: getElement(\"html\"),",
+    "  readyState: \"complete\",",
+    "  addEventListener(type) { listeners.push({ target: \"document\", type: String(type) }); },",
+    "  removeEventListener() {},",
+    "  createElement,",
+    "  getElementById(id) { return getElement(`id:${id}`); },",
+    "  querySelector(selector) { return getElement(`selector:${selector}`); },",
+    "  querySelectorAll() { return []; },",
+    "};",
+    "",
+    "const context = {",
+    "  console,",
+    "  document,",
+    "  localStorage: {",
+    "    getItem(key) { return localStorageData.get(String(key)) ?? null; },",
+    "    setItem(key, value) { localStorageData.set(String(key), String(value)); },",
+    "    removeItem(key) { localStorageData.delete(String(key)); },",
+    "    clear() { localStorageData.clear(); },",
+    "  },",
+    "  navigator: { userAgent: \"RunesmithBrowserSmoke/1.0\" },",
+    "  location: { href: \"http://localhost/index.html\" },",
+    "  addEventListener(type) { listeners.push({ target: \"window\", type: String(type) }); },",
+    "  removeEventListener() {},",
+    "  requestAnimationFrame(callback) { return setTimeout(() => callback(Date.now()), 0); },",
+    "  cancelAnimationFrame(id) { clearTimeout(id); },",
+    "  setTimeout,",
+    "  clearTimeout,",
+    "  setInterval,",
+    "  clearInterval,",
+    "};",
+    "context.window = context;",
+    "context.self = context;",
+    "context.globalThis = context;",
+    "",
+    "const scriptTags = [...html.matchAll(/<script\\b([^>]*)>([\\s\\S]*?)<\\/script>/gi)];",
+    "if (scriptTags.length === 0) {",
+    "  console.error(\"Runesmith browser smoke: index.html has no script tags to exercise.\");",
+    "  process.exit(1);",
+    "}",
+    "",
+    "const sandbox = vm.createContext(context);",
+    "for (const [, attrs, inlineCode] of scriptTags) {",
+    "  const src = /\\bsrc=[\"']([^\"']+)[\"']/i.exec(attrs)?.[1];",
+    "  const code = src ? readFileSync(resolve(root, src), \"utf8\") : inlineCode;",
+    "  if (!code.trim()) continue;",
+    "  try {",
+    "    vm.runInContext(code, sandbox, { filename: src || \"index.html:inline\" });",
+    "  } catch (error) {",
+    "    console.error(`Runesmith browser smoke: script failed in ${src || \"inline script\"}.`);",
+    "    console.error(error?.stack || error);",
+    "    process.exit(1);",
+    "  }",
+    "}",
+    "",
+    "const interactionEvents = new Set([\"keydown\", \"keyup\", \"click\", \"pointerdown\", \"mousedown\", \"touchstart\", \"input\", \"change\", \"submit\"]);",
+    "const observed = listeners.filter((listener) => interactionEvents.has(listener.type));",
+    "if (observed.length === 0) {",
+    "  console.error(\"Runesmith browser smoke: no user interaction listeners were registered. The UI may not be instantiated.\");",
+    "  process.exit(1);",
+    "}",
+    "",
+    "console.log(`Runesmith browser smoke passed: ${observed.map((listener) => listener.type).join(\", \")}`);",
+    "",
+  ].join("\n")
 }
 
 export default async function RunesmithOpenCodePlugin(): Promise<RunesmithPlugin> {
