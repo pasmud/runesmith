@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { join } from "node:path"
-import { tmpdir } from "node:os"
+import { homedir, tmpdir } from "node:os"
 import { fileURLToPath } from "node:url"
 import { parse } from "jsonc-parser"
 
@@ -718,6 +718,26 @@ describe("runesmith cli", () => {
       stderr: "",
     })
     expect(host.readText("opencode.jsonc")).toContain("\"runesmith@git+https://github.com/pasmud/runesmith.git\"")
+  })
+
+  test("install npm mode without --config writes to the OpenCode config directory", async () => {
+    const host = createMemoryHost()
+    const expectedPath = process.platform === "win32"
+      ? `${homedir()}\\.config\\opencode\\opencode.json`
+      : `${process.env.XDG_CONFIG_HOME ?? `${homedir()}/.config`}/opencode/opencode.json`
+
+    const result = await runCli([
+      "install",
+      "--mode",
+      "npm",
+      "--package",
+      "runesmith@file:E:/dev/Oh-my/runesmith",
+    ], host)
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain(`config: ${expectedPath}`)
+    expect(host.readText(expectedPath)).toContain("\"runesmith@file:E:/dev/Oh-my/runesmith\"")
+    expect(host.readText(expectedPath)).toContain("\"runesmith-lead\"")
   })
 
   test("up npm mode presents the direct OpenCode package install path", async () => {

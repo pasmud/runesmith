@@ -45,8 +45,7 @@ export function isRunesmithPluginEntry(entry: string): boolean {
 
 export function getDefaultOpenCodeConfigPath(): string {
   if (process.platform === "win32") {
-    const appData = process.env.APPDATA ?? `${homedir()}\\AppData\\Roaming`
-    return `${appData}\\opencode\\opencode.json`
+    return `${homedir()}\\.config\\opencode\\opencode.json`
   }
 
   const configHome = process.env.XDG_CONFIG_HOME ?? `${homedir()}/.config`
@@ -55,8 +54,7 @@ export function getDefaultOpenCodeConfigPath(): string {
 
 export function getDefaultOpenCodePluginDir(): string {
   if (process.platform === "win32") {
-    const appData = process.env.APPDATA ?? `${homedir()}\\AppData\\Roaming`
-    return `${appData}\\opencode\\plugins`
+    return `${homedir()}\\.config\\opencode\\plugins`
   }
 
   const configHome = process.env.XDG_CONFIG_HOME ?? `${homedir()}/.config`
